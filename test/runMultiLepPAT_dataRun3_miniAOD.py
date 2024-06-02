@@ -84,8 +84,6 @@ else:
 process.source = cms.Source("PoolSource",
     skipEvents=cms.untracked.uint32(0),
 	fileNames = cms.untracked.vstring(ivars.inputFiles),
-	eventsToProcess = cms.untracked.VEventRange("367079:791559619-367079:MAX")
-	#eventsToProcess = cms.untracked.VEventRange("367079:970546777")
 )
 
 ### Set basic filter
