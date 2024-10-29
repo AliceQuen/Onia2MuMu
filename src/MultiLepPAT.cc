@@ -1,9 +1,9 @@
 // system include files
 #include <memory>
+#include <regex>
 #include "TLorentzVector.h"
 // user include files
 #include "../interface/MultiLepPAT.h"
-#include "../interface/VertexReProducer.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -80,7 +80,6 @@
 
 #include "TrackingTools/IPTools/interface/IPTools.h"
 
-#include "../data/TMVAClassification_BDT.class.C"
 
 // about photon
 #include "DataFormats/EgammaCandidates/interface/PhotonFwd.h"
@@ -125,40 +124,27 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 	  addXlessPrimaryVertex_(iConfig.getUntrackedParameter<bool>("addXlessPrimaryVertex", true)),
 	  TriggersForJpsi_(iConfig.getUntrackedParameter<std::vector<std::string>>("TriggersForJpsi")),
 	  FiltersForJpsi_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForJpsi")),
-	  TriggersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("TriggersForUpsilon")),
-	  FiltersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForUpsilon")),
 	  Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
 	  Chi_Track_(iConfig.getUntrackedParameter<double>("Chi2NDF_Track", 10)),
 	  X_One_Tree_(0),
 
 	  runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
-	  trigRes(0), trigNames(0), L1TT(0), MatchTriggerNames(0),
+	  TrigRes(0), TrigNames(0), L1TrigRes(0), MatchJpsiTrigNames(0),
 
-	  priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXE(0), priVtxYE(0), priVtxZE(0), priVtxChiNorm(0), priVtxChi(0), priVtxCL(0),
-	  PriVtxXCorrX(0), PriVtxXCorrY(0), PriVtxXCorrZ(0),
-	  PriVtxXCorrEX(0), PriVtxXCorrEY(0), PriVtxXCorrEZ(0), PriVtxXCorrC2(0), PriVtxXCorrCL(0),
+	  priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXErr(0), priVtxYErr(0), priVtxZErr(0), priVtxChiNorm(0), priVtxChi(0), priVtxCL(0),
+	  priVtxXCorrY(0), priVtxXCorrZ(0), priVtxYCorrZ(0),
 
 	  nMu(0),
-	  muPx(0), muPy(0), muPz(0), muD0(0), muD0E(0), muDz(0), muChi2(0), muGlChi2(0), mufHits(0),
-	  muFirstBarrel(0), muFirstEndCap(0), muDzVtx(0), muDxyVtx(0),
-	  muNDF(0), muGlNDF(0), muPhits(0), muShits(0), muGlMuHits(0), muType(0), muQual(0),
-	  muTrack(0), muCharge(0), muIsoratio(0), muIsGoodLooseMuon(0), muIsGoodLooseMuonNew(0),
-	  muIsGoodSoftMuonNewIlse(0), muIsGoodSoftMuonNewIlseMod(0), muIsGoodTightMuon(0), muIsJpsiTrigMatch(0), muIsUpsTrigMatch(0), munMatchedSeg(0),
-
-	  muIsPatLooseMuon(0), muIsPatTightMuon(0), muIsPatSoftMuon(0), muIsPatMediumMuon(0),
-	  muUpsVrtxMatch(0), muL3TriggerMatch(0),
-
-	  muMVAMuonID(0), musegmentCompatibility(0),
-	  mupulldXdZ_pos_noArb(0), mupulldYdZ_pos_noArb(0),
-	  mupulldXdZ_pos_ArbDef(0), mupulldYdZ_pos_ArbDef(0),
-	  mupulldXdZ_pos_ArbST(0), mupulldYdZ_pos_ArbST(0),
-	  mupulldXdZ_pos_noArb_any(0), mupulldYdZ_pos_noArb_any(0),
-	  X_mu1Idx(0), X_mu2Idx(0), X_mu3Idx(0), X_mu4Idx(0),
+	  muPx(0), muPy(0), muPz(0), muD0BS(0), muD0EBS(0), muD3dBS(0), muD3dEBS(0),
+	  muD0PV(0), muD0EPV(0), muDzPV(0), muDzEPV(0),
+	  muCharge(0), muTrackIso(0),
+	  muIsPatLooseMuon(0), muIsPatTightMuon(0), muIsPatSoftMuon(0), muIsPatMediumMuon(0), muJpsiFilterRes(0),
+	  X_mu1Id(0), X_mu2Id(0), X_mu3Id(0), X_mu4Id(0),
 	  X_mass(0), X_VtxProb(0), X_Chi2(0), X_ndof(0), X_px(0), X_py(0), X_pz(0), X_massErr(0),
 	  X_JPiPi_mass(0), X_JPiPi_VtxProb(0), X_JPiPi_Chi2(0), X_JPiPi_ndof(0), X_JPiPi_px(0), X_JPiPi_py(0), X_JPiPi_pz(0), X_JPiPi_massErr(0),
 	  X_Jpsi1_mass(0), X_Jpsi1_VtxProb(0), X_Jpsi1_Chi2(0), X_Jpsi1_ndof(0), X_Jpsi1_px(0), X_Jpsi1_py(0), X_Jpsi1_pz(0), X_Jpsi1_massErr(0),
 	  X_Jpsi2_mass(0), X_Jpsi2_VtxProb(0), X_Jpsi2_Chi2(0), X_Jpsi2_ndof(0), X_Jpsi2_px(0), X_Jpsi2_py(0), X_Jpsi2_pz(0), X_Jpsi2_massErr(0),
-	  X_JPiPi_Pi1Idx(0), X_JPiPi_Pi2Idx(0),
+	  X_JPiPi_Pi1Id(0), X_JPiPi_Pi2Id(0),
 	  X_JPiPi_Pi1px(0), X_JPiPi_Pi1py(0), X_JPiPi_Pi1pz(0),
 	  X_JPiPi_Pi2px(0), X_JPiPi_Pi2py(0), X_JPiPi_Pi2pz(0),
 	  // mass constrain variables on 1208
@@ -344,7 +330,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	using namespace edm;
 	using namespace reco;
 	using namespace std;
-
 	runNum = iEvent.id().run();
 	evtNum = iEvent.id().event();
 	lumiNum = iEvent.id().luminosityBlock();
@@ -353,6 +338,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 	edm::Handle<edm::TriggerResults> hltresults;
 	bool Error_t = false;
+	unsigned int nJpsitrigger = TriggersForJpsi_.size();
 	try
 	{
 		iEvent.getByToken(gttriggerToken_, hltresults);
@@ -377,73 +363,57 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		edm::TriggerNames triggerNames_;
 		triggerNames_ = iEvent.triggerNames(*hltresults);
 
-		int nUpstrigger = TriggersForUpsilon_.size();
-		int nJpsitrigger = TriggersForJpsi_.size();
-
-		for (int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
+		for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 		{
 			JpsiMatchTrig[JpsiTrig] = 0;
-		} // Jpsi trigger
-
-		for (int UpsTrig = 0; UpsTrig < nUpstrigger; UpsTrig++)
-		{
-			UpsilonMatchTrig[UpsTrig] = 0;
-		} // upsilon trig
-
+		} // Initiating Jpsi trigger
 		for (int itrig = 0; itrig < ntrigs; itrig++)
 		{
 			string trigName = triggerNames_.triggerName(itrig);
 			int hltflag = (*hltresults)[itrig].accept();
-			trigRes->push_back(hltflag);
-			trigNames->push_back(trigName);
-
-			for (unsigned int JpsiTrig = 0; JpsiTrig < TriggersForJpsi_.size(); JpsiTrig++)
+			TrigRes->push_back(hltflag);
+			TrigNames->push_back(trigName);
+			for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 			{
-				if (TriggersForJpsi_[JpsiTrig] == triggerNames_.triggerName(itrig))
+				std::regex pattern(".*"+TriggersForJpsi_[JpsiTrig]+".*");
+				if (std::regex_search(trigName, pattern))
 				{
 					JpsiMatchTrig[JpsiTrig] = hltflag;
+					bool isDumplicate = false;
+					if(hltflag)
+					{
+						for(unsigned int MatchTrig = 0; MatchTrig < MatchJpsiTrigNames->size(); MatchTrig ++)
+						{
+							if(trigName == MatchJpsiTrigNames->at(MatchTrig))
+							{
+								isDumplicate = true;
+								break;
+							}
+						}
+					}
+					if(!isDumplicate)
+					{
+						MatchJpsiTrigNames->push_back(trigName);
+					}		
 					break;
 				}
-
 			} // Jpsi Trigger
-
-			for (unsigned int UpsTrig = 0; UpsTrig < TriggersForUpsilon_.size(); UpsTrig++)
-			{
-				if (TriggersForUpsilon_[UpsTrig] == triggerNames_.triggerName(itrig))
-				{
-					UpsilonMatchTrig[UpsTrig] = hltflag;
-					break;
-				}
-			} // Upsilon Trigger
 		}
-
-		for (int MatchTrig = 0; MatchTrig < nJpsitrigger; MatchTrig++)
-		{
-			MatchTriggerNames->push_back(TriggersForJpsi_[MatchTrig]);
-		}
-
 	} // end of HLT trigger info
-
-	std::string vrtxFilter("hltVertexmumuFilterUpsilonMuon");
-	std::string L3Filter("hltTripleMuL3PreFiltered0");
-
-	edm::ESHandle<TransientTrackBuilder> theB = iSetup.getHandle(theTTBuilderToken_);
 
 	edm::Handle<L1GlobalTriggerReadoutRecord> gtRecord;
 	iEvent.getByToken(gtRecordToken_, gtRecord);
-	const DecisionWord dWord = gtRecord->decisionWord();
 
+	// L1 Trigger info
 	const TechnicalTriggerWord ttWord = gtRecord->technicalTriggerWord();
 	for (unsigned int l1i = 0; l1i != ttWord.size(); ++l1i)
 	{
-		L1TT->push_back(ttWord.at(l1i));
+		L1TrigRes->push_back(ttWord.at(l1i));
 	}
 
 	Vertex thePrimaryV;
-	Vertex theRecoVtx;
 	Vertex theBeamSpotV;
 	BeamSpot beamSpot;
-	math::XYZPoint RefVtx;
 
 	// get BeamSplot
 	edm::Handle<reco::BeamSpot> beamSpotHandle;
@@ -466,15 +436,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	////////////////Check Lines below for Primary Vertex///////////////////
 	///////////////////////////////////////////////////////////////////////
 
-	int mynGoodPrimVtx = 0;
+	nGoodPrimVtx = 0;
 	for (unsigned myi = 0; myi < recVtxs->size(); myi++)
 	{
 		if ((*recVtxs)[myi].ndof() >= 5 && fabs((*recVtxs)[myi].z()) <= 24 && fabs((*recVtxs)[myi].position().rho()) <= 2.0)
 		{
-			mynGoodPrimVtx++;
+			nGoodPrimVtx++;
 		}
 	}
-	nGoodPrimVtx = mynGoodPrimVtx;
 
 	if (recVtxs->begin() != recVtxs->end())
 	{
@@ -499,17 +468,20 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		thePrimaryV = Vertex(beamSpot.position(), beamSpot.covariance3D());
 	}
 
-	RefVtx = thePrimaryV.position();
 	priVtxX = (thePrimaryV.position().x());
 	priVtxY = (thePrimaryV.position().y());
 	priVtxZ = (thePrimaryV.position().z());
-	priVtxXE = (thePrimaryV.xError());
-	priVtxYE = (thePrimaryV.yError());
-	priVtxZE = (thePrimaryV.zError());
+	priVtxXErr = (thePrimaryV.xError());
+	priVtxYErr = (thePrimaryV.yError());
+	priVtxZErr = (thePrimaryV.zError());
 	priVtxChiNorm = (thePrimaryV.normalizedChi2());
 	priVtxChi = thePrimaryV.chi2();
 	priVtxCL = ChiSquaredProbability((double)(thePrimaryV.chi2()), (double)(thePrimaryV.ndof()));
+	priVtxXCorrY->push_back(thePrimaryV.covariance(0,1));
+	priVtxXCorrZ->push_back(thePrimaryV.covariance(0,2));
+	priVtxYCorrZ->push_back(thePrimaryV.covariance(1,2));
 
+	// Check Moun and Pion Track
 	edm::Handle<edm::View<pat::Muon>> thePATMuonHandle; //  MINIAOD
 	iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle);
 	edm::Handle<edm::View<pat::PackedCandidate>> theTrackHandle; //  MINIAOD
@@ -522,22 +494,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		nonMuonPionTrack.push_back(iTrackc);
 	}
 
-	if (thePATMuonHandle->size() >= 2)
+	if (thePATMuonHandle->size() >= 4)
 	{
-		vector<std::string> theInputVariables;
-		theInputVariables.push_back("validFrac");
-		theInputVariables.push_back("globalChi2");
-		theInputVariables.push_back("pt");
-		theInputVariables.push_back("eta");
-		theInputVariables.push_back("segComp");
-		theInputVariables.push_back("chi2LocMom");
-		theInputVariables.push_back("chi2LocPos");
-		theInputVariables.push_back("glbTrackProb");
-		theInputVariables.push_back("NTrkVHits");
-		theInputVariables.push_back("NTrkEHitsOut");
-		ReadBDT muonID(theInputVariables);
-		vector<double> inputValues;
-		inputValues.resize(10, 0.);
 		// fill muon track block
 		for (edm::View<pat::Muon>::const_iterator iMuonP = thePATMuonHandle->begin(); //  MINIAOD
 			 iMuonP != thePATMuonHandle->end(); ++iMuonP)
@@ -552,14 +510,19 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			muPx->push_back(iMuonP->px());
 			muPy->push_back(iMuonP->py());
 			muPz->push_back(iMuonP->pz());
-			muCharge->push_back(iMuonP->charge());
-
-			int goodSoftMuonNewIlseMod = 0;
-			int goodSoftMuonNewIlse = 0;
-			int goodLooseMuonNew = 0;
-			int goodLooseMuon = 0;
-			int goodTightMuon = 0;
 			
+			muD0BS->push_back(iMuonP->dB(pat::Muon::BS2D));
+			muD0EBS->push_back(iMuonP->edB(pat::Muon::BS2D));
+			muD3dBS->push_back(iMuonP->dB(pat::Muon::BS3D));
+			muD3dEBS->push_back(iMuonP->edB(pat::Muon::BS3D));
+
+			muD0PV->push_back(iMuonP->dB(pat::Muon::PV2D));
+			muD0EPV->push_back(iMuonP->edB(pat::Muon::PV2D));
+			muDzPV->push_back(iMuonP->dB(pat::Muon::PVDZ));
+			muDzEPV->push_back(iMuonP->edB(pat::Muon::PVDZ));
+
+			muCharge->push_back(iMuonP->charge());
+			muTrackIso->push_back(iMuonP->trackIso());
 			
 			// Find and delet muon Tracks in PionTracks
 			for (std::vector<edm::View<pat::PackedCandidate>::const_iterator>::const_iterator iTrackfID =  nonMuonPionTrack.begin(); // MINIAOD
@@ -577,57 +540,36 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 					iTrackfID = iTrackfID - 1;
 				}
 			}
-			// float mymuMVABs = -1;
 
-			bool JpsiTrigger = false;
+			bool JpsiFilterMatch = false;
+			bool JpsiTriggerMatch = false;
 
-			for (unsigned int JpsiTrig = 0; JpsiTrig < TriggersForJpsi_.size(); JpsiTrig++)
+			for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 			{
-				if (JpsiMatchTrig[JpsiTrig] != 0)
+				if(JpsiMatchTrig[JpsiTrig] != 0)
 				{
-					const pat::TriggerObjectStandAloneCollection muJpsiHLTMatches = iMuonP->triggerObjectMatchesByFilter(FiltersForJpsi_[JpsiTrig]);
-					bool pass1 = muJpsiHLTMatches.size() > 0;
-					if (pass1)
-						JpsiTrigger = true;
+					JpsiTriggerMatch = true;
+					break;
 				}
 			}
-
-			muIsJpsiTrigMatch->push_back(JpsiTrigger);
-
-			bool UpsTrigger = false;
-
-			for (unsigned int UpsTrig = 0; UpsTrig < TriggersForUpsilon_.size(); UpsTrig++)
+			for(unsigned int JpsiTrig = 0; JpsiTrig < FiltersForJpsi_.size();JpsiTrig++)
 			{
-				if (UpsilonMatchTrig[UpsTrig] != 0)
+				if (JpsiTriggerMatch && hltresults.isValid())
 				{
-					const pat::TriggerObjectStandAloneCollection muUpsHLTMatches =
-						iMuonP->triggerObjectMatchesByFilter(FiltersForUpsilon_[UpsTrig]);
-					bool pass1 = muUpsHLTMatches.size() > 0;
-					if (pass1)
-						UpsTrigger = true;
+					pat::TriggerObjectStandAlone *tempTriggerObject = nullptr;
+					for (auto i = iMuonP->triggerObjectMatches().begin(); i != iMuonP->triggerObjectMatches().end(); ++i)
+					{
+						tempTriggerObject = new pat::TriggerObjectStandAlone(*i);
+						tempTriggerObject->unpackFilterLabels(iEvent, *hltresults);
+						if(tempTriggerObject->hasFilterLabel(FiltersForJpsi_[JpsiTrig]))
+						{
+							JpsiFilterMatch = true;
+						}
+						delete tempTriggerObject;
+					}
 				}
 			}
-
-			muIsUpsTrigMatch->push_back(UpsTrigger);
-
-			munMatchedSeg->push_back(-1); // MINIOAOD
-
-			int muL3TriMuonVrtxFilter = 0, muSingleMuL3Filter = 0;
-
-			// Checking Single Trigger
-			for (unsigned int UpsTrig = 0; UpsTrig < TriggersForUpsilon_.size(); UpsTrig++)
-			{
-				if (UpsilonMatchTrig[UpsTrig] != 0)
-				{
-					const pat::TriggerObjectStandAloneCollection muMatchVrxtFilter = iMuonP->triggerObjectMatchesByFilter(vrtxFilter);
-					const pat::TriggerObjectStandAloneCollection muMatchL3Filter = iMuonP->triggerObjectMatchesByFilter(L3Filter);
-
-					muL3TriMuonVrtxFilter = muMatchVrxtFilter.size() > 0;
-					muSingleMuL3Filter = muMatchL3Filter.size() > 0;
-				}
-			}
-			muUpsVrtxMatch->push_back(muL3TriMuonVrtxFilter); //  MINIAOD
-			muL3TriggerMatch->push_back(muSingleMuL3Filter);  //  MINIAOD
+			muJpsiFilterRes->push_back(JpsiFilterMatch);
 		}
 	} // if two muons
 
@@ -668,7 +610,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	{
 		return;
 	}
-
 	//  get X and MyFourMuon cands
 	for (edm::View<pat::Muon>::const_iterator iMuon1 = thePATMuonHandle->begin(); // MINIAOD
 		 iMuon1 != thePATMuonHandle->end(); ++iMuon1)
@@ -751,7 +692,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			RefCountedKinematicParticle Jpsi1_vFit_cs;
 			RefCountedKinematicVertex Jpsi1_vFit_vertex_cs;
 			KinematicParameters mymumupara_cs;
-			double Jpsi1_vtxprob_cs;
+			double Jpsi1_vtxprob_cs = -9;
 			Error_t = false;
 			try
 			{
@@ -859,7 +800,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 					RefCountedKinematicParticle Jpsi2_vFit_cs;
 					RefCountedKinematicVertex Jpsi2_vFit_vertex_cs;
 					KinematicParameters mymumupara2_cs;
-					double Jpsi2_vtxprob_cs;
+					double Jpsi2_vtxprob_cs = -9;
 					Error_t = false;
 					try
 					{
@@ -1035,10 +976,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 								X_massErr->push_back(-9); 
 							}
 	
-							X_mu1Idx->push_back(std::distance(thePATMuonHandle->begin(), iMuon1));
-							X_mu2Idx->push_back(std::distance(thePATMuonHandle->begin(), iMuon2));
-							X_mu3Idx->push_back(std::distance(thePATMuonHandle->begin(), iMuon3));
-							X_mu4Idx->push_back(std::distance(thePATMuonHandle->begin(), iMuon4));
+							X_mu1Id->push_back(std::distance(thePATMuonHandle->begin(), iMuon1));
+							X_mu2Id->push_back(std::distance(thePATMuonHandle->begin(), iMuon2));
+							X_mu3Id->push_back(std::distance(thePATMuonHandle->begin(), iMuon3));
+							X_mu4Id->push_back(std::distance(thePATMuonHandle->begin(), iMuon4));
 
 							X_Jpsi1_mass->push_back(Jpsi1_vFit_noMC->currentState().mass());
 							X_Jpsi1_VtxProb->push_back(Jpsi1_vtxprob);
@@ -1085,8 +1026,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 							{
 								X_JPiPi_massErr->push_back(-9);
 							}
-							X_JPiPi_Pi1Idx->push_back(std::distance(theTrackHandle->begin(), iTrack1));
-							X_JPiPi_Pi2Idx->push_back(std::distance(theTrackHandle->begin(), iTrack2));
+							X_JPiPi_Pi1Id->push_back(std::distance(theTrackHandle->begin(), iTrack1));
+							X_JPiPi_Pi2Id->push_back(std::distance(theTrackHandle->begin(), iTrack2));
 							
 
 							X_JPiPi_Pi1px->push_back(X_pi1_KP.momentum().x()); // iTrack1->px()
@@ -1482,12 +1423,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			}				  // mu3_loop
 		}					  // for (std::vector < pat::Muon >::const_iterator iMuon2 = iMuon1 + 1;
 	}						  // for (std::vector < pat::Muon >::const_iterator iMuon1 = thePATMuonHandle->begin();
-
 	if (X_VtxProb->size() > 0 || doMC)
 	{
 		X_One_Tree_->Fill();
 	}
-
 	if (Debug_)
 	{
 	}
@@ -1560,12 +1499,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		Match_pi2pz->clear();
 	}
 
-	trigRes->clear();
-	trigNames->clear();
-	L1TT->clear();
-	MatchTriggerNames->clear();
-	muIsJpsiTrigMatch->clear();
-	muIsUpsTrigMatch->clear();
+	TrigRes->clear();
+	TrigNames->clear();
+	L1TrigRes->clear();
+	MatchJpsiTrigNames->clear();
 	runNum = 0;
 	evtNum = 0;
 	lumiNum = 0;
@@ -1573,76 +1510,41 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	priVtxX = 0;
 	priVtxY = 0;
 	priVtxZ = 0;
-	priVtxXE = 0;
-	priVtxYE = 0;
-	priVtxZE = 0;
+	priVtxXErr = 0;
+	priVtxYErr = 0;
+	priVtxZErr = 0;
 	priVtxChiNorm = 0;
 	priVtxChi = 0;
 	priVtxCL = 0;
-	// mybxlumicorr = 0;
-	// myrawbxlumi = 0;
-	PriVtxXCorrX->clear();
-	PriVtxXCorrY->clear();
-	PriVtxXCorrZ->clear();
-	PriVtxXCorrEX->clear();
-	PriVtxXCorrEY->clear();
-	PriVtxXCorrEZ->clear();
-	PriVtxXCorrC2->clear();
-	PriVtxXCorrCL->clear();
+	priVtxXCorrY->clear();
+	priVtxXCorrZ->clear();
+	priVtxYCorrZ->clear();
 
 	nMu = 0;
 	muPx->clear();
 	muPy->clear();
 	muPz->clear();
-	muD0->clear();
-	muD0E->clear();
-	muDz->clear();
-	muChi2->clear();
-	muGlChi2->clear();
-	mufHits->clear();
-	muFirstBarrel->clear();
-	muFirstEndCap->clear();
-	muDzVtx->clear();
-	muDxyVtx->clear();
-	muNDF->clear();
-	muGlNDF->clear();
-	muPhits->clear();
-	muShits->clear();
-	muGlMuHits->clear();
-	muType->clear();
-	muQual->clear();
-	muTrack->clear();
+	muD0BS->clear();
+	muD0EBS->clear();
+	muD3dBS->clear();
+	muD3dEBS->clear();
+	muD0PV->clear();
+	muD0EPV->clear();
+	muDzPV->clear();
+	muDzEPV->clear();
 	muCharge->clear();
-	muIsoratio->clear();
-	muIsGoodLooseMuon->clear();
-	muIsGoodLooseMuonNew->clear();
-	muIsGoodSoftMuonNewIlse->clear();
-	muIsGoodSoftMuonNewIlseMod->clear();
-	muIsGoodTightMuon->clear();
-	munMatchedSeg->clear();
-	muMVAMuonID->clear();
-	musegmentCompatibility->clear();
-
-	mupulldXdZ_pos_noArb->clear();
-	mupulldYdZ_pos_noArb->clear();
-	mupulldXdZ_pos_ArbDef->clear();
-	mupulldYdZ_pos_ArbDef->clear();
-	mupulldXdZ_pos_ArbST->clear();
-	mupulldYdZ_pos_ArbST->clear();
-	mupulldXdZ_pos_noArb_any->clear();
-	mupulldYdZ_pos_noArb_any->clear();
+	muTrackIso->clear();
 
 	muIsPatLooseMuon->clear();
 	muIsPatTightMuon->clear();
 	muIsPatSoftMuon->clear();
 	muIsPatMediumMuon->clear();
-	muUpsVrtxMatch->clear();
-	muL3TriggerMatch->clear();
+	muJpsiFilterRes->clear();
 
-	X_mu1Idx->clear();
-	X_mu2Idx->clear();
-	X_mu3Idx->clear();
-	X_mu4Idx->clear();
+	X_mu1Id->clear();
+	X_mu2Id->clear();
+	X_mu3Id->clear();
+	X_mu4Id->clear();
 	X_mass->clear();
 	X_VtxProb->clear();
 	X_Chi2->clear();
@@ -1675,8 +1577,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	X_Jpsi2_py->clear();
 	X_Jpsi2_pz->clear();
 	X_Jpsi2_massErr->clear();
-	X_JPiPi_Pi1Idx->clear();
-	X_JPiPi_Pi2Idx->clear();
+	X_JPiPi_Pi1Id->clear();
+	X_JPiPi_Pi2Id->clear();
 	X_JPiPi_Pi1px->clear();
 	X_JPiPi_Pi1py->clear();
 	X_JPiPi_Pi1pz->clear();
@@ -1754,100 +1656,58 @@ void MultiLepPAT::beginRun(edm::Run const &iRun, edm::EventSetup const &iSetup)
 void MultiLepPAT::beginJob()
 {
 	edm::Service<TFileService> fs;
-
-	// estree_ = fs->make<TTree>("eventSummary", "General Event Summary");
 	X_One_Tree_ = fs->make<TTree>("X_data", "X(3872) Data");
 
-	X_One_Tree_->Branch("TrigRes", &trigRes);
-	X_One_Tree_->Branch("TrigNames", &trigNames);
-	X_One_Tree_->Branch("MatchTriggerNames", &MatchTriggerNames);
-	X_One_Tree_->Branch("L1TrigRes", &L1TT);
+	X_One_Tree_->Branch("TrigRes", &TrigRes);
+	X_One_Tree_->Branch("TrigNames", &TrigNames);
+	X_One_Tree_->Branch("L1TrigRes", &L1TrigRes);
+	X_One_Tree_->Branch("MatchJpsiTrigNames", &MatchJpsiTrigNames);
 
 	X_One_Tree_->Branch("evtNum", &evtNum, "evtNum/i");
 	X_One_Tree_->Branch("runNum", &runNum, "runNum/i");
 	X_One_Tree_->Branch("lumiNum", &lumiNum, "lumiNum/i");
 	X_One_Tree_->Branch("nGoodPrimVtx", &nGoodPrimVtx, "nGoodPrimVtx/i");
 
-	// inst. lumi is here
-	//X_One_Tree_->Branch("mybxlumicorr", &mybxlumicorr, "mybxlumicorr/f");
-	//X_One_Tree_->Branch("myrawbxlumi", &myrawbxlumi, "myrawbxlumi/f");
-
 	X_One_Tree_->Branch("priVtxX", &priVtxX, "priVtxX/f");
 	X_One_Tree_->Branch("priVtxY", &priVtxY, "priVtxY/f");
 	X_One_Tree_->Branch("priVtxZ", &priVtxZ, "priVtxZ/f");
-	X_One_Tree_->Branch("priVtxXE", &priVtxXE, "priVtxXE/f");
-	X_One_Tree_->Branch("priVtxYE", &priVtxYE, "priVtxYE/f");
-	X_One_Tree_->Branch("priVtxZE", &priVtxZE, "priVtxZE/f");
+	X_One_Tree_->Branch("priVtxXErr", &priVtxXErr, "priVtxXErr/f");
+	X_One_Tree_->Branch("priVtxYErr", &priVtxYErr, "priVtxYErr/f");
+	X_One_Tree_->Branch("priVtxZErr", &priVtxZErr, "priVtxZErr/f");
 	X_One_Tree_->Branch("priVtxChiNorm", &priVtxChiNorm, "priVtxChiNorm/f");
 	X_One_Tree_->Branch("priVtxChi", &priVtxChi, "priVtxChi/f");
 	X_One_Tree_->Branch("priVtxCL", &priVtxCL, "priVtxCL/f");
 
-	X_One_Tree_->Branch("PriVtxXCorrX", &PriVtxXCorrX);
-	X_One_Tree_->Branch("PriVtxXCorrY", &PriVtxXCorrY);
-	X_One_Tree_->Branch("PriVtxXCorrZ", &PriVtxXCorrZ);
-	X_One_Tree_->Branch("PriVtxXCorrEX", &PriVtxXCorrEX);
-	X_One_Tree_->Branch("PriVtxXCorrEY", &PriVtxXCorrEY);
-	X_One_Tree_->Branch("PriVtxXCorrEZ", &PriVtxXCorrEZ);
-	X_One_Tree_->Branch("PriVtxXCorrC2", &PriVtxXCorrC2);
-	X_One_Tree_->Branch("PriVtxXCorrCL", &PriVtxXCorrCL);
+	X_One_Tree_->Branch("priVtxXCorrY", &priVtxXCorrY);
+	X_One_Tree_->Branch("priVtxXCorrZ", &priVtxXCorrZ);
+	X_One_Tree_->Branch("priVtxYCorrZ", &priVtxYCorrZ);
 
 	X_One_Tree_->Branch("nMu", &nMu, "nMu/i");
 	X_One_Tree_->Branch("muPx", &muPx);
 	X_One_Tree_->Branch("muPy", &muPy);
 	X_One_Tree_->Branch("muPz", &muPz);
-	X_One_Tree_->Branch("muD0", &muD0);
-	X_One_Tree_->Branch("muD0E", &muD0E);
-	X_One_Tree_->Branch("muDz", &muDz);
-	X_One_Tree_->Branch("muChi2", &muChi2);
-	X_One_Tree_->Branch("muGlChi2", &muGlChi2);
-	X_One_Tree_->Branch("mufHits", &mufHits);
-	X_One_Tree_->Branch("muFirstBarrel", &muFirstBarrel);
-	X_One_Tree_->Branch("muFirstEndCap", &muFirstEndCap);
-	X_One_Tree_->Branch("muDzVtx", &muDzVtx);
-	X_One_Tree_->Branch("muDxyVtx", &muDxyVtx);
-	X_One_Tree_->Branch("muNDF", &muNDF);
-	X_One_Tree_->Branch("muGlNDF", &muGlNDF);
-	X_One_Tree_->Branch("muPhits", &muPhits);
-	X_One_Tree_->Branch("muShits", &muShits);
-	X_One_Tree_->Branch("muGlMuHits", &muGlMuHits);
-	X_One_Tree_->Branch("muType", &muType);
-	X_One_Tree_->Branch("muQual", &muQual);
-	X_One_Tree_->Branch("muTrack", &muTrack);
+	X_One_Tree_->Branch("muD0BS", &muD0BS);
+	X_One_Tree_->Branch("muD0EBS", &muD0EBS);
+	X_One_Tree_->Branch("muD3dBS", &muD3dBS);
+	X_One_Tree_->Branch("muD3dEBS", &muD3dEBS);
+	X_One_Tree_->Branch("muD0PV", &muD0PV);
+	X_One_Tree_->Branch("muD0EPV", &muD0EPV);
+	X_One_Tree_->Branch("muDzPV", &muDzPV);
+	X_One_Tree_->Branch("muDzEPV", &muDzEPV);
 	X_One_Tree_->Branch("muCharge", &muCharge);
-	X_One_Tree_->Branch("muIsoratio", &muIsoratio);
-	X_One_Tree_->Branch("munMatchedSeg", &munMatchedSeg);
-	X_One_Tree_->Branch("muIsGoodSoftMuonNewIlseMod", &muIsGoodSoftMuonNewIlseMod);
-	X_One_Tree_->Branch("muIsGoodSoftMuonNewIlse", &muIsGoodSoftMuonNewIlse);
-	X_One_Tree_->Branch("muIsGoodLooseMuonNew", &muIsGoodLooseMuonNew);
-	X_One_Tree_->Branch("muIsGoodLooseMuon", &muIsGoodLooseMuon);
-	X_One_Tree_->Branch("muIsGoodTightMuon", &muIsGoodTightMuon);
+	X_One_Tree_->Branch("muTrackIso", &muTrackIso);
 
 	X_One_Tree_->Branch("muIsPatLooseMuon", &muIsPatLooseMuon);
 	X_One_Tree_->Branch("muIsPatTightMuon", &muIsPatTightMuon);
 	X_One_Tree_->Branch("muIsPatSoftMuon", &muIsPatSoftMuon);
 	X_One_Tree_->Branch("muIsPatMediumMuon", &muIsPatMediumMuon);
 
-	X_One_Tree_->Branch("muIsJpsiTrigMatch", &muIsJpsiTrigMatch);
-	X_One_Tree_->Branch("muIsUpsTrigMatch", &muIsUpsTrigMatch);
-	X_One_Tree_->Branch("muMVAMuonID", &muMVAMuonID);
-	X_One_Tree_->Branch("musegmentCompatibility", &musegmentCompatibility);
+	X_One_Tree_->Branch("muJpsiFilterRes", &muJpsiFilterRes);
 
-	X_One_Tree_->Branch("mupulldXdZ_pos_noArb", &mupulldXdZ_pos_noArb);
-	X_One_Tree_->Branch("mupulldYdZ_pos_noArb", &mupulldYdZ_pos_noArb);
-	X_One_Tree_->Branch("mupulldXdZ_pos_ArbDef", &mupulldXdZ_pos_ArbDef);
-	X_One_Tree_->Branch("mupulldYdZ_pos_ArbDef", &mupulldYdZ_pos_ArbDef);
-	X_One_Tree_->Branch("mupulldXdZ_pos_ArbST", &mupulldXdZ_pos_ArbST);
-	X_One_Tree_->Branch("mupulldYdZ_pos_ArbST", &mupulldYdZ_pos_ArbST);
-	X_One_Tree_->Branch("mupulldXdZ_pos_noArb_any", &mupulldXdZ_pos_noArb_any);
-	X_One_Tree_->Branch("mupulldYdZ_pos_noArb_any", &mupulldYdZ_pos_noArb_any);
-
-	X_One_Tree_->Branch("muUpsVrtxMatch", &muUpsVrtxMatch);
-	X_One_Tree_->Branch("muL3TriggerMatch", &muL3TriggerMatch);
-
-	X_One_Tree_->Branch("X_mu1Idx", &X_mu1Idx);
-	X_One_Tree_->Branch("X_mu2Idx", &X_mu2Idx);
-	X_One_Tree_->Branch("X_mu3Idx", &X_mu3Idx);
-	X_One_Tree_->Branch("X_mu4Idx", &X_mu4Idx);
+	X_One_Tree_->Branch("X_mu1Id", &X_mu1Id);
+	X_One_Tree_->Branch("X_mu2Id", &X_mu2Id);
+	X_One_Tree_->Branch("X_mu3Id", &X_mu3Id);
+	X_One_Tree_->Branch("X_mu4Id", &X_mu4Id);
 	X_One_Tree_->Branch("X_mass", &X_mass);
 	X_One_Tree_->Branch("X_VtxProb", &X_VtxProb);
 	X_One_Tree_->Branch("X_Chi2", &X_Chi2);
@@ -1880,8 +1740,8 @@ void MultiLepPAT::beginJob()
 	X_One_Tree_->Branch("X_Jpsi2_py", &X_Jpsi2_py);
 	X_One_Tree_->Branch("X_Jpsi2_pz", &X_Jpsi2_pz);
 	X_One_Tree_->Branch("X_Jpsi2_massErr", &X_Jpsi2_massErr);
-	X_One_Tree_->Branch("X_JPiPi_Pi1Idx", &X_JPiPi_Pi1Idx);
-	X_One_Tree_->Branch("X_JPiPi_Pi2Idx", &X_JPiPi_Pi2Idx);
+	X_One_Tree_->Branch("X_JPiPi_Pi1Id", &X_JPiPi_Pi1Id);
+	X_One_Tree_->Branch("X_JPiPi_Pi2Id", &X_JPiPi_Pi2Id);
 	X_One_Tree_->Branch("X_JPiPi_Pi1px", &X_JPiPi_Pi1px);
 	X_One_Tree_->Branch("X_JPiPi_Pi1py", &X_JPiPi_Pi1py);
 	X_One_Tree_->Branch("X_JPiPi_Pi1pz", &X_JPiPi_Pi1pz);

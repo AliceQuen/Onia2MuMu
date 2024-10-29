@@ -26,7 +26,6 @@ Make rootTuple for JPsiKKK reconstruction
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h" // xining MINIAODtest
 
 // user include files
-#include "../interface/VertexReProducer.h"
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -221,8 +220,6 @@ virtual int GetMissesAfter(const EventSetup& setup, const vector<reco::Track>& t
   bool addXlessPrimaryVertex_;
   vector<string>      TriggersForJpsi_;
   vector<string>      FiltersForJpsi_;
-  vector<string>      TriggersForUpsilon_;
-  vector<string>      FiltersForUpsilon_;
 
   int JpsiMatchTrig[50], UpsilonMatchTrig[50];
 
@@ -237,50 +234,30 @@ virtual int GetMissesAfter(const EventSetup& setup, const vector<reco::Track>& t
   unsigned int        runNum, evtNum, lumiNum;
   unsigned int        nGoodPrimVtx;
   
-  vector<unsigned int>* trigRes;
-  vector<std::string>* trigNames;
-  vector<unsigned int>* L1TT;
-  vector<std::string>* MatchTriggerNames;
+  vector<unsigned int>* TrigRes;
+  vector<std::string>* TrigNames;
+  vector<unsigned int>* L1TrigRes;
+  vector<std::string>* MatchJpsiTrigNames;
 
-  float               priVtxX, priVtxY, priVtxZ, priVtxXE, priVtxYE, priVtxZE, priVtxChiNorm, priVtxChi, priVtxCL;
-  vector<float>       *PriVtxXCorrX, *PriVtxXCorrY, *PriVtxXCorrZ;
-  vector<double>      *PriVtxXCorrEX, *PriVtxXCorrEY, *PriVtxXCorrEZ;
-  vector<float>	      *PriVtxXCorrC2, *PriVtxXCorrCL;
+  float               priVtxX, priVtxY, priVtxZ, priVtxXErr, priVtxYErr, priVtxZErr, priVtxChiNorm, priVtxChi, priVtxCL;
+  vector<float>       *priVtxXCorrY, *priVtxXCorrZ, *priVtxYCorrZ;
 
   unsigned int         nMu;
-  vector<float>       *muPx, *muPy, *muPz, *muD0, *muD0E, *muDz, *muChi2, *muGlChi2,  *mufHits;   
-  vector<bool>        *muFirstBarrel, *muFirstEndCap;
-  vector<float>       *muDzVtx, *muDxyVtx;   
-  vector<int>         *muNDF, *muGlNDF, *muPhits, *muShits, *muGlMuHits, *muType, *muQual;
-  vector<int>         *muTrack;
-  vector<float>       *muCharge;
-  vector<float>       *muIsoratio;
-  vector<int>         *muIsGoodLooseMuon, *muIsGoodLooseMuonNew, *muIsGoodSoftMuonNewIlse,*muIsGoodSoftMuonNewIlseMod, *muIsGoodTightMuon,*muIsJpsiTrigMatch, *muIsUpsTrigMatch, *munMatchedSeg;
+  vector<float>       *muPx, *muPy, *muPz; 
+  vector<float>       *muD0BS, *muD0EBS, *muD3dBS, *muD3dEBS; 
+  vector<float>       *muD0PV, *muD0EPV, *muDzPV, *muDzEPV;
+  vector<float>	      *muCharge, *muTrackIso;
   vector<int>         *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
-
-  //for Maksat trigger match
-  vector<int> *muUpsVrtxMatch, *muL3TriggerMatch;
-
-  //added by zhenhu for MuonID
-  vector<float>       *muMVAMuonID, *musegmentCompatibility; 
-  //for Stoyan slope pull
-  vector<float>  *mupulldXdZ_pos_noArb, *mupulldYdZ_pos_noArb;
-  //addition 3,4,5
-  vector<float>  *mupulldXdZ_pos_ArbDef, *mupulldYdZ_pos_ArbDef;
-  vector<float>  *mupulldXdZ_pos_ArbST, *mupulldYdZ_pos_ArbST;
-  vector<float>  *mupulldXdZ_pos_noArb_any, *mupulldYdZ_pos_noArb_any;
- 
-
-
+  vector<int> *muJpsiFilterRes;
 
  //xining
   vector<float> 
-    *X_mu1Idx, *X_mu2Idx, *X_mu3Idx, *X_mu4Idx,
+    *X_mu1Id, *X_mu2Id, *X_mu3Id, *X_mu4Id,
     *X_mass, *X_VtxProb, *X_Chi2, *X_ndof, *X_px, *X_py, *X_pz, *X_massErr, 
     *X_JPiPi_mass, *X_JPiPi_VtxProb, *X_JPiPi_Chi2, *X_JPiPi_ndof, *X_JPiPi_px, *X_JPiPi_py, *X_JPiPi_pz, *X_JPiPi_massErr, 
     *X_Jpsi1_mass, *X_Jpsi1_VtxProb, *X_Jpsi1_Chi2, *X_Jpsi1_ndof, *X_Jpsi1_px, *X_Jpsi1_py, *X_Jpsi1_pz, *X_Jpsi1_massErr, 
     *X_Jpsi2_mass, *X_Jpsi2_VtxProb, *X_Jpsi2_Chi2, *X_Jpsi2_ndof, *X_Jpsi2_px, *X_Jpsi2_py,  *X_Jpsi2_pz,*X_Jpsi2_massErr, 
-    *X_JPiPi_Pi1Idx, *X_JPiPi_Pi2Idx,
+    *X_JPiPi_Pi1Id, *X_JPiPi_Pi2Id,
     *X_JPiPi_Pi1px, *X_JPiPi_Pi1py, *X_JPiPi_Pi1pz,
     *X_JPiPi_Pi2px, *X_JPiPi_Pi2py, *X_JPiPi_Pi2pz; 
 

@@ -1,5 +1,4 @@
-test/crabData/crab_*
-test/crabData/crab3_*_MINIAOD*
+./test/CRAB_Tool/
 *.log
 *.root
 *.out
