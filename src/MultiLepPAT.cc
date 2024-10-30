@@ -556,6 +556,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			{
 				if (JpsiTriggerMatch && hltresults.isValid())
 				{
+
 					pat::TriggerObjectStandAlone *tempTriggerObject = nullptr;
 					for (auto i = iMuonP->triggerObjectMatches().begin(); i != iMuonP->triggerObjectMatches().end(); ++i)
 					{
