@@ -17,7 +17,7 @@ config.Data.inputDataset = 'DataSet'
 config.Data.inputDBS = 'global'
 config.Data.unitsPerJob = 20
 config.Data.splitting = 'LumiBased'
-config.Data.outLFNDirBase = '/store/user/qinju/jpsiPsi2S/rootNtuple/' #LFN=Logical File Name
+config.Data.outLFNDirBase = '/store/user/chiw/cernbox/JJP/rootNtuple/' #LFN=Logical File Name
 config.Data.outputDatasetTag = 'TaskTag'
 
 config.section_('User')
