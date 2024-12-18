@@ -444,8 +444,8 @@ for (auto iTrack1ID  = nonMuonPionTrack.begin(); // MINIAOD
         ******************************************************************/
 
 		TLorentzVector P4_Track1, P4_Track2, P4_Jpsipipi;
-		P4_Track1.SetPtEtaPhiM(iTrack1->pt(), iTrack1->eta(), iTrack1->phi(), myPimass);
-		P4_Track2.SetPtEtaPhiM(iTrack2->pt(), iTrack2->eta(), iTrack2->phi(), myPimass);
+		P4_Track1.SetPtEtaPhiM(iTrack1->pt(), iTrack1->eta(), iTrack1->phi(), myKMass);
+		P4_Track2.SetPtEtaPhiM(iTrack2->pt(), iTrack2->eta(), iTrack2->phi(), myKMass);
 		P4_Jpsipipi = P4_mu1 + P4_mu2 + P4_Track1 + P4_Track2;
 
 		if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut)
@@ -473,8 +473,8 @@ for (auto iTrack1ID  = nonMuonPionTrack.begin(); // MINIAOD
 		KinematicParticleFactoryFromTransientTrack JPiPiFactory;
 		// The mass of a muon and the insignificant mass sigma
 		// to avoid singularities in the covariance matrix.
-		ParticleMass pion_mass = myPimass; // pdg mass
-		float pion_sigma = myPimasserr;
+		ParticleMass pion_mass = myKMass; // pdg mass
+		float pion_sigma = myKMasserr;
 		// initial chi2 and ndf before kinematic fits.
 		float chi = 0.;
 		float ndf = 0.;
