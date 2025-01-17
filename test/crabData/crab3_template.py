@@ -15,7 +15,7 @@ config.JobType.allowUndistributedCMSSW = True
 config.section_('Data')
 config.Data.inputDataset = 'DataSet'
 config.Data.inputDBS = 'global'
-config.Data.unitsPerJob = 20
+config.Data.unitsPerJob = 3
 config.Data.splitting = 'LumiBased'
 config.Data.outLFNDirBase = '/store/user/xcheng/rootNtuple/' #LFN=Logical File Name
 config.Data.outputDatasetTag = 'TaskTag'
