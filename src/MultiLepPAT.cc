@@ -718,7 +718,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	KinematicConstraint *Jpsi_cs = new MassKinematicConstraint(myJpsiMass, myJpsiMassErr);
 	KinematicConstraint *Jpsi_cs34 = new MassKinematicConstraint(myJpsiMass, myJpsiMassErr);
 	// 要做mass constrain的话这里要加phi的相关变量
-	double pionPTcut = 0.25;
+	double pionPTcut = 0.4;
 	double pionDRcut = 0.7;
 	double vtxProbPreCut = 1.0e-7;
 
