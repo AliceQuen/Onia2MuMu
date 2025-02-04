@@ -277,8 +277,8 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
         addXlessPrimaryVertex = cms.untracked.bool(True),
         Debug_Output = cms.untracked.bool(False),
 
-TriggersForJpsi = cms.untracked.vstring("HLT_Dimuon0_Jpsi3p5_Muon2_v"),
- FiltersForJpsi = cms.untracked.vstring("hltVertexmumuFilterJpsiMuon3p5"),
+TriggersForJpsi = cms.untracked.vstring("HLT_Dimuon0_Jpsi3p5_Muon2_v", "HLT_DoubleMu4_3_LowMass_v"),
+ FiltersForJpsi = cms.untracked.vstring("hltVertexmumuFilterJpsiMuon3p5", "hltDoubleMu43LowMassL3Filtered"),
 
 #TriggersForUpsilon = cms.untracked.vstring("HLT_Dimuon0_Upsilon_Muon_v18","HLT_Dimuon0_Upsilon_Muon_v17","HLT_Dimuon0_Upsilon_Muon_v16","HLT_Dimuon0_Upsilon_Muon_v15","HLT_Dimuon0_Upsilon_Muon_v14","HLT_Dimuon0_Upsilon_Muon_v13","HLT_Dimuon0_Upsilon_Muon_v12","HLT_Dimuon0_Upsilon_Muon_v11","HLT_Dimuon0_Upsilon_Muon_v10","HLT_Dimuon0_Upsilon_Muon_v9","HLT_Dimuon0_Upsilon_Muon_v8","HLT_Dimuon0_Upsilon_Muon_v7","HLT_Dimuon0_Upsilon_Muon_v6","HLT_Dimuon0_Upsilon_Muon_v5","HLT_Dimuon0_Upsilon_Muon_v4","HLT_Dimuon0_Upsilon_Muon_v3","HLT_Dimuon0_Upsilon_Muon_v2","HLT_Dimuon0_Upsilon_Muon_v1"),
 #FiltersForUpsilon = cms.untracked.vstring("hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon"),

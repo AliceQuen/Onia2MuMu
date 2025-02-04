@@ -2113,7 +2113,7 @@ double MultiLepPAT:: GetcTauErr( RefCountedKinematicVertex& decayVrtx,
     vpperp[1] = pperp.y();
     vpperp[2] = 0.;
 
-    GlobalError v1e = (Vertex(*decayVrtx)).error();
+    GlobalError v1e = (*decayVrtx).error();
     GlobalError v2e = bs.error();
     AlgebraicSymMatrix vXYe = asHepMatrix(v1e.matrix()) + asHepMatrix(v2e.matrix());
     double ctauErrPV = sqrt(vXYe.similarity(vpperp)) * kinePart->currentState().mass() / (pperp.Perp2());
