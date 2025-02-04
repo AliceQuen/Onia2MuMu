@@ -252,7 +252,6 @@ private:
     vector<string>      FiltersForJpsi_;
     vector<string>      TriggersForUpsilon_;
     vector<string>      FiltersForUpsilon_;
-    vector<std::string>* MatchJpsiTrigNames;
     int JpsiMatchTrig[50], UpsilonMatchTrig[50];
 
 
@@ -290,7 +289,7 @@ private:
     vector<unsigned int>*   trigRes;
     vector<std::string>*    trigNames;
     vector<unsigned int>*   L1TT;
-    vector<std::string>*    MatchTriggerNames;
+    vector<std::string>*    MatchJpsiTrigNames;
 
     // primary vertices [Annotation by Eric Wang, 20240626]
     float               priVtxX,    priVtxY,    priVtxZ, 
@@ -316,8 +315,8 @@ private:
     vector<int>         *muIsGoodLooseMuon,         *muIsGoodLooseMuonNew, 
                         *muIsGoodSoftMuonNewIlse,   *muIsGoodSoftMuonNewIlseMod, 
                         *muIsGoodTightMuon,         *muIsJpsiTrigMatch,         
-                        *muIsUpsTrigMatch,          *munMatchedSeg,
-                        *muJpsiFilterRes;
+                        *muIsUpsTrigMatch,          *munMatchedSeg;
+    vector<int>         *muIsJpsiFilterMatch,       *muIsUpsFilterMatch;
     vector<int>         *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
     
     //for Maksat trigger match [Annotation by Eric Wang, 20240626]
@@ -332,8 +331,10 @@ private:
     vector<float>  *mupulldXdZ_pos_ArbST, *mupulldYdZ_pos_ArbST;
     vector<float>  *mupulldXdZ_pos_noArb_any, *mupulldYdZ_pos_noArb_any;
 
+    vector<float> *Jpsi_cand_mass_p4, *Jpsi_cand_mass_fit,
+                   *Ups_cand_mass_p4,  *Ups_cand_mass_fit;
     // Muons from Jpsi and Upsilon.
-    vector<unsigned int> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx, 
+    vector<float> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx, 
                          *Jpsi_2_mu_1_Idx, *Jpsi_2_mu_2_Idx,
                              *Phi_K_1_Idx,     *Phi_K_2_Idx;
 
