@@ -1,6 +1,7 @@
 // system include files
 #include <memory>
 #include <regex>
+#include <cmath>
 #include "TLorentzVector.h"
 // user include files
 #include "../interface/MultiLepPAT.h"
@@ -607,42 +608,22 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	double vtxprobprecut = 1.0e-7;
 
 	// get the four moun fit, but first also fit dimuon
-	if (thePATMuonHandle->size() < 4)
-	{
-		return;
-	}
+	if (thePATMuonHandle->size() < 4) return;
 	//  get X and MyFourMuon cands
 	for (edm::View<pat::Muon>::const_iterator iMuon1 = thePATMuonHandle->begin(); // MINIAOD
 		 iMuon1 != thePATMuonHandle->end(); ++iMuon1)
 	{
 		TrackRef muTrack1 = iMuon1->track();
-		if (muTrack1.isNull())
-		{
-			continue;
-		}
-
-		reco::Track recoMu1 = *iMuon1->track();
-
+		if (muTrack1.isNull()) continue;
 		// next check for mu2
 		for (edm::View<pat::Muon>::const_iterator iMuon2 = iMuon1 + 1; // MINIAOD
 			 iMuon2 != thePATMuonHandle->end(); ++iMuon2)
 		{
 			TrackRef muTrack2 = iMuon2->track();
-			if (muTrack2.isNull())
-			{
-				continue;
-			}
-
-			reco::Track recoMu2 = *iMuon2->track();
-
-			if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() && (iMuon1->p4() + iMuon2->p4()).mass() < 4.))
-			{
-				continue;
-			}
-			if ((iMuon1->charge() + iMuon2->charge()) != 0)
-			{
-				continue;
-			}
+			if (muTrack2.isNull()) continue;
+			if (!(std::isfinite(iMuon1->p4().pt()) && std::isfinite(iMuon2->p4().pt()) && std::isfinite(iMuon1->p4().eta()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iMuon1->p4().phi()) && std::isfinite(iMuon2->p4().phi()))) continue;
+			if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() && (iMuon1->p4() + iMuon2->p4()).mass() < 4.)) continue;
+			if ((iMuon1->charge() + iMuon2->charge()) != 0) continue;
 
 			TransientTrack muon1TT(muTrack1, &(bFieldHandle)); // MINIAOD
 			TransientTrack muon2TT(muTrack2, &(bFieldHandle)); // MINIAOD
@@ -668,23 +649,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 				Error_t = true;
 				std::cout<<"error at Jpsi1noMC"<<std::endl;
 			}
-			if (Error_t || !Jpsi1VertexFitTree->isValid())
-			{
-				continue;
-			}
+			if (Error_t || !Jpsi1VertexFitTree->isValid()) continue;
 			Jpsi1VertexFitTree->movePointerToTheTop();
 			RefCountedKinematicParticle Jpsi1_vFit_noMC = Jpsi1VertexFitTree->currentParticle();
 			RefCountedKinematicVertex Jpsi1_vFit_vertex_noMC = Jpsi1VertexFitTree->currentDecayVertex();
 			KinematicParameters mymumupara = Jpsi1_vFit_noMC->currentState().kinematicParameters();
 			double Jpsi1_vtxprob = ChiSquaredProbability((double)(Jpsi1_vFit_vertex_noMC->chiSquared()), (double)(Jpsi1_vFit_vertex_noMC->degreesOfFreedom()));
-			if (Jpsi1_vFit_noMC->currentState().mass() > 3.4 || Jpsi1_vFit_noMC->currentState().mass() < 2.8)
-			{
-				continue;
-			}
-			if (Jpsi1_vtxprob < vtxprobprecut)
-			{
-				continue;
-			}
+			if (!(std::isfinite(Jpsi1_vFit_noMC->currentState().mass()) && Jpsi1_vtxprob)) continue;
+			if (Jpsi1_vFit_noMC->currentState().mass() > 3.4 || Jpsi1_vFit_noMC->currentState().mass() < 2.8 || Jpsi1_vtxprob < vtxprobprecut) continue;
 
 			// mass constrain for Jpsi1 from psi2s:
 			bool flag_jpsi1 = true;
@@ -718,45 +690,22 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			P4_mu1.SetPtEtaPhiM(iMuon1->track()->pt(), iMuon1->track()->eta(), iMuon1->track()->phi(), myMumass);
 			TLorentzVector P4_mu2;
 			P4_mu2.SetPtEtaPhiM(iMuon2->track()->pt(), iMuon2->track()->eta(), iMuon2->track()->phi(), myMumass);
-			// mu3mu4(X6900->Jpsi)
+			// mu3mu4
 			for (edm::View<pat::Muon>::const_iterator iMuon3 = thePATMuonHandle->begin(); // MINIAOD
 				 iMuon3 != thePATMuonHandle->end(); ++iMuon3)
 			{
-				if(iMuon3 == iMuon1 || iMuon3 == iMuon2)
-				{
-					continue;
-				}
+				if(iMuon3 == iMuon1 || iMuon3 == iMuon2) continue;
 				TrackRef muTrack3 = iMuon3->track();
-				if (muTrack3.isNull())
-				{
-					continue;
-				}
-
-				reco::Track recoMu3 = *iMuon3->track();
+				if (muTrack3.isNull()) continue;
 				for (edm::View<pat::Muon>::const_iterator iMuon4 = iMuon3 + 1; // MINIAOD
 					 iMuon4 != thePATMuonHandle->end(); ++iMuon4)
 				{
-					if(iMuon4 == iMuon1 || iMuon4 == iMuon2)
-                               		{
-                                        	continue;
-                                	}
+					if(iMuon4 == iMuon1 || iMuon4 == iMuon2) continue;
 					TrackRef muTrack4 = iMuon4->track();
-					if (muTrack4.isNull())
-					{
-						continue;
-					}
-
-					reco::Track recoMu4 = *iMuon4->track(); // MINIAOD
-
-					if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() && (iMuon3->p4() + iMuon4->p4()).mass() < 4.5))
-					{
-						continue;
-					}
-					if ((iMuon3->charge() + iMuon4->charge()) != 0)
-					{
-						continue;
-					}
-
+					if (muTrack4.isNull()) continue;
+					if (!(std::isfinite(iMuon3->p4().pt()) && std::isfinite(iMuon4->p4().pt()) && std::isfinite(iMuon3->p4().eta()) && std::isfinite(iMuon4->p4().eta()) && std::isfinite(iMuon3->p4().phi()) && std::isfinite(iMuon4->p4().phi()))) continue;
+					if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() && (iMuon3->p4() + iMuon4->p4()).mass() < 4.5)) continue;
+					if ((iMuon3->charge() + iMuon4->charge()) != 0) continue;
 					TransientTrack muon3TT(muTrack3, &(bFieldHandle)); // MINIAOD
 					TransientTrack muon4TT(muTrack4, &(bFieldHandle)); // MINIAOD
 					KinematicParticleFactoryFromTransientTrack pmumuFactory34;
@@ -778,23 +727,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 						Error_t = true;
 						std::cout<<"error at Jpsi2noMC"<<std::endl;
 					}
-					if (Error_t || !Jpsi2VertexFitTree->isValid())
-					{
-							continue;
-					}
+					if (Error_t || !Jpsi2VertexFitTree->isValid()) continue;
 					Jpsi2VertexFitTree->movePointerToTheTop();
 					RefCountedKinematicParticle Jpsi2_vFit_noMC = Jpsi2VertexFitTree->currentParticle();
 					RefCountedKinematicVertex Jpsi2_vFit_vertex_noMC = Jpsi2VertexFitTree->currentDecayVertex();
 					KinematicParameters mymumupara2 = Jpsi2_vFit_noMC->currentState().kinematicParameters();
 					double Jpsi2_vtxprob = ChiSquaredProbability((double)(Jpsi2_vFit_vertex_noMC->chiSquared()), (double)(Jpsi2_vFit_vertex_noMC->degreesOfFreedom()));
-					if (Jpsi2_vFit_noMC->currentState().mass() > 3.4 || Jpsi2_vFit_noMC->currentState().mass() < 2.8)
-					{
-						continue;
-					} // change 4.0 to 3.4 in 1208
-					if (Jpsi2_vtxprob < vtxprobprecut)
-					{
-						continue;
-					}
+					if (!(std::isfinite(Jpsi2_vFit_noMC->currentState().mass()) && Jpsi2_vtxprob)) continue;
+					if (Jpsi2_vFit_noMC->currentState().mass() > 3.4 || Jpsi2_vFit_noMC->currentState().mass() < 2.8 || Jpsi2_vtxprob < vtxprobprecut) continue;
 
 					// mass constrain for Jpsi from X6900:
 					KinematicParticleFitter mu34_fitter_cs;	
@@ -827,50 +767,26 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 						 iTrack1ID != nonMuonPionTrack.end(); ++iTrack1ID)
 					{
 						edm::View<pat::PackedCandidate>::const_iterator iTrack1 = *(iTrack1ID);
-						if (iTrack1->pt() < pionptcut)
-						{
-							continue;
-						}
+
+						if (!iTrack1->hasTrackDetails() || iTrack1->charge() == 0) continue;
+						if (!(std::isfinite(iTrack1->p4().pt()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iTrack1->p4().phi()))) continue;
+						if (iTrack1->pt() < pionptcut) continue;
 						for (std::vector<edm::View<pat::PackedCandidate>::const_iterator>::const_iterator iTrack2ID = iTrack1ID + 1; // MINIAOD
 							 iTrack2ID != nonMuonPionTrack.end(); ++iTrack2ID)
 						{
 							edm::View<pat::PackedCandidate>::const_iterator iTrack2 = *(iTrack2ID);
-							if (iTrack2->pt() < pionptcut)
-							{
-								continue;
-							}
-							if ((iTrack1->charge() + iTrack2->charge()) != 0)
-								continue;
 
-							// MINIAOD begin
-							if (!iTrack1->hasTrackDetails() || iTrack1->charge() == 0)
-							{
-								// cout << "iTrack1->hasTrackDetails() = " << iTrack1->hasTrackDetails() << endl;
-								// cout << "iTrack1->charge() = " << iTrack1->charge() << endl;
-								continue;
-							}
-							if (!iTrack2->hasTrackDetails() || iTrack2->charge() == 0)
-							{
-								// cout << "iTrack2->hasTrackDetails() = " << iTrack2->hasTrackDetails() << endl;
-								// cout << "iTrack2->charge() = " << iTrack2->charge() << endl;
-								continue;
-							}
-							// MINIAOD end
-
+							if (!iTrack2->hasTrackDetails() || iTrack2->charge() == 0) continue;
+							if (!(std::isfinite(iTrack2->p4().pt()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iTrack2->p4().phi()))) continue;
+							if (iTrack2->pt() < pionptcut) continue;
+							if ((iTrack1->charge() + iTrack2->charge()) != 0) continue;
 							TLorentzVector P4_Track1, P4_Track2, P4_Jpsipipi;
 							P4_Track1.SetPtEtaPhiM(iTrack1->pt(), iTrack1->eta(), iTrack1->phi(), myPimass);
 							P4_Track2.SetPtEtaPhiM(iTrack2->pt(), iTrack2->eta(), iTrack2->phi(), myPimass);
 							P4_Jpsipipi = P4_mu1 + P4_mu2 + P4_Track1 + P4_Track2;
 
-							if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut)
-							{
-								continue;
-							}
-							if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut)
-							{
-								continue;
-							}
-
+							if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut) continue;
+							if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut) continue;
 							// TransientTrack trackTT1(*iTrack1, &(bFieldHandle));
 							// TransientTrack trackTT2(*iTrack2, &(bFieldHandle));
 							TransientTrack trackTT1(*(iTrack1->bestTrack()), &(bFieldHandle)); // MINIAOD
@@ -912,14 +828,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 							RefCountedKinematicVertex JPiPi_vFit_vertex_noMC = JPiPiVertexFitTree->currentDecayVertex();
 
 							double JPiPi_vtxprob = ChiSquaredProbability((double)(JPiPi_vFit_vertex_noMC->chiSquared()), (double)(JPiPi_vFit_vertex_noMC->degreesOfFreedom()));
-							if (JPiPi_vFit_noMC->currentState().mass() > 4.5)
-							{
-								continue;
-							}
-							if (JPiPi_vtxprob < vtxprobprecut)
-							{
-								continue;
-							}
+							if (!(std::isfinite(JPiPi_vFit_noMC->currentState().mass()) && std::isfinite(JPiPi_vtxprob))) continue;
+							if (JPiPi_vFit_noMC->currentState().mass() > 4.5 || JPiPi_vtxprob < vtxprobprecut) continue;
 
 							// fit the 6 track together to a vertex
 							vector<RefCountedKinematicParticle> X_Particles;
