@@ -1240,7 +1240,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	trigNames->clear();
 	L1TT->clear();
 	MatchJpsiTrigNames->clear();
-    MatchUpsTrigNames->clear();
 	muIsJpsiTrigMatch->clear();
 	muIsJpsiFilterMatch->clear();
 	muIsUpsTrigMatch->clear();
@@ -1828,7 +1827,6 @@ void MultiLepPAT::beginJob()
 	X_One_Tree_->Branch("TrigRes", &trigRes);
 	X_One_Tree_->Branch("TrigNames", &trigNames);
 	X_One_Tree_->Branch("MatchJpsiTriggerNames", &MatchJpsiTrigNames);
-    X_One_Tree_->Branch("MatchUpsTriggerNames", &MatchUpsTrigNames);
 	X_One_Tree_->Branch("L1TrigRes", &L1TT);
 
 	X_One_Tree_->Branch("evtNum", &evtNum, "evtNum/i");
