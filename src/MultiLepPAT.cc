@@ -137,6 +137,8 @@
 
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h" // MINIAOD
 
+//#define SHOW_DEBUG
+
 typedef math::Error<3>::type CovarianceMatrix;
 typedef ROOT::Math::SVector<double, 3> SVector3;
 typedef ROOT::Math::SMatrix<double, 3, 3, ROOT::Math::MatRepSym<double, 3>> SMatrixSym3D;
@@ -773,6 +775,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         if (muTrack1.isNull()){
             continue;
         }
+		if (iMuon1->pt() > 3.5) {
+			if (std::abs(iMuon1->eta()) >= 1.2) {
+				continue;
+			}
+		}else if (iMuon1->pt() > 2.5) {
+			if (std::abs(iMuon1->eta()) >= 2.4) {
+				continue;
+			}
+		}else{
+			continue;
+		}
         // Build transient track and store.
         TransientTrack transTrk1(muTrack1, &(bFieldHandle));
         transMuonPair.push_back(muPairFactory.particle(transTrk1, muMass, chi2, ndof, muMassSigma));
@@ -787,6 +800,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             if (muTrack2.isNull()){
                 continue;
             }
+			if (iMuon2->pt() > 3.5) {
+				if (std::abs(iMuon2->eta()) >= 1.2) {
+					continue;
+				}
+			}else if (iMuon2->pt() > 2.5) {
+				if (std::abs(iMuon2->eta()) >= 2.4) {
+					continue;
+				}
+			}else{
+				continue;
+			}
             TransientTrack transTrk2(muTrack2, &(bFieldHandle));
             // Charge requirement.
             if ((iMuon1->charge() + iMuon2->charge()) != 0){
@@ -806,13 +830,15 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                                                            chi2, ndof, muMassSigma) );
             transMuPairId.push_back(iMuon2 - thePATMuonHandle->begin());
             // Judging with vertex fitting.
-            if(!particlesToVtx(transMuonPair)){
+			isGoodVtxFit = particlesToVtx(transMuonPair);
+            if(!isGoodVtxFit){
 				transMuonPair.pop_back();
             	transMuPairId.pop_back();
                 continue;
             }
             // Passing all the checks, store the muon pair as pairs of RefCountedKinematicParticle.
-            if(isJpsiMuPair){
+            if(isJpsiMuPair & isGoodVtxFit){
+				// Store the muon pair as RefCountedKinematicParticle.
 				particlesToVtx(muVtxFitTree, transMuonPair, "final muon pair");
                 muPairCand_Jpsi.push_back(
                     std::make_pair(transMuonPair, transMuPairId) );
@@ -1042,11 +1068,23 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                 extractFitRes(vtxFitTree_Jpsi_2, Jpsi_2_Fit_noMC, Jpsi_2_Vtx_noMC, tmp_Jpsi_2_massErr);
                 if(tmp_Jpsi_1_massErr >= 0.0 && tmp_Jpsi_2_massErr >= 0.0 && tmp_Phi_massErr >= 0.0){
                 	// Initialize the final fitting marker and the secondary particles.
+
+					#ifdef SHOW_DEBUG
+					printKinematics(Jpsi_1_Fit_noMC, "Jpsi_1_Fit_noMC");
+					printKinematics(Jpsi_2_Fit_noMC, "Jpsi_2_Fit_noMC");
+					printKinematics(Phi_Fit_noMC, "Phi_Fit_noMC");
+					#endif
+
                 	interOnia.push_back(Jpsi_1_Fit_noMC);
                 	interOnia.push_back(Jpsi_2_Fit_noMC);
                 	interOnia.push_back(Phi_Fit_noMC);
                 	// Fit the quarkonia to the same vertex
                 	isValidPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
+
+					#ifdef SHOW_DEBUG
+					std::cout << "finish fit the primary vertex" << endl;
+					#endif
+
                 	interOnia.clear();
                 }
                 if(isValidPri){
@@ -1152,6 +1190,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                     Phi_K_2_pt->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->pt());
                     Phi_K_2_eta->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->eta());
                     Phi_K_2_phi->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->phi());
+
+					#ifdef SHOW_DEBUG
+					std::cout << "finish get all the particles" << endl;
+					#endif
+
                 }
             }
         }
@@ -1161,6 +1204,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	{
 		X_One_Tree_->Fill();
 	}
+
+	#ifdef SHOW_DEBUG
+	std::cout << "finish fill the tree" << endl;
+	#endif
 
 	// std::cout << "Finish the part of fitting."  << endl;
 
@@ -1615,15 +1662,29 @@ bool MultiLepPAT::particlesToVtx(RefCountedKinematicTree&                    arg
         fitError = true;
         std::cout << "[Fit Error] " << arg_Message <<  std::endl;
     }
+
+	#ifdef SHOW_DEBUG
+	std::cout << "finish fit the vertex" << endl;
+	#endif
+
 	if (fitError || !arg_VertexFitTree->isValid()){
         return false;
     }
     RefCountedKinematicVertex vFit_vertex_noMC = arg_VertexFitTree->currentDecayVertex();
+
+	#ifdef SHOW_DEBUG
+	std::cout << "finish get the vertex" << endl;
+	#endif
+
     try{
         vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
     }catch(...){
         vtxprob = 0.0;
-    }   
+    }
+
+	#ifdef SHOW_DEBUG
+	std::cout << "finish calculate the vtxprob" << endl;
+	#endif
 
     return (vtxprob >= VtxProbCut);
 }
@@ -2166,6 +2227,31 @@ bool MultiLepPAT::muonMatchTrigType(const edm::View<pat::Muon>::const_iterator& 
                                     const vector<string>& trigNames, 
                                           trigType        type                          ){
     return false;
+}
+
+/******************************************************************************
+ * [Name of function]  
+ *      printKinematics
+ * [Description]   
+ *      
+ * [Parameters]
+ *      HLTresult                       trigger results from EDM
+ * [Return value]
+ *      (void)
+ * [Note]
+ *      [Eric Wang, 20240705]
+
+ ***********************************************************************************/
+
+void MultiLepPAT::printKinematics(const RefCountedKinematicParticle& particle, const std::string& name) {
+    const auto& state = particle->currentState();
+    std::cout << name << " 运动学量:" << std::endl;
+    std::cout << "px: " << state.globalMomentum().x() << std::endl;
+    std::cout << "py: " << state.globalMomentum().y() << std::endl;
+    std::cout << "pz: " << state.globalMomentum().z() << std::endl;
+    std::cout << "pt: " << state.globalMomentum().perp() << std::endl;
+    std::cout << "eta: " << state.globalMomentum().eta() << std::endl;
+    std::cout << "phi: " << state.globalMomentum().phi() << std::endl;
 }
 
 

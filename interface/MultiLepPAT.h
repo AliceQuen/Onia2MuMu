@@ -209,6 +209,8 @@ private:
     static double fitResEval(double arg_massDiff_Jpsi_1, double arg_massErr_Jpsi_1,
                              double arg_massDiff_Jpsi_2, double arg_massErr_Jpsi_2,
                              double arg_massDiff_Phi,    double arg_massErr_Phi   );
+    
+    void printKinematics(const RefCountedKinematicParticle& particle, const std::string& name);
 
     
     // Member data
