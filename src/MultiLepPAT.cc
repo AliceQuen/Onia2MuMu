@@ -41,6 +41,8 @@
 // user include files
 #include "../interface/MultiLepPAT.h"
 #include "../interface/VertexReProducer.h"
+#include <memory>
+#include <regex>
 
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -173,7 +175,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 	  X_One_Tree_(0),
 
 	  runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
-	  trigRes(0), trigNames(0), L1TT(0), MatchTriggerNames(0),
+	  trigRes(0), trigNames(0), L1TT(0), MatchJpsiTrigNames(0),
 
 	  priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXE(0), priVtxYE(0), priVtxZE(0), priVtxChiNorm(0), priVtxChi(0), priVtxCL(0),
 	  PriVtxXCorrX(0), PriVtxXCorrY(0), PriVtxXCorrZ(0),
@@ -184,18 +186,18 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 	  muFirstBarrel(0), muFirstEndCap(0), muDzVtx(0), muDxyVtx(0),
 	  muNDF(0), muGlNDF(0), muPhits(0), muShits(0), muGlMuHits(0), muType(0), muQual(0),
 	  muTrack(0), muCharge(0), muIsoratio(0), muIsGoodLooseMuon(0), muIsGoodLooseMuonNew(0),
-	  muIsGoodSoftMuonNewIlse(0), muIsGoodSoftMuonNewIlseMod(0), muIsGoodTightMuon(0), muIsJpsiTrigMatch(0), muIsUpsTrigMatch(0), munMatchedSeg(0), muJpsiFilterRes(0),
+	  muIsGoodSoftMuonNewIlse(0), muIsGoodSoftMuonNewIlseMod(0), muIsGoodTightMuon(0), muIsJpsiTrigMatch(0), muIsUpsTrigMatch(0), munMatchedSeg(0),
+	  muIsJpsiFilterMatch(0), muIsUpsFilterMatch(0),
 
 	  muIsPatLooseMuon(0), muIsPatTightMuon(0), muIsPatSoftMuon(0), muIsPatMediumMuon(0),
-	  muUpsVrtxMatch(0), muL3TriggerMatch(0),
 
 	  muMVAMuonID(0), musegmentCompatibility(0),
 	  mupulldXdZ_pos_noArb(0), mupulldYdZ_pos_noArb(0),
 	  mupulldXdZ_pos_ArbDef(0), mupulldYdZ_pos_ArbDef(0),
 	  mupulldXdZ_pos_ArbST(0), mupulldYdZ_pos_ArbST(0),
 	  mupulldXdZ_pos_noArb_any(0), mupulldYdZ_pos_noArb_any(0),
-      
-      // [J-U-P] Modify branches to store the original kaon tracks and the reconstructed phi.
+
+	  Jpsi_cand_mass_p4(0), Jpsi_cand_mass_fit(0),
 
       Jpsi_1_mu_1_Idx(0), Jpsi_1_mu_2_Idx(0),
       Jpsi_2_mu_1_Idx(0), Jpsi_2_mu_2_Idx(0),
@@ -207,7 +209,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 
       Jpsi_1_ctau(0), Jpsi_1_ctauErr(0), Jpsi_1_Chi2(0), Jpsi_1_ndof(0), Jpsi_1_VtxProb(0),
       Jpsi_2_ctau(0), Jpsi_2_ctauErr(0), Jpsi_2_Chi2(0), Jpsi_2_ndof(0), Jpsi_2_VtxProb(0),
-                                            Phi_Chi2(0),    Phi_ndof(0),    Phi_VtxProb(0),
+      Phi_ctau(0),    Phi_ctauErr(0),    Phi_Chi2(0),    Phi_ndof(0),    Phi_VtxProb(0),
       
       Jpsi_1_phi(0), Jpsi_1_eta(0), Jpsi_1_pt(0),
       Jpsi_2_phi(0), Jpsi_2_eta(0), Jpsi_2_pt(0),
@@ -393,7 +395,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 	edm::Handle<edm::TriggerResults> hltresults;
 	bool Error_t = false;
-	int nJpsitrigger = TriggersForJpsi_.size();
+	unsigned int nJpsitrigger = TriggersForJpsi_.size();
 	try
 	{
 		iEvent.getByToken(gttriggerToken_, hltresults);
@@ -416,45 +418,45 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		}
 
 		edm::TriggerNames triggerNames_;
-		triggerNames_ = iEvent.triggerNames(*hltresults);   // Get trigger names [Annotated by Eric Wang, 20240704]
+		triggerNames_ = iEvent.triggerNames(*hltresults);
 
-		for (int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
+		for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 		{
 			JpsiMatchTrig[JpsiTrig] = 0;
 		} // Jpsi trigger
 
-		for (int itrig = 0; itrig < ntrigs; itrig++) // Loop over all triggers [Annotated by Eric Wang, 20240704]
+		for (int itrig = 0; itrig < ntrigs; itrig++)            // Loop over all triggers
 		{
-			string trigName = triggerNames_.triggerName(itrig);
-			int hltflag = (*hltresults)[itrig].accept();  // What is accept()? [Question from Eric Wang, 20240704]
+			string trigName = triggerNames_.triggerName(itrig); // Extracting HLT trigger name
+			int hltflag = (*hltresults)[itrig].accept();        // Check if accepted by this trigger
 			trigRes->push_back(hltflag);
 			trigNames->push_back(trigName);
-
-			for (int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
+			// Checking if match any of the Jpsi triggers
+			for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 			{
+				// regex matching: "containing the trigger name as substring"
 				std::regex pattern(".*"+TriggersForJpsi_[JpsiTrig]+".*");
 				if (std::regex_search(trigName, pattern))
 				{
 					JpsiMatchTrig[JpsiTrig] = hltflag;
-					bool isDumplicate = false;
+					bool isDuplicate = false;                   // Flag for duplicate trigger names
 					if(hltflag)
 					{
 						for(unsigned int MatchTrig = 0; MatchTrig < MatchJpsiTrigNames->size(); MatchTrig ++)
 						{
 							if(trigName == MatchJpsiTrigNames->at(MatchTrig))
 							{
-								isDumplicate = true;
+								isDuplicate = true;
 								break;
 							}
 						}
 					}
-					if(!isDumplicate)
+					if(!isDuplicate)
 					{
-						MatchJpsiTrigNames->push_back(trigName);
+						MatchJpsiTrigNames->push_back(trigName); // "Triggers that have not appeared in the event"
 					}		
 					break;
 				}
-
 			} // Jpsi Trigger
 		}
 	} // end of HLT trigger info
@@ -554,7 +556,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	priVtxZE = (thePrimaryV.zError());
 	priVtxChiNorm = (thePrimaryV.normalizedChi2());
 	priVtxChi = thePrimaryV.chi2();
-	priVtxCL = ChiSquaredProbability((double)(thePrimaryV.chi2()), (double)(thePrimaryV.ndof()));
+	try{
+		priVtxCL = ChiSquaredProbability((double)(thePrimaryV.chi2()), (double)(thePrimaryV.ndof()));
+	}
+	catch (...){
+		priVtxCL = -9;
+	}
+	// priVtxCL = ChiSquaredProbability((double)(thePrimaryV.chi2()), (double)(thePrimaryV.ndof()));
 	// 这里去掉了XYZ两两的协方差
 
 	edm::Handle<edm::View<pat::Muon> > thePATMuonHandle; //  MINIAOD
@@ -644,39 +652,35 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             // TO_ENC [Tagged by Eric Wang, 20240704]
 
 			bool isJpsiTrigMatch = false;
-			// bool isJpsiFilterMatch = false;
+			bool isJpsiFilterMatch = false;
 
-			for (int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
+			for (unsigned int JpsiTrig = 0; JpsiTrig < TriggersForJpsi_.size(); JpsiTrig++)
 			{
-				if(JpsiMatchTrig[JpsiTrig] != 0)
+				if (JpsiMatchTrig[JpsiTrig] != 0)
 				{
 					isJpsiTrigMatch = true;
-					break;
 				}
 			}
-			// for(unsigned int JpsiTrig = 0; JpsiTrig < FiltersForJpsi_.size();JpsiTrig++)
-			// {
-			// 	if (isJpsiTrigMatch && hltresults.isValid())
-			// 	{
-			// 		pat::TriggerObjectStandAlone *tempTriggerObject = nullptr; // 指针初始化
-			// 		for (auto i = iMuonP->triggerObjectMatches().begin(); i != iMuonP->triggerObjectMatches().end(); ++i)
-			// 		{
-			// 			tempTriggerObject = new pat::TriggerObjectStandAlone(*i);
-			// 			tempTriggerObject->unpackFilterLabels(iEvent, *hltresults);
-			// 			if(tempTriggerObject->hasFilterLabel(FiltersForJpsi_[JpsiTrig]))
-			// 			{
-			// 				isJpsiFilterMatch = true;
-			// 			}
-			// 			delete tempTriggerObject;
-			// 		}
-			// 	}
-			// }
+			muIsJpsiTrigMatch->push_back(isJpsiTrigMatch);
 
-			muJpsiFilterRes->push_back(isJpsiTrigMatch); // 这一步内存溢出了？？？
+			for (unsigned int JpsiFilter = 0; JpsiFilter < FiltersForJpsi_.size(); JpsiFilter++){
+				if(isJpsiTrigMatch){ // remove hltresults.isValid() for now
+					pat::TriggerObjectStandAlone *tempTriggerObject = nullptr;
+					for (auto it = iMuonP->triggerObjectMatches().begin(); it != iMuonP->triggerObjectMatches().end(); ++it){
+						tempTriggerObject = new pat::TriggerObjectStandAlone(*it);
+						tempTriggerObject->unpackFilterLabels(iEvent, *hltresults);
+						if(tempTriggerObject->hasFilterLabel(FiltersForJpsi_[JpsiFilter])){
+							isJpsiFilterMatch = true;
+						}
+						delete tempTriggerObject;
+					}
+				}
+			}
+			muIsJpsiFilterMatch->push_back(isJpsiFilterMatch);
+
+			munMatchedSeg->push_back(-1);
 		}
 	} // if two muons
-
-	std::cout << "Finish the part of all muons' trigger match."  << endl;
 
 	if (doMC)
 	{
@@ -708,13 +712,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
     // Set the mass constraints for further reconstruction. [Annotated by Eric Wang, 20240704]
 
-    // [J-U-P] Switch from pions to kaons.
-
 	// It takes a lot less memory out of the loop
 	KinematicConstraint *Jpsi_cs = new MassKinematicConstraint(myJpsiMass, myJpsiMassErr);
 	KinematicConstraint *Jpsi_cs34 = new MassKinematicConstraint(myJpsiMass, myJpsiMassErr);
 	// 要做mass constrain的话这里要加phi的相关变量
-	double pionPTcut = 0.25;
+	double pionPTcut = 2;
 	double pionDRcut = 0.7;
 	double vtxProbPreCut = 1.0e-7;
 
@@ -756,9 +758,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
     // Candidates of muon pairs from Jpsi or Upsilon
     using muon_t   = RefCountedKinematicParticle;
-    using muList_t = std::pair< std::vector<muon_t>, std::vector<uint> >;
+    using muList_t = std::pair< vector<muon_t>, vector<uint> >;
     std::vector< muList_t > muPairCand_Jpsi;
     std::vector< std::pair< muList_t, muList_t > > muQuad_Jpsi_Jpsi;
+
+	RefCountedKinematicTree     muVtxFitTree;
+    RefCountedKinematicParticle muPair_noMC;
+    RefCountedKinematicVertex   muVtxFit_noMC;
 
     // Selection for the muon candidates
     for(auto iMuon1 =  thePATMuonHandle->begin(); 
@@ -788,8 +794,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			}
             // Dynamics selection. A very crude selection.
             // Involves more calculation and is therefore done after kinematics.
-            isJpsiMuPair = (1 < (iMuon1->p4() + iMuon2->p4()).mass()
-                              && (iMuon1->p4() + iMuon2->p4()).mass() < 4); // 这里mass cut是2~6，与秦俊凯学长定的1~4不一样，Eric说是往宽了放，我先调成1~4吧
+			double muPairMassFromP4 = (iMuon1->p4() + iMuon2->p4()).mass();
+            isJpsiMuPair = (1 < muPairMassFromP4 && muPairMassFromP4 < 4); // 这里mass cut是2~6，与秦俊凯学长定的1~4不一样，Eric说是往宽了放，我先调成1~4吧
 
             // isJpsiMuPair = true;
             // isUpsMuPair  = true;
@@ -801,10 +807,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             transMuPairId.push_back(iMuon2 - thePATMuonHandle->begin());
             // Judging with vertex fitting.
             if(!particlesToVtx(transMuonPair)){
+				transMuonPair.pop_back();
+            	transMuPairId.pop_back();
                 continue;
             }
             // Passing all the checks, store the muon pair as pairs of RefCountedKinematicParticle.
             if(isJpsiMuPair){
+				particlesToVtx(muVtxFitTree, transMuonPair, "final muon pair");
                 muPairCand_Jpsi.push_back(
                     std::make_pair(transMuonPair, transMuPairId) );
             }
@@ -817,7 +826,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         transMuPairId.pop_back();
     }
 
-	std::cout << "Finish the part of muon pair."  << endl;
+	
 
 	/**************************************************************************
      * [Section]
@@ -873,7 +882,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 					interOnia.push_back(Jpsi_1_Fit_noMC);
 					interOnia.push_back(Jpsi_2_Fit_noMC);
 					// Fit the quarkonia to the same vertex
-					if(particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex")){
+					if(particlesToVtx(interOnia)){
                         // Produce the muon quartet from the muon pairs.
                         muQuad_Jpsi_Jpsi.push_back( std::make_pair(*muPair_Jpsi_1, *muPair_Jpsi_2) );
                     }
@@ -904,8 +913,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     using piList_t = std::pair< vector<pion_t>, vector<uint> >;
     std::vector< piList_t > KPairCand_Phi;
 
-	std::cout << "Start the part of track pair."  << endl;
-	std::cout << "the number of track" << nonMuonPionTrack.size() << endl;
+	// std::cout << "Start the part of track pair."  << endl;
+	// std::cout << "the number of track" << nonMuonPionTrack.size() << endl;
 
     // Selection for the muon candidates
     for(auto iTrack1ID = nonMuonPionTrack.begin(); iTrack1ID != nonMuonPionTrack.end(); ++iTrack1ID){
@@ -992,7 +1001,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		transTrackPairId.pop_back();
     }
 
-	std::cout << "Finish the part of track pair."  << endl;
+	// std::cout << "Finish the part of track pair."  << endl;
 
     /**************************************************************************
     * [Section]
@@ -1075,7 +1084,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                 	Jpsi_1_px->push_back(Jpsi_1_Fit_noMC->currentState().kinematicParameters().momentum().x());
                 	Jpsi_1_py->push_back(Jpsi_1_Fit_noMC->currentState().kinematicParameters().momentum().y());
                 	Jpsi_1_pz->push_back(Jpsi_1_Fit_noMC->currentState().kinematicParameters().momentum().z());
-                	Jpsi_1_phi->push_back(tmp_pt);
+                	Jpsi_1_phi->push_back(tmp_phi);
                 	Jpsi_1_eta->push_back(tmp_eta);
                 	Jpsi_1_pt->push_back(tmp_pt);
 
@@ -1093,7 +1102,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                     Jpsi_2_px->push_back(Jpsi_2_Fit_noMC->currentState().kinematicParameters().momentum().x());
                     Jpsi_2_py->push_back(Jpsi_2_Fit_noMC->currentState().kinematicParameters().momentum().y());
                     Jpsi_2_pz->push_back(Jpsi_2_Fit_noMC->currentState().kinematicParameters().momentum().z());
-                    Jpsi_2_phi->push_back(tmp_pt);
+                    Jpsi_2_phi->push_back(tmp_phi);
                     Jpsi_2_eta->push_back(tmp_eta);
                     Jpsi_2_pt->push_back(tmp_pt);
                     // [HINT] DR may be useful in BKG suppression. (To deal with pile up. Do it later.)
@@ -1111,6 +1120,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                     Phi_mass->push_back(    Phi_Fit_noMC->currentState().mass());
                     Phi_massDiff->push_back(Phi_Fit_noMC->currentState().mass() - myPhiMass);
                     Phi_massErr->push_back( tmp_Phi_massErr);
+					Phi_ctau->push_back(   GetcTau(   Phi_Vtx_noMC, Phi_Fit_noMC, theBeamSpotV));
+                	Phi_ctauErr->push_back(GetcTauErr(Phi_Vtx_noMC, Phi_Fit_noMC, theBeamSpotV));
                     Phi_Chi2->push_back(double(Phi_Vtx_noMC->chiSquared()));
                     Phi_ndof->push_back(double(Phi_Vtx_noMC->degreesOfFreedom()));
                     Phi_VtxProb->push_back(ChiSquaredProbability((double)(Phi_Vtx_noMC->chiSquared()), 
@@ -1118,47 +1129,29 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                     Phi_px->push_back(Phi_Fit_noMC->currentState().kinematicParameters().momentum().x());
                     Phi_py->push_back(Phi_Fit_noMC->currentState().kinematicParameters().momentum().y());
                     Phi_pz->push_back(Phi_Fit_noMC->currentState().kinematicParameters().momentum().z());
-                    Phi_phi->push_back(tmp_pt);
+                    Phi_phi->push_back(tmp_phi);
                     Phi_eta->push_back(tmp_eta);
                     Phi_pt->push_back(tmp_pt);
 
-                    // Store the momenta of the kaons.
-                    // Extract the first kaon for Phi
-                	vtxFitTree_Phi->movePointerToTheFirstChild();
-                	RefCountedKinematicParticle fitKaon1 = vtxFitTree_Phi->currentParticle();
-                	double tmp_Kaon_1_Px = fitKaon1->currentState().kinematicParameters().momentum().x();
-                	double tmp_Kaon_1_Py = fitKaon1->currentState().kinematicParameters().momentum().y();
-                	double tmp_Kaon_1_Pz = fitKaon1->currentState().kinematicParameters().momentum().z();
-                    // Calculate the dynamics of the kaon.
-                    double tmp_Kaon_1_Pt, tmp_Kaon_1_Eta, tmp_Kaon_1_Phi;
-                    getDynamics(myKMass, tmp_Kaon_1_Px, tmp_Kaon_1_Py,  tmp_Kaon_1_Pz, 
-                                         tmp_Kaon_1_Pt, tmp_Kaon_1_Eta, tmp_Kaon_1_Phi);
+                    // Push the dynamics of kaons to the corresponding vectors.
+                    // Special note: edm::View<pat::PackedCandidate> behaves like
+                    //               an iterator pointing to the pat::PackedCandidate.
+                    
+                    // Kaon 1
+                    Phi_K_1_px->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->px());
+                    Phi_K_1_py->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->py());
+                    Phi_K_1_pz->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->pz());
+                    Phi_K_1_pt->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->pt());
+                    Phi_K_1_eta->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->eta());
+                    Phi_K_1_phi->push_back(nonMuonPionTrack[KPair_Phi->second[0]]->phi());
 
-                    // Extract the second kaon for Phi
-                	vtxFitTree_Phi->movePointerToTheNextChild();
-                	RefCountedKinematicParticle fitKaon2 = vtxFitTree_Phi->currentParticle();
-                	double tmp_Kaon_2_Px = fitKaon2->currentState().kinematicParameters().momentum().x();
-                	double tmp_Kaon_2_Py = fitKaon2->currentState().kinematicParameters().momentum().y();
-                	double tmp_Kaon_2_Pz = fitKaon2->currentState().kinematicParameters().momentum().z();
-                    // Calculate the dynamics of the kaon.
-                    double tmp_Kaon_2_Pt, tmp_Kaon_2_Eta, tmp_Kaon_2_Phi;
-                    getDynamics(myKMass, tmp_Kaon_2_Px, tmp_Kaon_2_Py,  tmp_Kaon_2_Pz, 
-                                         tmp_Kaon_2_Pt, tmp_Kaon_2_Eta, tmp_Kaon_2_Phi);
-
-                    // Push the dynamics to the corresponding vectors
-                    Phi_K_1_px->push_back(tmp_Kaon_1_Px);
-                    Phi_K_1_py->push_back(tmp_Kaon_1_Py);
-                    Phi_K_1_pz->push_back(tmp_Kaon_1_Pz);
-                    Phi_K_1_pt->push_back(tmp_Kaon_1_Pt);
-                    Phi_K_1_eta->push_back(tmp_Kaon_1_Eta);
-                    Phi_K_1_phi->push_back(tmp_Kaon_1_Phi);
-
-                    Phi_K_2_px->push_back(tmp_Kaon_2_Px);
-                    Phi_K_2_py->push_back(tmp_Kaon_2_Py);
-                    Phi_K_2_pz->push_back(tmp_Kaon_2_Pz);
-                    Phi_K_2_pt->push_back(tmp_Kaon_2_Pt);
-                    Phi_K_2_eta->push_back(tmp_Kaon_2_Eta);
-                    Phi_K_2_phi->push_back(tmp_Kaon_2_Phi);
+                    // Kaon 2
+                    Phi_K_2_px->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->px());
+                    Phi_K_2_py->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->py());
+                    Phi_K_2_pz->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->pz());
+                    Phi_K_2_pt->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->pt());
+                    Phi_K_2_eta->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->eta());
+                    Phi_K_2_phi->push_back(nonMuonPionTrack[KPair_Phi->second[1]]->phi());
                 }
             }
         }
@@ -1169,7 +1162,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		X_One_Tree_->Fill();
 	}
 
-	std::cout << "Finish the part of fitting."  << endl;
+	// std::cout << "Finish the part of fitting."  << endl;
 
 	if (Debug_)
 	{
@@ -1246,9 +1239,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	trigRes->clear();
 	trigNames->clear();
 	L1TT->clear();
-	MatchTriggerNames->clear();
+	MatchJpsiTrigNames->clear();
 	muIsJpsiTrigMatch->clear();
+	muIsJpsiFilterMatch->clear();
 	muIsUpsTrigMatch->clear();
+	muIsUpsFilterMatch->clear();
 	runNum = 0;
 	evtNum = 0;
 	lumiNum = 0;
@@ -1319,8 +1314,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	muIsPatTightMuon->clear();
 	muIsPatSoftMuon->clear();
 	muIsPatMediumMuon->clear();
-	muUpsVrtxMatch->clear();
-	muL3TriggerMatch->clear();
+
+	Jpsi_cand_mass_p4->clear();
+    Jpsi_cand_mass_fit->clear();
+
 
     Pri_mass->clear();
     Pri_massErr->clear();
@@ -1373,6 +1370,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     Phi_mass->clear();
     Phi_massErr->clear();
     Phi_massDiff->clear();
+	Phi_ctau->clear();
+    Phi_ctauErr->clear();
     Phi_Chi2->clear();
     Phi_ndof->clear();
     Phi_VtxProb->clear();
@@ -1521,6 +1520,7 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
     KinematicParticleVertexFitter fitter;
     RefCountedKinematicTree vertexFitTree;
     bool fitError = false;
+	double vtxprob = 0;
     try{
         vertexFitTree = fitter.fit(arg_FromParticles);
     }catch(...){
@@ -1530,7 +1530,6 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
         return false;
     }
 	RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
-	double vtxprob;
     try{
         vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
     }catch(...){
@@ -1563,6 +1562,7 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
     KinematicParticleVertexFitter fitter;
     RefCountedKinematicTree vertexFitTree;
     bool fitError = false;
+	double vtxprob = 0;
     try{
         vertexFitTree = fitter.fit(arg_FromParticles);
     }catch(...){
@@ -1573,7 +1573,6 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
         return false;
     }
     RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
-	double vtxprob;
     try{
         vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
     }catch(...){
@@ -1609,6 +1608,7 @@ bool MultiLepPAT::particlesToVtx(RefCountedKinematicTree&                    arg
                                  const string&                               arg_Message){
     KinematicParticleVertexFitter fitter;
     bool fitError = false;
+	double vtxprob = 0;
     try{
         arg_VertexFitTree = fitter.fit(arg_FromParticles);
     }catch(...){
@@ -1619,7 +1619,6 @@ bool MultiLepPAT::particlesToVtx(RefCountedKinematicTree&                    arg
         return false;
     }
     RefCountedKinematicVertex vFit_vertex_noMC = arg_VertexFitTree->currentDecayVertex();
-	double vtxprob;
     try{
         vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
     }catch(...){
@@ -1753,8 +1752,12 @@ bool MultiLepPAT::extractFitRes(RefCountedKinematicTree&     arg_VtxTree,
     // Extract particle and vertex.
     res_Vtx   = arg_VtxTree->currentDecayVertex();
     // Obtain mass error squared and other parameters for the vertex.
+	try{
     res_VtxProb = ChiSquaredProbability((double)(res_Vtx->chiSquared()), 
                                         (double)(res_Vtx->degreesOfFreedom()));
+	}catch(...){
+		res_VtxProb = -9;
+	}
     return true;
 }
 
@@ -1823,7 +1826,7 @@ void MultiLepPAT::beginJob()
 
 	X_One_Tree_->Branch("TrigRes", &trigRes);
 	X_One_Tree_->Branch("TrigNames", &trigNames);
-	X_One_Tree_->Branch("MatchTriggerNames", &MatchTriggerNames);
+	X_One_Tree_->Branch("MatchJpsiTriggerNames", &MatchJpsiTrigNames);
 	X_One_Tree_->Branch("L1TrigRes", &L1TT);
 
 	X_One_Tree_->Branch("evtNum", &evtNum, "evtNum/i");
@@ -1884,7 +1887,6 @@ void MultiLepPAT::beginJob()
 	X_One_Tree_->Branch("muIsGoodLooseMuonNew", &muIsGoodLooseMuonNew);
 	X_One_Tree_->Branch("muIsGoodLooseMuon", &muIsGoodLooseMuon);
 	X_One_Tree_->Branch("muIsGoodTightMuon", &muIsGoodTightMuon);
-	X_One_Tree_->Branch("muJpsiFilterRes", &muJpsiFilterRes);
 
 	X_One_Tree_->Branch("muIsPatLooseMuon", &muIsPatLooseMuon);
 	X_One_Tree_->Branch("muIsPatTightMuon", &muIsPatTightMuon);
@@ -1893,6 +1895,8 @@ void MultiLepPAT::beginJob()
 
 	X_One_Tree_->Branch("muIsJpsiTrigMatch", &muIsJpsiTrigMatch);
 	X_One_Tree_->Branch("muIsUpsTrigMatch", &muIsUpsTrigMatch);
+	X_One_Tree_->Branch("muIsJpsiFilterMatch", &muIsJpsiFilterMatch);
+    X_One_Tree_->Branch("muIsUpsFilterMatch", &muIsUpsFilterMatch);
 	X_One_Tree_->Branch("muMVAMuonID", &muMVAMuonID);
 	X_One_Tree_->Branch("musegmentCompatibility", &musegmentCompatibility);
 
@@ -1905,8 +1909,8 @@ void MultiLepPAT::beginJob()
 	X_One_Tree_->Branch("mupulldXdZ_pos_noArb_any", &mupulldXdZ_pos_noArb_any);
 	X_One_Tree_->Branch("mupulldYdZ_pos_noArb_any", &mupulldYdZ_pos_noArb_any);
 
-	X_One_Tree_->Branch("muUpsVrtxMatch", &muUpsVrtxMatch);
-	X_One_Tree_->Branch("muL3TriggerMatch", &muL3TriggerMatch);
+	X_One_Tree_->Branch("Jpsi_cand_mass_p4", &Jpsi_cand_mass_p4);
+    X_One_Tree_->Branch("Jpsi_cand_mass_fit", &Jpsi_cand_mass_fit);
 
     X_One_Tree_->Branch("Jpsi_1_mass", &Jpsi_1_mass);
     X_One_Tree_->Branch("Jpsi_1_massErr", &Jpsi_1_massErr);
@@ -1945,6 +1949,8 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Phi_mass", &Phi_mass);
     X_One_Tree_->Branch("Phi_massErr", &Phi_massErr);
     X_One_Tree_->Branch("Phi_massDiff", &Phi_massDiff);
+	X_One_Tree_->Branch("Phi_ctau", &Phi_ctau);
+    X_One_Tree_->Branch("Phi_ctauErr", &Phi_ctauErr);
     X_One_Tree_->Branch("Phi_Chi2", &Phi_Chi2);
     X_One_Tree_->Branch("Phi_ndof", &Phi_ndof);
     X_One_Tree_->Branch("Phi_VtxProb", &Phi_VtxProb);

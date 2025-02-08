@@ -208,3 +208,54 @@ debug完成，可以开始跑，但是拟合得到的phi质量过于离奇（普
 
 下一步要考虑muon pair和track pair一一对应的要求
 
+# 2.3
+准备对接王驰寒假更新成果
+
+## 卡死问题
+初步证实为pT cut加的不够没有筛选掉足够多的“坏”track
+
+原有论文（Run 2）
+• HLT Dimuon0 Jpsi Muon trigger for 2016  
+• HLT Dimuon0 Jpsi3p5 Muon2 trigger for 2017/2018
+Selection of φ(KK) mesons:
+$p_T^K>2\mathrm{GeV}$ for $\|\eta^K\|$
+$0.99<m_{KK}<1.07\mathrm{GeV}$
+$1\%$vertx prob
+$\phi$ with $p_T^{KK}>4\mathrm{GeV}$
+
+cut先加到2
+
+## candidate处理
+
+见王驰软件库更新
+需要移植到jjp情况
+
+## trigger
+
+## 另外pT cut
+
+例如给jpsi加cut
+
+## muon ID
+soft，loose，medium，tight
+muIsPatLooseMuon的branch
+
+## 其他问题
+crab config里面，应该加上json file
+json file是这个/eos/user/c/cmsdqm/www/CAF/certification/Collisions23/Cert_Collisions2023_366442_370790_Muon.json
+
+2023年可用的数据，只有C和D
+https://docs.google.com/presentation/d/1TjPem5jX0fzqvTGl271_nQFoVBabsrdrO0i8Qo1uD5E/edit#slide=id.g289f499aa6b_2_58
+所有这些信息，都是在这个页面找到的：
+https://twiki.cern.ch/twiki/bin/viewauth/CMS/PdmVRun3Analysis
+
+eventsToProcess需要跑的时候干掉
+
+crab config在王驰已有标准上修改
+
+## 2022和2024数据处理的适配
+Run2024和Run2022的对应配置文件已经改好，分别放在Dev-J-J-U-2024和Dev-J-J-U-2022
+
+## HTCondor引入
+参见王驰新git仓库
+以及画图换用RooFit

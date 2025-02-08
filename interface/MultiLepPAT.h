@@ -252,7 +252,6 @@ private:
     vector<string>      FiltersForJpsi_;
     vector<string>      TriggersForUpsilon_;
     vector<string>      FiltersForUpsilon_;
-    vector<std::string>* MatchJpsiTrigNames;
     int JpsiMatchTrig[50], UpsilonMatchTrig[50];
 
 
@@ -290,7 +289,7 @@ private:
     vector<unsigned int>*   trigRes;
     vector<std::string>*    trigNames;
     vector<unsigned int>*   L1TT;
-    vector<std::string>*    MatchTriggerNames;
+    vector<std::string>*    MatchJpsiTrigNames;
 
     // primary vertices [Annotation by Eric Wang, 20240626]
     float               priVtxX,    priVtxY,    priVtxZ, 
@@ -316,8 +315,8 @@ private:
     vector<int>         *muIsGoodLooseMuon,         *muIsGoodLooseMuonNew, 
                         *muIsGoodSoftMuonNewIlse,   *muIsGoodSoftMuonNewIlseMod, 
                         *muIsGoodTightMuon,         *muIsJpsiTrigMatch,         
-                        *muIsUpsTrigMatch,          *munMatchedSeg,
-                        *muJpsiFilterRes;
+                        *muIsUpsTrigMatch,          *munMatchedSeg;
+    vector<int>         *muIsJpsiFilterMatch,       *muIsUpsFilterMatch;
     vector<int>         *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
     
     //for Maksat trigger match [Annotation by Eric Wang, 20240626]
@@ -332,16 +331,12 @@ private:
     vector<float>  *mupulldXdZ_pos_ArbST, *mupulldYdZ_pos_ArbST;
     vector<float>  *mupulldXdZ_pos_noArb_any, *mupulldYdZ_pos_noArb_any;
 
+    vector<float> *Jpsi_cand_mass_p4, *Jpsi_cand_mass_fit,
+                   *Ups_cand_mass_p4,  *Ups_cand_mass_fit;
     // Muons from Jpsi and Upsilon.
-    vector<unsigned int> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx, 
+    vector<float> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx, 
                          *Jpsi_2_mu_1_Idx, *Jpsi_2_mu_2_Idx,
                              *Phi_K_1_Idx,     *Phi_K_2_Idx;
-    
-    // Branches for the supposed kaon tracks from Phi decay.
-    vector<float>        *Phi_K_1_px, *Phi_K_1_py, *Phi_K_1_pz,
-                         *Phi_K_2_px, *Phi_K_2_py, *Phi_K_2_pz,
-                         *Phi_K_1_eta, *Phi_K_1_phi, *Phi_K_1_pt,
-                         *Phi_K_2_eta, *Phi_K_2_phi, *Phi_K_2_pt;
 
     // Reconstructed Jpsi and Upsilon.
     // Note: Used "vector<T>* a, b" instead of "vector<T> *a, *b"
@@ -351,7 +346,7 @@ private:
                
     vector<float> *Jpsi_1_ctau, *Jpsi_1_ctauErr, *Jpsi_1_Chi2, *Jpsi_1_ndof, *Jpsi_1_VtxProb,
                   *Jpsi_2_ctau, *Jpsi_2_ctauErr, *Jpsi_2_Chi2, *Jpsi_2_ndof, *Jpsi_2_VtxProb,
-                                                    *Phi_Chi2,    *Phi_ndof,    *Phi_VtxProb;
+                  *Phi_ctau, *Phi_ctauErr, *Phi_Chi2,    *Phi_ndof,    *Phi_VtxProb;
                   
     vector<float> *Jpsi_1_phi, *Jpsi_1_eta, *Jpsi_1_pt,
                   *Jpsi_2_phi, *Jpsi_2_eta, *Jpsi_2_pt,
@@ -364,7 +359,13 @@ private:
     vector<float>    *Pri_mass,  *Pri_massErr,
                      *Pri_ctau,  *Pri_ctauErr, *Pri_Chi2, *Pri_ndof, *Pri_VtxProb,
                      *Pri_px,    *Pri_py,    *Pri_pz, 
-                     *Pri_phi,   *Pri_eta,   *Pri_pt;  
+                     *Pri_phi,   *Pri_eta,   *Pri_pt;
+
+    // Branches for the supposed kaon tracks from Phi decay.
+    vector<float>        *Phi_K_1_px, *Phi_K_1_py, *Phi_K_1_pz,
+                         *Phi_K_2_px, *Phi_K_2_py, *Phi_K_2_pz,
+                         *Phi_K_1_eta, *Phi_K_1_phi, *Phi_K_1_pt,
+                         *Phi_K_2_eta, *Phi_K_2_phi, *Phi_K_2_pt;  
 
     //doMC
     vector<float> 
