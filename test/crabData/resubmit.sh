@@ -1,9 +1,9 @@
 #!/bin/bash
-files='crab_crab3_6_*'
-#for i in $files
-#do
+files='crab_crab3_*'
+for i in $files
+do
 	#echo -e "\033[32m $i \033[0m"
-	#crab status $i | sed -n -e '/jobs failed/p' > tmp_report.out
+	crab status $i | sed -n -e '/jobs failed/p' > tmp_report.out
 	cat report.out > tmp_report.out
 	cat tmp_report.out | while read rows
 	do	
@@ -13,17 +13,19 @@ files='crab_crab3_6_*'
 			i=$rows
 			#echo -e "\033[32m $i \033[0m"
 		fi
-		result1=$(echo $rows | grep '50664')
+		#result1=$(echo $rows | grep '50664')
+		result1=$(echo $rows | grep 'failed')
 		if [[ $result1 != '' ]]
 		then
 			num=$(echo $result1 | awk '{print $1}')
 			num=$(expr $num)
 			if [[ $num -lt 100 ]]
 			then
-				echo -e "\033[32m $i \033[0m resubmit because $num 50664 failure"
+				#echo -e "\033[32m $i \033[0m resubmit because $num 50664 failure"
+				echo -e "\033[32m $i \033[0m resubmit"
 				crab --quiet resubmit $i
 			fi
 		fi
 	done 
 	rm -f tmp_report.out
-#done
+done

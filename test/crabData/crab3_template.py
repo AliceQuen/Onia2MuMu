@@ -18,7 +18,7 @@ config.Data.inputDBS = 'global'
 config.Data.unitsPerJob = 20
 config.Data.splitting = 'LumiBased'
 config.Data.lumiMask = '/eos/user/c/cmsdqm/www/CAF/certification/Collisions23/Cert_Collisions2023_366442_370790_Muon.json'
-config.Data.outLFNDirBase = '/store/user/xcheng/JpsiJpsiPhi/rootNtuple/' #LFN=Logical File Name
+config.Data.outLFNDirBase = '/store/user/xcheng/JpsiJpsiPhi_muon_pt_cut/rootNtuple/' #LFN=Logical File Name
 config.Data.outputDatasetTag = 'TaskTag'
 
 config.section_('User')
