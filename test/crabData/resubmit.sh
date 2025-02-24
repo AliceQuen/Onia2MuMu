@@ -3,7 +3,7 @@ files='crab_crab3_*'
 for i in $files
 do
 	#echo -e "\033[32m $i \033[0m"
-	crab status $i | sed -n -e '/jobs failed/p' > tmp_report.out
+	#crab status $i | sed -n -e '/jobs failed/p' > tmp_report.out
 	cat report.out > tmp_report.out
 	cat tmp_report.out | while read rows
 	do	
