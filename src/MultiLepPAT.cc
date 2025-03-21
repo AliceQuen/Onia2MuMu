@@ -137,7 +137,7 @@
 
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h" // MINIAOD
 
-//#define SHOW_DEBUG
+#define SHOW_DEBUG
 
 typedef math::Error<3>::type CovarianceMatrix;
 typedef ROOT::Math::SVector<double, 3> SVector3;
@@ -174,6 +174,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 	  FiltersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForUpsilon")),
 	  Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
 	  Chi_Track_(iConfig.getUntrackedParameter<double>("Chi2NDF_Track", 10)),
+	  OniaDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("OniaDecayVtxProbCut", 0.001)),
 	  X_One_Tree_(0),
 
 	  runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
@@ -830,7 +831,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
                                                            chi2, ndof, muMassSigma) );
             transMuPairId.push_back(iMuon2 - thePATMuonHandle->begin());
             // Judging with vertex fitting.
-			isGoodVtxFit = particlesToVtx(transMuonPair);
+			isGoodVtxFit = particlesToVtx(transMuonPair, OniaDecayVtxProbCut_);
             if(!isGoodVtxFit){
 				transMuonPair.pop_back();
             	transMuPairId.pop_back();
@@ -839,7 +840,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             // Passing all the checks, store the muon pair as pairs of RefCountedKinematicParticle.
             if(isJpsiMuPair & isGoodVtxFit){
 				// Store the muon pair as RefCountedKinematicParticle.
-				particlesToVtx(muVtxFitTree, transMuonPair, "final muon pair");
+				particlesToVtx(muVtxFitTree, transMuonPair, "final muon pair", OniaDecayVtxProbCut_);
                 muPairCand_Jpsi.push_back(
                     std::make_pair(transMuonPair, transMuPairId) );
             }
@@ -894,8 +895,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             }
 			// Start constructing the fit tree.
 			// Use particlesToVtx() to fit the quarkonia once more.
-			isValidJpsi_1 = particlesToVtx(vtxFitTree_Jpsi_1, muPair_Jpsi_1->first, "final Jpsi_1");
-			isValidJpsi_2 = particlesToVtx(vtxFitTree_Jpsi_2, muPair_Jpsi_2->first, "final Jpsi_2");
+			isValidJpsi_1 = particlesToVtx(vtxFitTree_Jpsi_1, muPair_Jpsi_1->first, "final Jpsi_1", OniaDecayVtxProbCut_);
+			isValidJpsi_2 = particlesToVtx(vtxFitTree_Jpsi_2, muPair_Jpsi_2->first, "final Jpsi_2", OniaDecayVtxProbCut_);
 
 			if(isValidJpsi_1 && isValidJpsi_2){
 				// Extract the vertex and the particle parameters from valid results.
@@ -908,7 +909,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 					interOnia.push_back(Jpsi_1_Fit_noMC);
 					interOnia.push_back(Jpsi_2_Fit_noMC);
 					// Fit the quarkonia to the same vertex
-					if(particlesToVtx(interOnia)){
+					if(particlesToVtx(interOnia, OniaDecayVtxProbCut_)){
                         // Produce the muon quartet from the muon pairs.
                         muQuad_Jpsi_Jpsi.push_back( std::make_pair(*muPair_Jpsi_1, *muPair_Jpsi_2) );
                     }
@@ -1015,7 +1016,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
             // Passing all the checks, store the track pair.
             // Note here that transTrackPair is a vector of RefCountedKinematicParticle.
-            if(particlesToVtx(transTrackPair)){
+            if(particlesToVtx(transTrackPair, OniaDecayVtxProbCut_)){
                 KPairCand_Phi.push_back(std::make_pair(transTrackPair, transTrackPairId) );
             }
             // Clear the transient muon pair for the next pair.
@@ -1045,7 +1046,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 	for(auto KPair_Phi  = KPairCand_Phi.begin(); KPair_Phi != KPairCand_Phi.end(); KPair_Phi++){
         // Begin with Phi fitting
-		isValidPhi    = particlesToVtx(vtxFitTree_Phi,    KPair_Phi->first,    "final Phi");
+		isValidPhi    = particlesToVtx(vtxFitTree_Phi,    KPair_Phi->first,    "final Phi", OniaDecayVtxProbCut_);
         // Rare fitting errors: continue to the next pair.
 		if(!isValidPhi){
             continue;
@@ -1059,8 +1060,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             isValidPri = false;
             // Start constructing the fit tree.
             // Use particlesToVtx() to fit the quarkonia once more.
-            isValidJpsi_1 = particlesToVtx(vtxFitTree_Jpsi_1, muQuadID->first.first, "final Jpsi_1");
-            isValidJpsi_2 = particlesToVtx(vtxFitTree_Jpsi_2, muQuadID->second.first, "final Jpsi_2");
+            isValidJpsi_1 = particlesToVtx(vtxFitTree_Jpsi_1, muQuadID->first.first, "final Jpsi_1", OniaDecayVtxProbCut_);
+            isValidJpsi_2 = particlesToVtx(vtxFitTree_Jpsi_2, muQuadID->second.first, "final Jpsi_2", OniaDecayVtxProbCut_);
 
 			if(isValidJpsi_1 && isValidJpsi_2){
                 // Check if all fit trees give non-null results.
@@ -1567,7 +1568,6 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
     KinematicParticleVertexFitter fitter;
     RefCountedKinematicTree vertexFitTree;
     bool fitError = false;
-	double vtxprob = 0;
     try{
         vertexFitTree = fitter.fit(arg_FromParticles);
     }catch(...){
@@ -1576,14 +1576,18 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
 	if (fitError || !vertexFitTree->isValid()){
         return false;
     }
-	RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
-    try{
-        vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
-    }catch(...){
-        vtxprob = 0.0;
-    }   
+	bool isChi2Valid = false;
+	try{
+		RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
 
-    return (vtxprob >= VtxProbCut);
+    return true;
 }
 
 /******************************************************************************
@@ -1606,27 +1610,29 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
 
 bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_FromParticles,
                                  const string&                               arg_Message){
-    KinematicParticleVertexFitter fitter;
-    RefCountedKinematicTree vertexFitTree;
-    bool fitError = false;
-	double vtxprob = 0;
-    try{
-        vertexFitTree = fitter.fit(arg_FromParticles);
-    }catch(...){
-        fitError = true;
-        std::cout << "[Fit Error] " << arg_Message <<  std::endl;
-    }
+	KinematicParticleVertexFitter fitter;
+	RefCountedKinematicTree vertexFitTree;
+	bool fitError = false;
+	try{
+		vertexFitTree = fitter.fit(arg_FromParticles);
+	}catch(...){
+		fitError = true;
+		std::cout << "[Fit Error] " << arg_Message <<  std::endl;
+	}
 	if (fitError || !vertexFitTree->isValid()){
-        return false;
-    }
-    RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
-    try{
-        vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
-    }catch(...){
-        vtxprob = 0.0;
-    }   
-
-    return (vtxprob >= VtxProbCut);
+		return false;
+	}
+	bool isChi2Valid = false;
+	try{
+		RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
+	return true;
 }
 
 /******************************************************************************
@@ -1653,41 +1659,217 @@ bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg
 bool MultiLepPAT::particlesToVtx(RefCountedKinematicTree&                    arg_VertexFitTree,
                                  const vector<RefCountedKinematicParticle>&  arg_FromParticles,
                                  const string&                               arg_Message){
-    KinematicParticleVertexFitter fitter;
-    bool fitError = false;
-	double vtxprob = 0;
-    try{
-        arg_VertexFitTree = fitter.fit(arg_FromParticles);
-    }catch(...){
-        fitError = true;
-        std::cout << "[Fit Error] " << arg_Message <<  std::endl;
-    }
+	KinematicParticleVertexFitter fitter;
+	bool fitError = false;
 
 	#ifdef SHOW_DEBUG
-	std::cout << "finish fit the vertex" << endl;
+	std::cout << ">>> start fit the particles to vertex <<<" << endl;
+	#endif
+
+	try{
+		arg_VertexFitTree = fitter.fit(arg_FromParticles);
+	}catch(...){
+		fitError = true;
+		std::cout << "[Fit Error] " << arg_Message <<  std::endl;
+	}
+
+	#ifdef SHOW_DEBUG
+	std::cout << ">>> finish fit the particles to vertex <<<" << endl;
 	#endif
 
 	if (fitError || !arg_VertexFitTree->isValid()){
-        return false;
-    }
-    RefCountedKinematicVertex vFit_vertex_noMC = arg_VertexFitTree->currentDecayVertex();
+		return false;
+	}
 
 	#ifdef SHOW_DEBUG
-	std::cout << "finish get the vertex" << endl;
+	std::cout << ">>> start check the chi2 <<<" << endl;
 	#endif
 
-    try{
-        vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()), (double)(vFit_vertex_noMC->degreesOfFreedom()));
-    }catch(...){
-        vtxprob = 0.0;
-    }
+	bool isChi2Valid = false;
+	try{
+		RefCountedKinematicVertex vFit_vertex_noMC = arg_VertexFitTree->currentDecayVertex();
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
 
 	#ifdef SHOW_DEBUG
-	std::cout << "finish calculate the vtxprob" << endl;
+	std::cout << ">>> finish check the chi2 <<<" << endl;
 	#endif
 
-    return (vtxprob >= VtxProbCut);
+	return true;
 }
+
+/******************************************************************************
+ * [Name of function]  
+ *      particlesToVtx
+ * [Description]  
+ *      Construct muons from tracks.
+ *      Assuming muon mass and mass error as PDG 2023 values.
+ *      Adds reconstructed muons to the arg_FromParticles.
+ *      A vtxProb cut is applied.
+ * [Parameters]
+ *      vector<RefCountedKinematicParticle>&        arg_FromParticles
+ *          - The vector to which reconstructed particles are added.
+ *      const double&                               arg_VtxProbCut   
+ * [Return value]
+ *      (void)
+ * [Note]
+ *      A "silent" version of fitting particles to vertex. No error message
+ *      will be printed in case of failed fitting.
+******************************************************************************/
+
+bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_FromParticles,
+	const double&                               arg_VtxProbCut){
+	KinematicParticleVertexFitter fitter;
+	RefCountedKinematicTree vertexFitTree;
+	bool fitError = false;
+	try{
+	vertexFitTree = fitter.fit(arg_FromParticles);
+	}catch(...){
+	fitError = true;
+	}
+	if (fitError || !vertexFitTree->isValid()){
+	return false;
+	}
+	bool isChi2Valid = false;
+	RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
+	try{
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
+	double vtxprob;
+	try{
+	vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()),
+			(double)(vFit_vertex_noMC->degreesOfFreedom()));
+	}catch(...){
+	vtxprob = 0.0;
+	}   
+
+	return (vtxprob >= arg_VtxProbCut);
+}
+
+/******************************************************************************
+* [Name of function]  
+*      particlesToVtx
+* [Description]  
+*      Construct muons from tracks.
+*      Assuming muon mass and mass error as PDG 2023 values.
+*      Adds reconstructed muons to the arg_FromParticles.
+* [Parameters]
+*      vector<RefCountedKinematicParticle>&        arg_FromParticles
+*          - The vector to which reconstructed particles are added.
+*      const string&                               arg_Message  
+*          - The message to be displayed in case of error.
+*      const double&                               arg_VtxProbCut 
+*         - The cut value for the vertex probability.
+* [Return value]
+*      (void)
+* [Note]
+*      This definition uses an "implicit" VertexFitter and KinematicTree. 
+******************************************************************************/
+
+bool MultiLepPAT::particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_FromParticles,
+	const string&                               arg_Message,
+	const double&                               arg_VtxProbCut){
+	KinematicParticleVertexFitter fitter;
+	RefCountedKinematicTree vertexFitTree;
+	bool fitError = false;
+	try{
+	vertexFitTree = fitter.fit(arg_FromParticles);
+	}catch(...){
+	fitError = true;
+	std::cout << "[Fit Error] " << arg_Message <<  std::endl;
+	}
+	if (fitError || !vertexFitTree->isValid()){
+	return false;
+	}
+	bool isChi2Valid = false;
+	RefCountedKinematicVertex vFit_vertex_noMC = vertexFitTree->currentDecayVertex();
+	try{
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
+	double vtxprob;
+	try{
+	vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()),
+			(double)(vFit_vertex_noMC->degreesOfFreedom()));
+	}catch(...){
+	vtxprob = 0.0;
+	}   
+
+	return (vtxprob >= arg_VtxProbCut);
+}
+/******************************************************************************
+* [Name of function]  
+*      particlesToVtx
+* [Description]  
+*      Construct muons from tracks.
+*      Assuming muon mass and mass error as PDG 2023 values.
+*      Adds reconstructed muons to the arg_FromParticles.
+* [Parameters]
+*      vector<RefCountedKinematicParticle>&        arg_FromParticles
+*          - The vector to which reconstructed particles are added.
+*      const string&                               arg_Message  
+*          - The message to be displayed in case of error.
+*      RefCountedKinematicTree&                    arg_VertexFitTree
+*          - The KinematicTree to which the vertex fit is added.    
+*      const double&                               arg_VtxProbCut
+*         - The cut value for the vertex probability.
+* [Return value]
+*      (void)
+* [Note]
+*      This definition uses an "explicit" KinematicTree.
+*      The KinematicTree is passed as an argument and is modified after call.
+******************************************************************************/
+
+bool MultiLepPAT::particlesToVtx(RefCountedKinematicTree&                    arg_VertexFitTree,
+	const vector<RefCountedKinematicParticle>&  arg_FromParticles,
+	const string&                               arg_Message,
+	const double&                               arg_VtxProbCut){
+	KinematicParticleVertexFitter fitter;
+	bool fitError = false;
+	try{
+	arg_VertexFitTree = fitter.fit(arg_FromParticles);
+	}catch(...){
+	fitError = true;
+	std::cout << "[Fit Error] " << arg_Message <<  std::endl;
+	}
+	if (fitError || !arg_VertexFitTree->isValid()){
+	return false;
+	}
+	bool isChi2Valid = false;
+	RefCountedKinematicVertex vFit_vertex_noMC = arg_VertexFitTree->currentDecayVertex();
+	try{
+		isChi2Valid = (vFit_vertex_noMC->chiSquared() >= 0.0);
+	}catch(...){
+		return false;
+	}
+	if (!isChi2Valid){
+		return false;
+	}
+	double vtxprob;
+	try{
+	vtxprob = ChiSquaredProbability((double)(vFit_vertex_noMC->chiSquared()),
+			(double)(vFit_vertex_noMC->degreesOfFreedom()));
+	}catch(...){
+	vtxprob = 0.0;
+	}   
+
+	return (vtxprob >= arg_VtxProbCut);
+}
+
 
 /******************************************************************************
  * [Name of function]  

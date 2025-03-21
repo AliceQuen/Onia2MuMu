@@ -188,6 +188,16 @@ private:
                                const vector<RefCountedKinematicParticle>&  arg_Muons,
                                const string&                               arg_Message);
 
+    static bool particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_MuonResults,
+                                const double&                               arg_VtxProbCut);
+    static bool particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_MuonResults,
+                                const string&                               arg_Message,
+                                const double&                               arg_VtxProbCut);
+    static bool particlesToVtx(RefCountedKinematicTree&                    arg_VertexFitTree,
+                                const vector<RefCountedKinematicParticle>&  arg_Muons,
+                                const string&                               arg_Message,
+                                const double&                               arg_VtxProbCut);
+
     static bool extractFitRes(RefCountedKinematicTree&     arg_VtxTree,
                               RefCountedKinematicParticle& res_Part,
                               RefCountedKinematicVertex&   res_Vtx,
@@ -267,6 +277,8 @@ private:
     int  MatchingTriggerResult[50];
     bool Debug_;
     double Chi_Track_;
+
+    double OniaDecayVtxProbCut_;
 
     // PDG 2023
 	static constexpr double myJpsiMass = 3.0969,   myJpsiMassErr = 0.00004;

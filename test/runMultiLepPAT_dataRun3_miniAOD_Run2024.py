@@ -5,7 +5,8 @@ ivars = VarParsing.VarParsing('analysis')
 ivars.inputFiles=(
 #'file:BPHSkim_UL.root',
 #'/store/user/zhenhu/MuOnia/BPHSkim-v3-Run2018D-12Nov2019_UL2018-v1/210321_010747/0000/BPHSkim_UL_556.root',
-'/store/data/Run2024C/ParkingDoubleMuonLowMass0/MINIAOD/PromptReco-v1/000/379/415/00000/b40397b5-61c6-4887-8f4e-025e8ca925ee.root'
+#'/store/data/Run2024C/ParkingDoubleMuonLowMass0/MINIAOD/PromptReco-v1/000/379/415/00000/b40397b5-61c6-4887-8f4e-025e8ca925ee.root'
+'/store/data/Run2024I/ParkingDoubleMuonLowMass7/MINIAOD/PromptReco-v1/000/386/604/00000/ee22c421-8e3a-4088-a442-6f8327754889.root'
 )
 
 ivars.outputFile='mymultilep.root'
@@ -82,7 +83,7 @@ else:
 process.source = cms.Source("PoolSource",
     skipEvents=cms.untracked.uint32(0),
 	fileNames = cms.untracked.vstring(ivars.inputFiles),
-	#eventsToProcess = cms.untracked.VEventRange("367079:791559619-367079:MAX")
+	eventsToProcess = cms.untracked.VEventRange("386604:912553303")
 )
 
 ### Set basic filter
@@ -289,7 +290,8 @@ FiltersForUpsilon = cms.untracked.vstring("hltVertexmumuFilterUpsilonMuon"),
 #        TriggersForUpsilon = cms.untracked.vstring("HLT_Dimuon0_Upsilon_Muon_v18","HLT_Dimuon0_Upsilon_Muon_v17","HLT_Dimuon0_Upsilon_Muon_v16","H$
 #        FiltersForUpsilon = cms.untracked.vstring("hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuon","hltVertexmumuFilterUpsilonMuo$
  
-        Chi2NDF_Track =  cms.untracked.double(15.0)
+        Chi2NDF_Track =  cms.untracked.double(15.0),
+        OniaDecayVtxProbCut = cms.untracked.double(0.01)
 )
 
 # process.mkcands = cms.EDAnalyzer('Bfinder',
