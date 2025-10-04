@@ -1,7 +1,6 @@
 // system include files
 #include <memory>
 #include <regex>
-#include <cmath>
 #include "TLorentzVector.h"
 // user include files
 #include "../interface/MultiLepPAT.h"
@@ -99,34 +98,10 @@ typedef ROOT::Math::SVector<double, 3> SVector3;
 typedef ROOT::Math::SMatrix<double, 3, 3, ROOT::Math::MatRepSym<double, 3>> SMatrixSym3D;
 
 // constructors and destructor
-MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
-	: hlTriggerResults_(iConfig.getUntrackedParameter<edm::InputTag>("HLTriggerResults", edm::InputTag("TriggerResults::HLT"))),
-	  inputGEN_(iConfig.getUntrackedParameter<edm::InputTag>("inputGEN", edm::InputTag("genParticles"))),
+MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig) : 
 	  magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
-	  theTTBuilderToken_(esConsumes<TransientTrackBuilder, TransientTrackRecord>(edm::ESInputTag("", "TransientTrackBuilder"))),
-	  vtxSample(iConfig.getUntrackedParameter<std::string>("VtxSample", std::string("offlinePrimaryVertices"))),
-	  doMC(iConfig.getUntrackedParameter<bool>("DoMonteCarloTree", false)),
-	  MCParticle(iConfig.getUntrackedParameter<int>("MonteCarloParticleId", 20443)), // 20443 X, 100443 Psi(2S), 9120443  // X from B
-	  doJPsiMassCost(iConfig.getUntrackedParameter<bool>("DoJPsiMassConstraint")),
-	  MuPixHits_c(iConfig.getUntrackedParameter<int>("MinNumMuPixHits", 0)),
-	  MuSiHits_c(iConfig.getUntrackedParameter<int>("MinNumMuSiHits", 0)),
-	  MuNormChi_c(iConfig.getUntrackedParameter<double>("MaxMuNormChi2", 1000)),
-	  MuD0_c(iConfig.getUntrackedParameter<double>("MaxMuD0", 1000)),
-	  JMaxM_c(iConfig.getUntrackedParameter<double>("MaxJPsiMass", 4)),
-	  JMinM_c(iConfig.getUntrackedParameter<double>("MinJPsiMass", 2.2)),
-	  PiSiHits_c(iConfig.getUntrackedParameter<int>("MinNumTrSiHits", 0)),
-	  MuPt_c(iConfig.getUntrackedParameter<double>("MinMuPt", 0)),
-	  JPiPiDR_c(iConfig.getUntrackedParameter<double>("JPsiKKKMaxDR", 1)),
-	  XPiPiDR_c(iConfig.getUntrackedParameter<double>("XCandPiPiMaxDR", 1.1)),
-	  UseXDr_c(iConfig.getUntrackedParameter<bool>("UseXDr", false)),
-	  JPiPiMax_c(iConfig.getUntrackedParameter<double>("JPsiKKKMaxMass", 50)),
-	  JPiPiMin_c(iConfig.getUntrackedParameter<double>("JPsiKKKMinMass", 0)),
-	  resolveAmbiguity_(iConfig.getUntrackedParameter<bool>("resolvePileUpAmbiguity", true)),
-	  addXlessPrimaryVertex_(iConfig.getUntrackedParameter<bool>("addXlessPrimaryVertex", true)),
 	  TriggersForJpsi_(iConfig.getUntrackedParameter<std::vector<std::string>>("TriggersForJpsi")),
 	  FiltersForJpsi_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForJpsi")),
-	  Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
-	  Chi_Track_(iConfig.getUntrackedParameter<double>("Chi2NDF_Track", 10)),
 	  X_One_Tree_(0),
 
 	  runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
@@ -155,83 +130,16 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
  	cs_X_mass_Psi2S(0), cs_X_VtxProb_Psi2S(0), cs_X_Chi2_Psi2S(0), cs_X_ndof_Psi2S(0), cs_X_px_Psi2S(0), cs_X_py_Psi2S(0), cs_X_pz_Psi2S(0), cs_X_massErr_Psi2S(0),
  	cs_X_JPiPi_mass_Psi2S(0), cs_X_JPiPi_VtxProb_Psi2S(0), cs_X_JPiPi_Chi2_Psi2S(0), cs_X_JPiPi_ndof_Psi2S(0), cs_X_JPiPi_px_Psi2S(0), cs_X_JPiPi_py_Psi2S(0), cs_X_JPiPi_pz_Psi2S(0), cs_X_JPiPi_massErr_Psi2S(0),
   	cs_X_mass_X3872(0), cs_X_VtxProb_X3872(0), cs_X_Chi2_X3872(0), cs_X_ndof_X3872(0), cs_X_px_X3872(0), cs_X_py_X3872(0), cs_X_pz_X3872(0), cs_X_massErr_X3872(0),
- 	cs_X_JPiPi_mass_X3872(0), cs_X_JPiPi_VtxProb_X3872(0), cs_X_JPiPi_Chi2_X3872(0), cs_X_JPiPi_ndof_X3872(0), cs_X_JPiPi_px_X3872(0), cs_X_JPiPi_py_X3872(0), cs_X_JPiPi_pz_X3872(0), cs_X_JPiPi_massErr_X3872(0),
-	  // doMC
-	  MC_X_py(0),
-	  MC_X_pz(0),
-	  MC_X_mass(0),
-	  MC_Dau_Jpsipx(0),
-	  MC_Dau_Jpsipy(0),
-	  MC_Dau_Jpsipz(0),
-	  MC_Dau_Jpsimass(0),
-	  MC_Dau_psi2spx(0),
-	  MC_Dau_psi2spy(0),
-	  MC_Dau_psi2spz(0),
-	  MC_Dau_psi2smass(0),
-	  MC_Granddau_mu1px(0),
-	  MC_Granddau_mu1py(0),
-	  MC_Granddau_mu1pz(0),
-	  MC_Granddau_mu2px(0),
-	  MC_Granddau_mu2py(0),
-	  MC_Granddau_mu2pz(0),
-	  MC_Granddau_Jpsipx(0),
-	  MC_Granddau_Jpsipy(0),
-	  MC_Granddau_Jpsipz(0),
-	  MC_Granddau_Jpsimass(0),
-	  MC_Granddau_pi1px(0),
-	  MC_Granddau_pi1py(0),
-	  MC_Granddau_pi1pz(0),
-	  MC_Granddau_pi2px(0),
-	  MC_Granddau_pi2py(0),
-	  MC_Granddau_pi2pz(0),
-	  MC_Grandgranddau_mu3px(0),
-	  MC_Grandgranddau_mu3py(0),
-	  MC_Grandgranddau_mu3pz(0),
-	  MC_Grandgranddau_mu4px(0),
-	  MC_Grandgranddau_mu4py(0),
-	  MC_Grandgranddau_mu4pz(0),
-
-	  MC_X_chg(0),
-	  MC_Dau_JpsipdgId(0),
-	  MC_Dau_psi2spdgId(0),
-	  MC_Granddau_mu1pdgId(0),
-	  MC_Granddau_mu2pdgId(0),
-	  MC_Granddau_JpsipdgId(0),
-	  MC_Granddau_pi1pdgId(0),
-	  MC_Granddau_pi2pdgId(0),
-	  MC_Grandgranddau_mu3pdgId(0),
-	  MC_Grandgranddau_mu4pdgId(0),
-
-	  Match_mu1px(0),
-	  Match_mu1py(0),
-	  Match_mu1pz(0),
-	  Match_mu2px(0),
-	  Match_mu2py(0),
-	  Match_mu2pz(0),
-	  Match_mu3px(0),
-	  Match_mu3py(0),
-	  Match_mu3pz(0),
-	  Match_mu4px(0),
-	  Match_mu4py(0),
-	  Match_mu4pz(0),
-
-	  Match_pi1px(0),
-	  Match_pi1py(0),
-	  Match_pi1pz(0),
-	  Match_pi2px(0),
-	  Match_pi2py(0),
-	  Match_pi2pz(0)
-
-	  // mybxlumicorr(0), myrawbxlumi(0)
+ 	cs_X_JPiPi_mass_X3872(0), cs_X_JPiPi_VtxProb_X3872(0), cs_X_JPiPi_Chi2_X3872(0), cs_X_JPiPi_ndof_X3872(0), cs_X_JPiPi_px_X3872(0), cs_X_JPiPi_py_X3872(0), cs_X_JPiPi_pz_X3872(0), cs_X_JPiPi_massErr_X3872(0)
 {
 	// get token here for four-muon;
 	gtRecordToken_ = consumes<L1GlobalTriggerReadoutRecord>(edm::InputTag("gtDigis"));
 	gtbeamspotToken_ = consumes<BeamSpot>(edm::InputTag("offlineBeamSpot"));
-	gtprimaryVtxToken_ = consumes<VertexCollection>(edm::InputTag("offlineSlimmedPrimaryVertices")); //  MINIAOD
-	gtpatmuonToken_ = consumes<edm::View<pat::Muon>>(edm::InputTag("slimmedMuons"));				 //  MINIAOD
+	gtprimaryVtxToken_ = consumes<VertexCollection>(edm::InputTag("offlineSlimmedPrimaryVertices")); //MINIAOD
+	gtpatmuonToken_ = consumes<edm::View<pat::Muon>>(edm::InputTag("slimmedMuons")); //MINIAOD
 	gttriggerToken_ = consumes<edm::TriggerResults>(edm::InputTag("TriggerResults::HLT"));
-	trackToken_ = consumes<edm::View<pat::PackedCandidate>>(edm::InputTag("packedPFCandidates")); //  MINIAOD
-	genParticlesToken_ = consumes<reco::GenParticleCollection>(edm::InputTag("genParticles"));
+	trackToken_ = consumes<edm::View<pat::PackedCandidate>>(edm::InputTag("packedPFCandidates")); //MINIAOD
+	//genParticlesToken_ = consumes<reco::GenParticleCollection>(edm::InputTag("genParticles"));
 }
 
 MultiLepPAT::~MultiLepPAT()
@@ -252,78 +160,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	const double myMumass = 0.1056583745;
 	const double myMumasserr = myMumass * 1e-6;
 	const double myPimass = 0.13957039;
-	// try
 	const double myPimasserr = myPimass * 1e-6;
-
-	TLorentzVector MC_mu1p4, MC_mu2p4, MC_mu3p4, MC_mu4p4, MC_pi1p4, MC_pi2p4;
-	if (doMC)
-	{
-		edm::Handle<reco::GenParticleCollection> genParticles;
-		iEvent.getByToken(genParticlesToken_, genParticles);
-
-		for (const auto &particle : *(genParticles.product()))
-		{
-			if (std::abs(particle.pdgId()) == 35 && particle.numberOfDaughters() >= 2)
-			{
-				MC_X_px->push_back(particle.px());
-				MC_X_py->push_back(particle.py());
-				MC_X_pz->push_back(particle.pz());
-				MC_X_mass->push_back(particle.mass());
-				MC_X_chg->push_back(particle.charge());
-				// particle.daughter(0)->pdgId() == 443 Jpsi
-				MC_Dau_JpsipdgId->push_back(particle.daughter(0)->pdgId());
-				MC_Dau_Jpsipx->push_back(particle.daughter(0)->px());
-				MC_Dau_Jpsipy->push_back(particle.daughter(0)->py());
-				MC_Dau_Jpsipz->push_back(particle.daughter(0)->pz());
-				MC_Dau_Jpsimass->push_back(particle.daughter(0)->mass());
-				MC_Dau_psi2spdgId->push_back(particle.daughter(1)->pdgId());
-				MC_Dau_psi2spx->push_back(particle.daughter(1)->px());
-				MC_Dau_psi2spy->push_back(particle.daughter(1)->py());
-				MC_Dau_psi2spz->push_back(particle.daughter(1)->pz());
-				MC_Dau_psi2smass->push_back(particle.daughter(1)->mass());
-				// particle.daughter(0)->daughter(1)->pdgId() == -13 mu+
-				MC_Granddau_mu1pdgId->push_back(particle.daughter(0)->daughter(1)->pdgId());
-				MC_Granddau_mu1px->push_back(particle.daughter(0)->daughter(1)->px());
-				MC_Granddau_mu1py->push_back(particle.daughter(0)->daughter(1)->py());
-				MC_Granddau_mu1pz->push_back(particle.daughter(0)->daughter(1)->pz());
-				MC_Granddau_mu2pdgId->push_back(particle.daughter(0)->daughter(0)->pdgId());
-				MC_Granddau_mu2px->push_back(particle.daughter(0)->daughter(0)->px());
-				MC_Granddau_mu2py->push_back(particle.daughter(0)->daughter(0)->py());
-				MC_Granddau_mu2pz->push_back(particle.daughter(0)->daughter(0)->pz());
-				// particle.daughter(1)->daughter(0)->pdgId() == 443 Jpsi from psi2s
-				MC_Granddau_JpsipdgId->push_back(particle.daughter(1)->daughter(0)->pdgId());
-				MC_Granddau_Jpsipx->push_back(particle.daughter(1)->daughter(0)->px());
-				MC_Granddau_Jpsipy->push_back(particle.daughter(1)->daughter(0)->py());
-				MC_Granddau_Jpsipz->push_back(particle.daughter(1)->daughter(0)->pz());
-				MC_Granddau_Jpsimass->push_back(particle.daughter(1)->daughter(0)->mass());
-				// particle.daughter(1)->daughter(1)->pdgId() == 211 pi+ from psi2s
-				MC_Granddau_pi1pdgId->push_back(particle.daughter(1)->daughter(1)->pdgId());
-				MC_Granddau_pi1px->push_back(particle.daughter(1)->daughter(1)->px());
-				MC_Granddau_pi1py->push_back(particle.daughter(1)->daughter(1)->py());
-				MC_Granddau_pi1pz->push_back(particle.daughter(1)->daughter(1)->pz());
-				MC_Granddau_pi2pdgId->push_back(particle.daughter(1)->daughter(2)->pdgId());
-				MC_Granddau_pi2px->push_back(particle.daughter(1)->daughter(2)->px());
-				MC_Granddau_pi2py->push_back(particle.daughter(1)->daughter(2)->py());
-				MC_Granddau_pi2pz->push_back(particle.daughter(1)->daughter(2)->pz());
-				// particle.daughter(1)->daughter(0)->daughter(1)->pdgId() == -13 mu+ from Jpsi from psi2s
-				MC_Grandgranddau_mu3pdgId->push_back(particle.daughter(1)->daughter(0)->daughter(1)->pdgId());
-				MC_Grandgranddau_mu3px->push_back(particle.daughter(1)->daughter(0)->daughter(1)->px());
-				MC_Grandgranddau_mu3py->push_back(particle.daughter(1)->daughter(0)->daughter(1)->py());
-				MC_Grandgranddau_mu3pz->push_back(particle.daughter(1)->daughter(0)->daughter(1)->pz());
-				MC_Grandgranddau_mu4pdgId->push_back(particle.daughter(1)->daughter(0)->daughter(0)->pdgId());
-				MC_Grandgranddau_mu4px->push_back(particle.daughter(1)->daughter(0)->daughter(0)->px());
-				MC_Grandgranddau_mu4py->push_back(particle.daughter(1)->daughter(0)->daughter(0)->py());
-				MC_Grandgranddau_mu4pz->push_back(particle.daughter(1)->daughter(0)->daughter(0)->pz());
-
-				MC_mu1p4.SetXYZM((*MC_Granddau_mu1px)[0], (*MC_Granddau_mu1py)[0], (*MC_Granddau_mu1pz)[0], myMumass);
-				MC_mu2p4.SetXYZM((*MC_Granddau_mu2px)[0], (*MC_Granddau_mu2py)[0], (*MC_Granddau_mu2pz)[0], myMumass);
-				MC_mu3p4.SetXYZM((*MC_Grandgranddau_mu3px)[0], (*MC_Grandgranddau_mu3py)[0], (*MC_Grandgranddau_mu3pz)[0], myMumass);
-				MC_mu4p4.SetXYZM((*MC_Grandgranddau_mu4px)[0], (*MC_Grandgranddau_mu4py)[0], (*MC_Grandgranddau_mu4pz)[0], myMumass);
-				MC_pi1p4.SetXYZM((*MC_Granddau_pi1px)[0], (*MC_Granddau_pi1py)[0], (*MC_Granddau_pi1pz)[0], myPimass);
-				MC_pi2p4.SetXYZM((*MC_Granddau_pi2px)[0], (*MC_Granddau_pi2py)[0], (*MC_Granddau_pi2pz)[0], myPimass);
-			} // for (const auto& particle: *(genParticles.product()))
-		}	  // if ( std::abs(particle.pdgId())  == 35 && particle.numberOfDaughters() ==2 )
-	}		  // doMC
 
 	// get event content information
 
@@ -331,11 +168,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	using namespace edm;
 	using namespace reco;
 	using namespace std;
+
+	const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
+
+	edm::Handle<edm::View<pat::Muon>> thePATMuonHandle; //  MINIAOD
+	iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle);
+	// Skip events with less than 4 muons
+	if (thePATMuonHandle->size() < 4) return;
+
 	runNum = iEvent.id().run();
 	evtNum = iEvent.id().event();
 	lumiNum = iEvent.id().luminosityBlock();
-
-	const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
 
 	edm::Handle<edm::TriggerResults> hltresults;
 	bool Error_t = false;
@@ -360,29 +203,26 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 		{
 			cout << "No trigger name given in TriggerResults of the input " << endl;
 		}
-
 		edm::TriggerNames triggerNames_;
 		triggerNames_ = iEvent.triggerNames(*hltresults);
 
-		for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
-		{
-			JpsiMatchTrig[JpsiTrig] = 0;
-		} // Initiating Jpsi trigger
+		// Loop over all HLT in the event
+		std::cout<<ntrigs<<std::endl;
 		for (int itrig = 0; itrig < ntrigs; itrig++)
 		{
 			string trigName = triggerNames_.triggerName(itrig);
 			int hltflag = (*hltresults)[itrig].accept();
 			TrigRes->push_back(hltflag);
 			TrigNames->push_back(trigName);
+			// Loop over all required Jpsi Triggers
 			for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
 			{
-				std::regex pattern(".*"+TriggersForJpsi_[JpsiTrig]+".*");
+				std::regex pattern(".*" + TriggersForJpsi_[JpsiTrig] + ".*");
 				if (std::regex_search(trigName, pattern))
 				{
-					JpsiMatchTrig[JpsiTrig] = hltflag;
-					bool isDumplicate = false;
 					if(hltflag)
 					{
+						bool isDumplicate = false;
 						for(unsigned int MatchTrig = 0; MatchTrig < MatchJpsiTrigNames->size(); MatchTrig ++)
 						{
 							if(trigName == MatchJpsiTrigNames->at(MatchTrig))
@@ -391,17 +231,16 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 								break;
 							}
 						}
-					}
-					if(!isDumplicate)
-					{
-						MatchJpsiTrigNames->push_back(trigName);
+						if(!isDumplicate)
+						{
+							MatchJpsiTrigNames->push_back(trigName);
+						}
 					}		
 					break;
 				}
 			} // Jpsi Trigger
 		}
 	} // end of HLT trigger info
-
 	edm::Handle<L1GlobalTriggerReadoutRecord> gtRecord;
 	iEvent.getByToken(gtRecordToken_, gtRecord);
 
@@ -431,7 +270,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 	Handle<VertexCollection> recVtxs;
 	iEvent.getByToken(gtprimaryVtxToken_, recVtxs);
-	unsigned int nVtxTrks = 0;
+	//unsigned int nVtxTrks = 0;
 
 	///////////////////////////////////////////////////////////////////////
 	////////////////Check Lines below for Primary Vertex///////////////////
@@ -448,11 +287,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 	if (recVtxs->begin() != recVtxs->end())
 	{
-		if (addXlessPrimaryVertex_ || resolveAmbiguity_)
-		{
-			thePrimaryV = Vertex(*(recVtxs->begin()));
-		}
-		else
+		thePrimaryV = Vertex(*(recVtxs->begin()));
+		/* else // otherwise fined the vtx with the most tracks
 		{
 			for (reco::VertexCollection::const_iterator vtx = recVtxs->begin(); vtx != recVtxs->end(); ++vtx)
 			{
@@ -462,7 +298,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 					thePrimaryV = Vertex(*vtx);
 				}
 			}
-		}
+		}*/
 	}
 	else
 	{
@@ -483,8 +319,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	priVtxYCorrZ->push_back(thePrimaryV.covariance(1,2));
 
 	// Check Moun and Pion Track
-	edm::Handle<edm::View<pat::Muon>> thePATMuonHandle; //  MINIAOD
-	iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle);
 	edm::Handle<edm::View<pat::PackedCandidate>> theTrackHandle; //  MINIAOD
 	iEvent.getByToken(trackToken_, theTrackHandle);				 //  MINIAOD
 	std::vector<edm::View<pat::PackedCandidate>::const_iterator> nonMuonPionTrack;
@@ -494,109 +328,72 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	{
 		nonMuonPionTrack.push_back(iTrackc);
 	}
-
-	if (thePATMuonHandle->size() >= 4)
+	// fill muon track block
+	for (edm::View<pat::Muon>::const_iterator iMuonP = thePATMuonHandle->begin(); //  MINIAOD
+			iMuonP != thePATMuonHandle->end(); ++iMuonP)
 	{
-		// fill muon track block
-		for (edm::View<pat::Muon>::const_iterator iMuonP = thePATMuonHandle->begin(); //  MINIAOD
-			 iMuonP != thePATMuonHandle->end(); ++iMuonP)
+		// push back all muon information
+		++nMu;
+		muIsPatLooseMuon->push_back(iMuonP->isLooseMuon());
+		muIsPatTightMuon->push_back(iMuonP->isTightMuon(thePrimaryV));
+		muIsPatSoftMuon->push_back(iMuonP->isSoftMuon(thePrimaryV));
+		muIsPatMediumMuon->push_back(iMuonP->isMediumMuon());
+
+		muPx->push_back(iMuonP->px());
+		muPy->push_back(iMuonP->py());
+		muPz->push_back(iMuonP->pz());
+			
+		muD0BS->push_back(iMuonP->dB(pat::Muon::BS2D));
+		muD0EBS->push_back(iMuonP->edB(pat::Muon::BS2D));
+		muD3dBS->push_back(iMuonP->dB(pat::Muon::BS3D));
+		muD3dEBS->push_back(iMuonP->edB(pat::Muon::BS3D));
+
+		muD0PV->push_back(iMuonP->dB(pat::Muon::PV2D));
+		muD0EPV->push_back(iMuonP->edB(pat::Muon::PV2D));
+		muDzPV->push_back(iMuonP->dB(pat::Muon::PVDZ));
+		muDzEPV->push_back(iMuonP->edB(pat::Muon::PVDZ));
+
+		muCharge->push_back(iMuonP->charge());
+		muTrackIso->push_back(iMuonP->trackIso());
+			
+		// Find and delet muon Tracks in PionTracks
+		for (std::vector<edm::View<pat::PackedCandidate>::const_iterator>::const_iterator iTrackfID =  nonMuonPionTrack.begin(); // MINIAOD
+		iTrackfID !=  nonMuonPionTrack.end(); ++iTrackfID)
 		{
-			// push back all muon information
-			++nMu;
-			muIsPatLooseMuon->push_back(iMuonP->isLooseMuon());
-			muIsPatTightMuon->push_back(iMuonP->isTightMuon(thePrimaryV));
-			muIsPatSoftMuon->push_back(iMuonP->isSoftMuon(thePrimaryV));
-			muIsPatMediumMuon->push_back(iMuonP->isMediumMuon());
-
-			muPx->push_back(iMuonP->px());
-			muPy->push_back(iMuonP->py());
-			muPz->push_back(iMuonP->pz());
-			
-			muD0BS->push_back(iMuonP->dB(pat::Muon::BS2D));
-			muD0EBS->push_back(iMuonP->edB(pat::Muon::BS2D));
-			muD3dBS->push_back(iMuonP->dB(pat::Muon::BS3D));
-			muD3dEBS->push_back(iMuonP->edB(pat::Muon::BS3D));
-
-			muD0PV->push_back(iMuonP->dB(pat::Muon::PV2D));
-			muD0EPV->push_back(iMuonP->edB(pat::Muon::PV2D));
-			muDzPV->push_back(iMuonP->dB(pat::Muon::PVDZ));
-			muDzEPV->push_back(iMuonP->edB(pat::Muon::PVDZ));
-
-			muCharge->push_back(iMuonP->charge());
-			muTrackIso->push_back(iMuonP->trackIso());
-			
-			// Find and delet muon Tracks in PionTracks
-			for (std::vector<edm::View<pat::PackedCandidate>::const_iterator>::const_iterator iTrackfID =  nonMuonPionTrack.begin(); // MINIAOD
-			iTrackfID !=  nonMuonPionTrack.end(); ++iTrackfID)
+			if(iMuonP->track().isNull())
 			{
-				if(iMuonP->track().isNull())
-				{
-					continue;
-				}
-				edm::View<pat::PackedCandidate>::const_iterator iTrackf = *(iTrackfID);		
-				iMuonP->track()->px();
-				if (iTrackf->px() == iMuonP->track()->px() && iTrackf->py() == iMuonP->track()->py() && iTrackf->pz() == iMuonP->track()->pz())
-				{
-					nonMuonPionTrack.erase(iTrackfID);
-					iTrackfID = iTrackfID - 1;
-				}
+				continue;
 			}
-
-			bool JpsiFilterMatch = false;
-			bool JpsiTriggerMatch = false;
-
-			for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++)
+			edm::View<pat::PackedCandidate>::const_iterator iTrackf = *(iTrackfID);		
+			iMuonP->track()->px();
+			if (iTrackf->px() == iMuonP->track()->px() && iTrackf->py() == iMuonP->track()->py() && iTrackf->pz() == iMuonP->track()->pz())
 			{
-				if(JpsiMatchTrig[JpsiTrig] != 0)
-				{
-					JpsiTriggerMatch = true;
-					break;
-				}
+				nonMuonPionTrack.erase(iTrackfID);
+				iTrackfID = iTrackfID - 1;
 			}
-			for(unsigned int JpsiTrig = 0; JpsiTrig < FiltersForJpsi_.size();JpsiTrig++)
-			{
-				if (JpsiTriggerMatch && hltresults.isValid())
-				{
+		}
 
-					pat::TriggerObjectStandAlone *tempTriggerObject = nullptr;
-					for (auto i = iMuonP->triggerObjectMatches().begin(); i != iMuonP->triggerObjectMatches().end(); ++i)
+		bool JpsiFilterMatch = false;
+
+		for (unsigned int JpsiFilt = 0; JpsiFilt < FiltersForJpsi_.size(); JpsiFilt++)
+		{
+			if (MatchJpsiTrigNames->size() != 0 && hltresults.isValid())
+			{
+				pat::TriggerObjectStandAlone *tempTriggerObject = nullptr;
+				for (auto i = iMuonP->triggerObjectMatches().begin(); i != iMuonP->triggerObjectMatches().end(); i++)
+				{
+					tempTriggerObject = new pat::TriggerObjectStandAlone(*i);
+					tempTriggerObject->unpackFilterLabels(iEvent, *hltresults);
+					if(tempTriggerObject->hasFilterLabel(FiltersForJpsi_[JpsiFilt]))
 					{
-						tempTriggerObject = new pat::TriggerObjectStandAlone(*i);
-						tempTriggerObject->unpackFilterLabels(iEvent, *hltresults);
-						if(tempTriggerObject->hasFilterLabel(FiltersForJpsi_[JpsiTrig]))
-						{
-							JpsiFilterMatch = true;
-						}
-						delete tempTriggerObject;
+						JpsiFilterMatch = true;
 					}
+					delete tempTriggerObject;
 				}
 			}
-			muJpsiFilterRes->push_back(JpsiFilterMatch);
 		}
-	} // if two muons
-
-	if (doMC)
-	{
-		// pion loop
-		for (edm::View<pat::PackedCandidate>::const_iterator iTrack = theTrackHandle->begin(); // MINIAOD
-			 iTrack != theTrackHandle->end(); ++iTrack)
-		{
-			TLorentzVector RECO_pip4;
-			RECO_pip4.SetXYZM(iTrack->px(), iTrack->py(), iTrack->pz(), myPimass);
-			if (fabs(MC_pi1p4.Pt() - RECO_pip4.Pt()) < 0.08 * MC_pi1p4.Pt() && MC_pi1p4.DeltaR(RECO_pip4) < 0.1)
-			{
-				Match_pi1px->push_back(RECO_pip4.Px());
-				Match_pi1py->push_back(RECO_pip4.Py());
-				Match_pi1pz->push_back(RECO_pip4.Pz());
-			}
-			if ((fabs(MC_pi2p4.Pt() - RECO_pip4.Pt()) < 0.08 * MC_pi2p4.Pt() && MC_pi2p4.DeltaR(RECO_pip4) < 0.1))
-			{
-				Match_pi2px->push_back(RECO_pip4.Px());
-				Match_pi2py->push_back(RECO_pip4.Py());
-				Match_pi2pz->push_back(RECO_pip4.Pz());
-			}
-		}
-	} // if(doMC)
+		if(MatchJpsiTrigNames->size()) muJpsiFilterRes->push_back(JpsiFilterMatch);
+	}
 
 	// It takes a lot less memory out of the loop
 	KinematicConstraint *Jpsi_cs = new MassKinematicConstraint(myJmass, myJmasserr);
@@ -607,24 +404,38 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 	double pionDRcut = 0.7;
 	double vtxprobprecut = 1.0e-7;
 
+	if(thePATMuonHandle->size() < 4) goto CLEAR; // if two muons
 	// get the four moun fit, but first also fit dimuon
-	if (thePATMuonHandle->size() < 4) return;
 	//  get X and MyFourMuon cands
 	for (edm::View<pat::Muon>::const_iterator iMuon1 = thePATMuonHandle->begin(); // MINIAOD
 		 iMuon1 != thePATMuonHandle->end(); ++iMuon1)
 	{
 		TrackRef muTrack1 = iMuon1->track();
-		if (muTrack1.isNull()) continue;
+		if (muTrack1.isNull())
+		{
+			continue;
+		}
+
+		reco::Track recoMu1 = *iMuon1->track();
+
 		// next check for mu2
 		for (edm::View<pat::Muon>::const_iterator iMuon2 = iMuon1 + 1; // MINIAOD
 			 iMuon2 != thePATMuonHandle->end(); ++iMuon2)
 		{
 			TrackRef muTrack2 = iMuon2->track();
-			if (muTrack2.isNull()) continue;
-			if (!(std::isfinite(iMuon1->p4().pt()) && std::isfinite(iMuon2->p4().pt()) && std::isfinite(iMuon1->p4().eta()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iMuon1->p4().phi()) && std::isfinite(iMuon2->p4().phi()))) continue;
-			if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() && (iMuon1->p4() + iMuon2->p4()).mass() < 4.)) continue;
-			if ((iMuon1->charge() + iMuon2->charge()) != 0) continue;
+			if (muTrack2.isNull())
+			{
+				continue;
+			}
 
+			if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() && (iMuon1->p4() + iMuon2->p4()).mass() < 4.))
+			{
+				continue;
+			}
+			if ((iMuon1->charge() + iMuon2->charge()) != 0)
+			{
+				continue;
+			}
 			TransientTrack muon1TT(muTrack1, &(bFieldHandle)); // MINIAOD
 			TransientTrack muon2TT(muTrack2, &(bFieldHandle)); // MINIAOD
 			KinematicParticleFactoryFromTransientTrack pmumuFactory;
@@ -649,14 +460,23 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 				Error_t = true;
 				std::cout<<"error at Jpsi1noMC"<<std::endl;
 			}
-			if (Error_t || !Jpsi1VertexFitTree->isValid()) continue;
+			if (Error_t || !Jpsi1VertexFitTree->isValid())
+			{
+				continue;
+			}
 			Jpsi1VertexFitTree->movePointerToTheTop();
 			RefCountedKinematicParticle Jpsi1_vFit_noMC = Jpsi1VertexFitTree->currentParticle();
 			RefCountedKinematicVertex Jpsi1_vFit_vertex_noMC = Jpsi1VertexFitTree->currentDecayVertex();
 			KinematicParameters mymumupara = Jpsi1_vFit_noMC->currentState().kinematicParameters();
 			double Jpsi1_vtxprob = ChiSquaredProbability((double)(Jpsi1_vFit_vertex_noMC->chiSquared()), (double)(Jpsi1_vFit_vertex_noMC->degreesOfFreedom()));
-			if (!(std::isfinite(Jpsi1_vFit_noMC->currentState().mass()) && Jpsi1_vtxprob)) continue;
-			if (Jpsi1_vFit_noMC->currentState().mass() > 3.4 || Jpsi1_vFit_noMC->currentState().mass() < 2.8 || Jpsi1_vtxprob < vtxprobprecut) continue;
+			if (Jpsi1_vFit_noMC->currentState().mass() > 3.4 || Jpsi1_vFit_noMC->currentState().mass() < 2.8)
+			{
+				continue;
+			}
+			if (Jpsi1_vtxprob < vtxprobprecut)
+			{
+				continue;
+			}
 
 			// mass constrain for Jpsi1 from psi2s:
 			bool flag_jpsi1 = true;
@@ -690,22 +510,45 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			P4_mu1.SetPtEtaPhiM(iMuon1->track()->pt(), iMuon1->track()->eta(), iMuon1->track()->phi(), myMumass);
 			TLorentzVector P4_mu2;
 			P4_mu2.SetPtEtaPhiM(iMuon2->track()->pt(), iMuon2->track()->eta(), iMuon2->track()->phi(), myMumass);
-			// mu3mu4
+			// mu3mu4(X6900->Jpsi)
 			for (edm::View<pat::Muon>::const_iterator iMuon3 = thePATMuonHandle->begin(); // MINIAOD
 				 iMuon3 != thePATMuonHandle->end(); ++iMuon3)
 			{
-				if(iMuon3 == iMuon1 || iMuon3 == iMuon2) continue;
+				if(iMuon3 == iMuon1 || iMuon3 == iMuon2)
+				{
+					continue;
+				}
 				TrackRef muTrack3 = iMuon3->track();
-				if (muTrack3.isNull()) continue;
+				if (muTrack3.isNull())
+				{
+					continue;
+				}
+
+				reco::Track recoMu3 = *iMuon3->track();
 				for (edm::View<pat::Muon>::const_iterator iMuon4 = iMuon3 + 1; // MINIAOD
 					 iMuon4 != thePATMuonHandle->end(); ++iMuon4)
 				{
-					if(iMuon4 == iMuon1 || iMuon4 == iMuon2) continue;
+					if(iMuon4 == iMuon1 || iMuon4 == iMuon2)
+                               		{
+                                        	continue;
+                                	}
 					TrackRef muTrack4 = iMuon4->track();
-					if (muTrack4.isNull()) continue;
-					if (!(std::isfinite(iMuon3->p4().pt()) && std::isfinite(iMuon4->p4().pt()) && std::isfinite(iMuon3->p4().eta()) && std::isfinite(iMuon4->p4().eta()) && std::isfinite(iMuon3->p4().phi()) && std::isfinite(iMuon4->p4().phi()))) continue;
-					if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() && (iMuon3->p4() + iMuon4->p4()).mass() < 4.5)) continue;
-					if ((iMuon3->charge() + iMuon4->charge()) != 0) continue;
+					if (muTrack4.isNull())
+					{
+						continue;
+					}
+
+					reco::Track recoMu4 = *iMuon4->track(); // MINIAOD
+
+					if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() && (iMuon3->p4() + iMuon4->p4()).mass() < 4.5))
+					{
+						continue;
+					}
+					if ((iMuon3->charge() + iMuon4->charge()) != 0)
+					{
+						continue;
+					}
+
 					TransientTrack muon3TT(muTrack3, &(bFieldHandle)); // MINIAOD
 					TransientTrack muon4TT(muTrack4, &(bFieldHandle)); // MINIAOD
 					KinematicParticleFactoryFromTransientTrack pmumuFactory34;
@@ -727,14 +570,23 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 						Error_t = true;
 						std::cout<<"error at Jpsi2noMC"<<std::endl;
 					}
-					if (Error_t || !Jpsi2VertexFitTree->isValid()) continue;
+					if (Error_t || !Jpsi2VertexFitTree->isValid())
+					{
+							continue;
+					}
 					Jpsi2VertexFitTree->movePointerToTheTop();
 					RefCountedKinematicParticle Jpsi2_vFit_noMC = Jpsi2VertexFitTree->currentParticle();
 					RefCountedKinematicVertex Jpsi2_vFit_vertex_noMC = Jpsi2VertexFitTree->currentDecayVertex();
 					KinematicParameters mymumupara2 = Jpsi2_vFit_noMC->currentState().kinematicParameters();
 					double Jpsi2_vtxprob = ChiSquaredProbability((double)(Jpsi2_vFit_vertex_noMC->chiSquared()), (double)(Jpsi2_vFit_vertex_noMC->degreesOfFreedom()));
-					if (!(std::isfinite(Jpsi2_vFit_noMC->currentState().mass()) && Jpsi2_vtxprob)) continue;
-					if (Jpsi2_vFit_noMC->currentState().mass() > 3.4 || Jpsi2_vFit_noMC->currentState().mass() < 2.8 || Jpsi2_vtxprob < vtxprobprecut) continue;
+					if (Jpsi2_vFit_noMC->currentState().mass() > 3.4 || Jpsi2_vFit_noMC->currentState().mass() < 2.8)
+					{
+						continue;
+					} // change 4.0 to 3.4 in 1208
+					if (Jpsi2_vtxprob < vtxprobprecut)
+					{
+						continue;
+					}
 
 					// mass constrain for Jpsi from X6900:
 					KinematicParticleFitter mu34_fitter_cs;	
@@ -767,28 +619,46 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 						 iTrack1ID != nonMuonPionTrack.end(); ++iTrack1ID)
 					{
 						edm::View<pat::PackedCandidate>::const_iterator iTrack1 = *(iTrack1ID);
-
-						if (!iTrack1->hasTrackDetails() || iTrack1->charge() == 0) continue;
-						if (!(std::isfinite(iTrack1->p4().pt()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iTrack1->p4().phi()))) continue;
-						if (iTrack1->pt() < pionptcut) continue;
+						if (iTrack1->pt() < pionptcut)
+						{
+							continue;
+						}
 						for (std::vector<edm::View<pat::PackedCandidate>::const_iterator>::const_iterator iTrack2ID = iTrack1ID + 1; // MINIAOD
 							 iTrack2ID != nonMuonPionTrack.end(); ++iTrack2ID)
 						{
 							edm::View<pat::PackedCandidate>::const_iterator iTrack2 = *(iTrack2ID);
+							if (iTrack2->pt() < pionptcut)
+							{
+								continue;
+							}
+							if ((iTrack1->charge() + iTrack2->charge()) != 0)
+								continue;
 
-							if (!iTrack2->hasTrackDetails() || iTrack2->charge() == 0) continue;
-							if (!(std::isfinite(iTrack2->p4().pt()) && std::isfinite(iMuon2->p4().eta()) && std::isfinite(iTrack2->p4().phi()))) continue;
-							if (iTrack2->pt() < pionptcut) continue;
-							if ((iTrack1->charge() + iTrack2->charge()) != 0) continue;
+							// MINIAOD begin
+							if (!iTrack1->hasTrackDetails() || iTrack1->charge() == 0)
+							{
+								continue;
+							}
+							if (!iTrack2->hasTrackDetails() || iTrack2->charge() == 0)
+							{
+								continue;
+							}
+							// MINIAOD end
+
 							TLorentzVector P4_Track1, P4_Track2, P4_Jpsipipi;
 							P4_Track1.SetPtEtaPhiM(iTrack1->pt(), iTrack1->eta(), iTrack1->phi(), myPimass);
 							P4_Track2.SetPtEtaPhiM(iTrack2->pt(), iTrack2->eta(), iTrack2->phi(), myPimass);
 							P4_Jpsipipi = P4_mu1 + P4_mu2 + P4_Track1 + P4_Track2;
 
-							if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut) continue;
-							if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut) continue;
-							// TransientTrack trackTT1(*iTrack1, &(bFieldHandle));
-							// TransientTrack trackTT2(*iTrack2, &(bFieldHandle));
+							if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut)
+							{
+								continue;
+							}
+							if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut)
+							{
+								continue;
+							}
+
 							TransientTrack trackTT1(*(iTrack1->bestTrack()), &(bFieldHandle)); // MINIAOD
 							TransientTrack trackTT2(*(iTrack2->bestTrack()), &(bFieldHandle)); // MINIAOD
 							KinematicParticleFactoryFromTransientTrack JPiPiFactory;
@@ -828,8 +698,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 							RefCountedKinematicVertex JPiPi_vFit_vertex_noMC = JPiPiVertexFitTree->currentDecayVertex();
 
 							double JPiPi_vtxprob = ChiSquaredProbability((double)(JPiPi_vFit_vertex_noMC->chiSquared()), (double)(JPiPi_vFit_vertex_noMC->degreesOfFreedom()));
-							if (!(std::isfinite(JPiPi_vFit_noMC->currentState().mass()) && std::isfinite(JPiPi_vtxprob))) continue;
-							if (JPiPi_vFit_noMC->currentState().mass() > 4.5 || JPiPi_vtxprob < vtxprobprecut) continue;
+							if (JPiPi_vFit_noMC->currentState().mass() > 4.5)
+							{
+								continue;
+							}
+							if (JPiPi_vtxprob < vtxprobprecut)
+							{
+								continue;
+							}
 
 							// fit the 6 track together to a vertex
 							vector<RefCountedKinematicParticle> X_Particles;
@@ -872,6 +748,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 
 							X_mass->push_back(X_vFit_noMC->currentState().mass());
 							X_VtxProb->push_back(X_vtxprob);
+							std::cout<<"push"<<std::endl;
 							X_Chi2->push_back((double)(X_vFit_vertex_noMC->chiSquared()));
 							X_ndof->push_back((double)(X_vFit_vertex_noMC->degreesOfFreedom()));
 
@@ -1334,83 +1211,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 			}				  // mu3_loop
 		}					  // for (std::vector < pat::Muon >::const_iterator iMuon2 = iMuon1 + 1;
 	}						  // for (std::vector < pat::Muon >::const_iterator iMuon1 = thePATMuonHandle->begin();
-	if (X_VtxProb->size() > 0 || doMC)
+	if (X_VtxProb->size() > 0)
 	{
+		std::cout <<"fill"<<std::endl;
 		X_One_Tree_->Fill();
 	}
-	if (Debug_)
-	{
-	}
 
-	if (doMC)
-	{
-		MC_X_px->clear();
-		MC_X_py->clear();
-		MC_X_pz->clear();
-		MC_X_mass->clear();
-		MC_X_chg->clear();
-		MC_Dau_JpsipdgId->clear();
-		MC_Dau_Jpsipx->clear();
-		MC_Dau_Jpsipy->clear();
-		MC_Dau_Jpsipz->clear();
-		MC_Dau_Jpsimass->clear();
-		MC_Dau_psi2spdgId->clear();
-		MC_Dau_psi2spx->clear();
-		MC_Dau_psi2spy->clear();
-		MC_Dau_psi2spz->clear();
-		MC_Dau_psi2smass->clear();
-		MC_Granddau_mu1pdgId->clear();
-		MC_Granddau_mu1px->clear();
-		MC_Granddau_mu1py->clear();
-		MC_Granddau_mu1pz->clear();
-		MC_Granddau_mu2pdgId->clear();
-		MC_Granddau_mu2px->clear();
-		MC_Granddau_mu2py->clear();
-		MC_Granddau_mu2pz->clear();
-		MC_Granddau_JpsipdgId->clear();
-		MC_Granddau_Jpsipx->clear();
-		MC_Granddau_Jpsipy->clear();
-		MC_Granddau_Jpsipz->clear();
-		MC_Granddau_Jpsimass->clear();
-		MC_Granddau_pi1pdgId->clear();
-		MC_Granddau_pi1px->clear();
-		MC_Granddau_pi1py->clear();
-		MC_Granddau_pi1pz->clear();
-		MC_Granddau_pi2pdgId->clear();
-		MC_Granddau_pi2px->clear();
-		MC_Granddau_pi2py->clear();
-		MC_Granddau_pi2pz->clear();
-		MC_Grandgranddau_mu3pdgId->clear();
-		MC_Grandgranddau_mu3px->clear();
-		MC_Grandgranddau_mu3py->clear();
-		MC_Grandgranddau_mu3pz->clear();
-		MC_Grandgranddau_mu4pdgId->clear();
-		MC_Grandgranddau_mu4px->clear();
-		MC_Grandgranddau_mu4py->clear();
-		MC_Grandgranddau_mu4pz->clear();
-
-		Match_mu1px->clear();
-		Match_mu1py->clear();
-		Match_mu1pz->clear();
-		Match_mu2px->clear();
-		Match_mu2py->clear();
-		Match_mu2pz->clear();
-		Match_mu3px->clear();
-		Match_mu3py->clear();
-		Match_mu3pz->clear();
-		Match_mu4px->clear();
-		Match_mu4py->clear();
-		Match_mu4pz->clear();
-
-		Match_pi1px->clear();
-		Match_pi1py->clear();
-		Match_pi1pz->clear();
-		Match_pi2px->clear();
-		Match_pi2py->clear();
-		Match_pi2pz->clear();
-	}
-
-	TrigRes->clear();
+	CLEAR:TrigRes->clear();
 	TrigNames->clear();
 	L1TrigRes->clear();
 	MatchJpsiTrigNames->clear();
@@ -1557,12 +1364,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 } // analyze
 // 
 // ------------ method called once each job just before starting event loop  ------------
-void MultiLepPAT::beginRun(edm::Run const &iRun, edm::EventSetup const &iSetup)
-{
-	// bool changed = true;
-	// proccessName_="HLT";
-	// hltConfig_.init(iRun,iSetup,proccessName_,changed);
-}
+void MultiLepPAT::beginRun(edm::Run const &iRun, edm::EventSetup const &iSetup) {}
 
 void MultiLepPAT::beginJob()
 {
@@ -1717,72 +1519,6 @@ void MultiLepPAT::beginJob()
 	X_One_Tree_->Branch("cs_X_JPiPi_py_X3872", &cs_X_JPiPi_py_X3872);
 	X_One_Tree_->Branch("cs_X_JPiPi_pz_X3872", &cs_X_JPiPi_pz_X3872);
 	X_One_Tree_->Branch("cs_X_JPiPi_massErr_X3872", &cs_X_JPiPi_massErr_X3872);
-	if (doMC)
-	{
-		X_One_Tree_->Branch("MC_X_px", &MC_X_px);
-		X_One_Tree_->Branch("MC_X_py", &MC_X_py);
-		X_One_Tree_->Branch("MC_X_pz", &MC_X_pz);
-		X_One_Tree_->Branch("MC_X_mass", &MC_X_mass);
-		X_One_Tree_->Branch("MC_X_chg", &MC_X_chg);
-		X_One_Tree_->Branch("MC_Dau_JpsipdgId", &MC_Dau_JpsipdgId);
-		X_One_Tree_->Branch("MC_Dau_Jpsipx", &MC_Dau_Jpsipx);
-		X_One_Tree_->Branch("MC_Dau_Jpsipy", &MC_Dau_Jpsipy);
-		X_One_Tree_->Branch("MC_Dau_Jpsipz", &MC_Dau_Jpsipz);
-		X_One_Tree_->Branch("MC_Dau_Jpsimass", &MC_Dau_Jpsimass);
-		X_One_Tree_->Branch("MC_Dau_psi2spdgId", &MC_Dau_psi2spdgId);
-		X_One_Tree_->Branch("MC_Dau_psi2spx", &MC_Dau_psi2spx);
-		X_One_Tree_->Branch("MC_Dau_psi2spy", &MC_Dau_psi2spy);
-		X_One_Tree_->Branch("MC_Dau_psi2spz", &MC_Dau_psi2spz);
-		X_One_Tree_->Branch("MC_Dau_psi2smass", &MC_Dau_psi2smass);
-		X_One_Tree_->Branch("MC_Granddau_mu1pdgId", &MC_Granddau_mu1pdgId);
-		X_One_Tree_->Branch("MC_Granddau_mu1px", &MC_Granddau_mu1px);
-		X_One_Tree_->Branch("MC_Granddau_mu1py", &MC_Granddau_mu1py);
-		X_One_Tree_->Branch("MC_Granddau_mu1pz", &MC_Granddau_mu1pz);
-		X_One_Tree_->Branch("MC_Granddau_mu2pdgId", &MC_Granddau_mu2pdgId);
-		X_One_Tree_->Branch("MC_Granddau_mu2px", &MC_Granddau_mu2px);
-		X_One_Tree_->Branch("MC_Granddau_mu2py", &MC_Granddau_mu2py);
-		X_One_Tree_->Branch("MC_Granddau_mu2pz", &MC_Granddau_mu2pz);
-		X_One_Tree_->Branch("MC_Granddau_JpsipdgId", &MC_Granddau_JpsipdgId);
-		X_One_Tree_->Branch("MC_Granddau_Jpsipx", &MC_Granddau_Jpsipx);
-		X_One_Tree_->Branch("MC_Granddau_Jpsipy", &MC_Granddau_Jpsipy);
-		X_One_Tree_->Branch("MC_Granddau_Jpsipz", &MC_Granddau_Jpsipz);
-		X_One_Tree_->Branch("MC_Granddau_Jpsimass", &MC_Granddau_Jpsimass);
-		X_One_Tree_->Branch("MC_Granddau_pi1pdgId", &MC_Granddau_pi1pdgId);
-		X_One_Tree_->Branch("MC_Granddau_pi1px", &MC_Granddau_pi1px);
-		X_One_Tree_->Branch("MC_Granddau_pi1py", &MC_Granddau_pi1py);
-		X_One_Tree_->Branch("MC_Granddau_pi1pz", &MC_Granddau_pi1pz);
-		X_One_Tree_->Branch("MC_Granddau_pi2pdgId", &MC_Granddau_pi2pdgId);
-		X_One_Tree_->Branch("MC_Granddau_pi2px", &MC_Granddau_pi2px);
-		X_One_Tree_->Branch("MC_Granddau_pi2py", &MC_Granddau_pi2py);
-		X_One_Tree_->Branch("MC_Granddau_pi2pz", &MC_Granddau_pi2pz);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu3pdgId", &MC_Grandgranddau_mu3pdgId);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu3px", &MC_Grandgranddau_mu3px);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu3py", &MC_Grandgranddau_mu3py);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu3pz", &MC_Grandgranddau_mu3pz);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu4pdgId", &MC_Grandgranddau_mu4pdgId);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu4px", &MC_Grandgranddau_mu4px);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu4py", &MC_Grandgranddau_mu4py);
-		X_One_Tree_->Branch("MC_Grandgranddau_mu4pz", &MC_Grandgranddau_mu4pz);
-		X_One_Tree_->Branch("Match_mu1px", &Match_mu1px);
-		X_One_Tree_->Branch("Match_mu1py", &Match_mu1py);
-		X_One_Tree_->Branch("Match_mu1pz", &Match_mu1pz);
-		X_One_Tree_->Branch("Match_mu2px", &Match_mu2px);
-		X_One_Tree_->Branch("Match_mu2py", &Match_mu2py);
-		X_One_Tree_->Branch("Match_mu2pz", &Match_mu2pz);
-		X_One_Tree_->Branch("Match_mu3px", &Match_mu3px);
-		X_One_Tree_->Branch("Match_mu3py", &Match_mu3py);
-		X_One_Tree_->Branch("Match_mu3pz", &Match_mu3pz);
-		X_One_Tree_->Branch("Match_mu4px", &Match_mu4px);
-		X_One_Tree_->Branch("Match_mu4py", &Match_mu4py);
-		X_One_Tree_->Branch("Match_mu4pz", &Match_mu4pz);
-
-		X_One_Tree_->Branch("Match_pi1px", &Match_pi1px);
-		X_One_Tree_->Branch("Match_pi1py", &Match_pi1py);
-		X_One_Tree_->Branch("Match_pi1pz", &Match_pi1pz);
-		X_One_Tree_->Branch("Match_pi2px", &Match_pi2px);
-		X_One_Tree_->Branch("Match_pi2py", &Match_pi2py);
-		X_One_Tree_->Branch("Match_pi2pz", &Match_pi2pz);
-	} // if(doMC)
 } // begin Job
 
 // ------------ method called once each job just after ending the event loop  ------------
