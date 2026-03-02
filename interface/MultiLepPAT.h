@@ -188,6 +188,16 @@ private:
                                const vector<RefCountedKinematicParticle>&  arg_Muons,
                                const string&                               arg_Message);
 
+    static bool particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_MuonResults,
+                                const double&                               arg_VtxProbCut);
+    static bool particlesToVtx(const vector<RefCountedKinematicParticle>&  arg_MuonResults,
+                                const string&                               arg_Message,
+                                const double&                               arg_VtxProbCut);
+    static bool particlesToVtx(RefCountedKinematicTree&                    arg_VertexFitTree,
+                                const vector<RefCountedKinematicParticle>&  arg_Muons,
+                                const string&                               arg_Message,
+                                const double&                               arg_VtxProbCut);
+
     static bool extractFitRes(RefCountedKinematicTree&     arg_VtxTree,
                               RefCountedKinematicParticle& res_Part,
                               RefCountedKinematicVertex&   res_Vtx,
@@ -209,6 +219,8 @@ private:
     static double fitResEval(double arg_massDiff_Jpsi_1, double arg_massErr_Jpsi_1,
                              double arg_massDiff_Jpsi_2, double arg_massErr_Jpsi_2,
                              double arg_massDiff_Phi,    double arg_massErr_Phi   );
+    
+    void printKinematics(const RefCountedKinematicParticle& particle, const std::string& name);
 
     
     // Member data
@@ -229,6 +241,8 @@ private:
     int     MuSiHits_c;
     double  MuNormChi_c;
     double  MuD0_c;
+    double  MuMatchTrkMomentumAbsDiffThr_c;
+    double  MuMatchTrkMomentumRelDiffThr_c;
 
     // Limits for secondary particles [Annotation by Eric Wang, 20240626]
     
@@ -265,6 +279,8 @@ private:
     int  MatchingTriggerResult[50];
     bool Debug_;
     double Chi_Track_;
+
+    double OniaDecayVtxProbCut_;
 
     // PDG 2023
 	static constexpr double myJpsiMass = 3.0969,   myJpsiMassErr = 0.00004;
@@ -314,11 +330,12 @@ private:
     // all muons: selection result [Annotation by Eric Wang, 20240626]
     vector<int>         *muIsGoodLooseMuon,         *muIsGoodLooseMuonNew, 
                         *muIsGoodSoftMuonNewIlse,   *muIsGoodSoftMuonNewIlseMod, 
+                        *muIsGlobalMuon, 
                         *muIsGoodTightMuon,         *muIsJpsiTrigMatch,         
                         *muIsUpsTrigMatch,          *munMatchedSeg;
     vector<int>         *muIsJpsiFilterMatch,       *muIsUpsFilterMatch;
     vector<int>         *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
-    
+    vector<int>         *muFromPV,         *muPVAssocQuality;
     //for Maksat trigger match [Annotation by Eric Wang, 20240626]
     vector<int> *muUpsVrtxMatch, *muL3TriggerMatch;
     
@@ -331,8 +348,6 @@ private:
     vector<float>  *mupulldXdZ_pos_ArbST, *mupulldYdZ_pos_ArbST;
     vector<float>  *mupulldXdZ_pos_noArb_any, *mupulldYdZ_pos_noArb_any;
 
-    vector<float> *Jpsi_cand_mass_p4, *Jpsi_cand_mass_fit,
-                   *Ups_cand_mass_p4,  *Ups_cand_mass_fit;
     // Muons from Jpsi and Upsilon.
     vector<float> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx, 
                          *Jpsi_2_mu_1_Idx, *Jpsi_2_mu_2_Idx,
@@ -365,7 +380,9 @@ private:
     vector<float>        *Phi_K_1_px, *Phi_K_1_py, *Phi_K_1_pz,
                          *Phi_K_2_px, *Phi_K_2_py, *Phi_K_2_pz,
                          *Phi_K_1_eta, *Phi_K_1_phi, *Phi_K_1_pt,
-                         *Phi_K_2_eta, *Phi_K_2_phi, *Phi_K_2_pt;  
+                         *Phi_K_2_eta, *Phi_K_2_phi, *Phi_K_2_pt,
+                         *Phi_K_1_fromPV, *Phi_K_2_fromPV,
+                         *Phi_K_1_pvAssocQuality, *Phi_K_2_pvAssocQuality;  
 
     //doMC
     vector<float> 

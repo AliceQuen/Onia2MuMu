@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # run='Run2023'
 # t2=('Cv4' 'Dv2')
 # t4=('Cv2' 'Cv3')
@@ -20,7 +21,7 @@
 # do
 #         rm -r "./crab_crab3_4_Run2023${i}_MINIAOD"
 #         crab --quiet submit "crab3_4_Run2023${i}_MINIAOD.py"
-# done  
+# done
 
 for pyfile in *_MINIAOD.py
 do
