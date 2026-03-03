@@ -17,7 +17,7 @@ config.Data.inputDataset = 'DataSet'
 config.Data.inputDBS = 'global'
 config.Data.unitsPerJob = 20
 config.Data.splitting = 'LumiBased'
-config.Data.lumiMask = '/eos/user/c/cmsdqm/www/CAF/certification/Collisions25/Cert_Collisions2025_391658_398903_Golden.json '
+config.Data.lumiMask = '/eos/user/c/cmsdqm/www/CAF/certification/Collisions25/Cert_Collisions2025_391658_398903_Golden.json'
 config.Data.outLFNDirBase = '/store/user/chiw/JpsiJpsiPhi/rootNtuple/' #LFN=Logical File Name
 config.Data.outputDatasetTag = 'TaskTag'
 
