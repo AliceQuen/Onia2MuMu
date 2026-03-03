@@ -2,11 +2,12 @@
 # A script to generate crab config file automaticly
 
 # project config
-dataList='RundataList_2023.txt'
-template='crab3_template_2023.py'
-fileName='crab3_noPriFit'
-scriptName='submit_2023.sh'
-resubmitScriptName='resubmit_2023.sh'
+dataList='RundataList_2025.txt'
+template='crab3_template_2025.py'
+fileName='crab3_noTriVtx'
+scriptName='submit_2025.sh'
+resubmitScriptName='resubmit_2025.sh'
+useX509Proxy=0
 
 # Allow parsing from user input in command line
 # Use -l to specify the data list file
@@ -15,7 +16,7 @@ resubmitScriptName='resubmit_2023.sh'
 # Use -s to specify the output script file for mass submission
 # Use -r to specify the resubmit script file name
 
-while getopts "l:t:n:s:r:" opt; do
+while getopts "l:t:n:s:r:p" opt; do
   case $opt in
     l)
       dataList=$OPTARG
@@ -31,6 +32,9 @@ while getopts "l:t:n:s:r:" opt; do
       ;;
     r)
       resubmitScriptName=$OPTARG
+      ;;
+    p)
+      useX509Proxy=1
       ;;
     \?)
       echo "Invalid option: -$OPTARG" >&2
@@ -59,10 +63,17 @@ do
     #mv ${fileName}_${tag}.py result/
     
     # Produce a shell script to submit the crab jobs
-    echo "crab submit -c ${fileName}_${tag}.py" >> ${scriptName}
+    # echo "crab submit -c ${fileName}_${tag}.py" >> ${scriptName}
+    if [[ $useX509Proxy -eq 1 ]]; then
+      echo "crab submit -c ${fileName}_${tag}.py --proxy \${X509_USER_PROXY}" >> ${scriptName};
+      echo "crab resubmit -d crab_${fileName}_${tag}  --proxy \${X509_USER_PROXY}" >> ${resubmitScriptName}
+    else
+      echo "crab submit -c ${fileName}_${tag}.py" >> ${scriptName};
+      echo "crab resubmit -d crab_${fileName}_${tag}" >> ${resubmitScriptName}
+    fi
     
     # Produce a shell script to resubmit failed crab jobs
-    echo "crab resubmit -d crab_${fileName}_${tag}" >> ${resubmitScriptName}
+    # echo "crab resubmit -d crab_${fileName}_${tag}" >> ${resubmitScriptName}
 done
 
 # Make scripts executable
