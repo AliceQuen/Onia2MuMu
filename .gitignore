@@ -1,5 +1,7 @@
 test/crabData/crab_*
 test/crabData/crab3_*_MINIAOD*
+test/crabData/resubmit_2025.sh
+test/crabData/submit_2025.sh
 *.log
 *.root
 *.out
