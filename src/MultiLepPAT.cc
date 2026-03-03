@@ -789,15 +789,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         if (muTrack1.isNull()){
             continue;
         }
-		if (iMuon1->pt() > 3.5) {
-			if (std::abs(iMuon1->eta()) >= 1.2) {
-				continue;
-			}
-		}else if (iMuon1->pt() > 2.5) {
-			if (std::abs(iMuon1->eta()) >= 2.4) {
-				continue;
-			}
-		}else{
+		else if (std::abs(iMuon1->eta()) > 2.4){
+			continue;
+		}
+		else if (iMuon1->pt() <= 2.5){
+			continue;
+		}
+		else if (std::abs(iMuon1->eta()) <= 1.2 && iMuon1->pt() <= 3.5){
 			continue;
 		}
         // Build transient track and store.
@@ -812,17 +810,15 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             // Build transient track and store.
             TrackRef muTrack2 = iMuon2->track();
             if (muTrack2.isNull()){
-                continue;
-            }
-			if (iMuon2->pt() > 3.5) {
-				if (std::abs(iMuon2->eta()) >= 1.2) {
-					continue;
-				}
-			}else if (iMuon2->pt() > 2.5) {
-				if (std::abs(iMuon2->eta()) >= 2.4) {
-					continue;
-				}
-			}else{
+				continue;
+			}
+			else if (std::abs(iMuon2->eta()) > 2.4){
+				continue;
+			}
+			else if (iMuon2->pt() <= 2.5){
+				continue;
+			}
+			else if (std::abs(iMuon2->eta()) <= 1.2 && iMuon2->pt() <= 3.5){
 				continue;
 			}
             TransientTrack transTrk2(muTrack2, &(bFieldHandle));
