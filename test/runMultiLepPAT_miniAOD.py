@@ -36,7 +36,7 @@ process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
 from Configuration.AlCa.GlobalTag import GlobalTag
 
 ### Set global tag
-process.GlobalTag = GlobalTag(process.GlobalTag, '106X_dataRun2_v37', '') 
+process.GlobalTag = GlobalTag(process.GlobalTag, 'GLOBAL_TAG', '') 
 ### PoolSource will be ignored when running crab
 process.source = cms.Source("PoolSource",
     skipEvents=cms.untracked.uint32(0),
@@ -45,8 +45,8 @@ process.source = cms.Source("PoolSource",
 
 ### Set MultiLepPAT option
 process.mkcands = cms.EDAnalyzer('MultiLepPAT',
-        TriggersForJpsi = cms.untracked.vstring("HLT_Dimuon0_Jpsi3p5_Muon2"),
-        FiltersForJpsi = cms.untracked.vstring("hltVertexmumuFilterJpsiMuon3p5"),
+        TriggersForJpsi = cms.untracked.vstring(HLT),
+        FiltersForJpsi = cms.untracked.vstring(FILTER),
 )
 
 ### Set output
