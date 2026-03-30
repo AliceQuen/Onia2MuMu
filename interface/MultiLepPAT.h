@@ -565,6 +565,7 @@ private:
     vector<int>   *MC_GenPart_pdgId;
     vector<int>   *MC_GenPart_status;
     vector<int>   *MC_GenPart_motherPdgId;
+    vector<int>   *MC_GenPart_motherGenIdx;
     vector<int>   *MC_GenPart_handleIndex;
     vector<float> *MC_GenPart_px, *MC_GenPart_py, *MC_GenPart_pz, *MC_GenPart_mass;
     vector<float> *MC_GenPart_pt, *MC_GenPart_eta, *MC_GenPart_phi;

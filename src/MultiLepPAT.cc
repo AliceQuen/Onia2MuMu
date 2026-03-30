@@ -143,6 +143,27 @@ double recoGenMuonChi2(const pat::Muon &muon, const reco::GenParticle &gen) {
          std::pow(dphi / sigmaPhi, 2);
 }
 
+int resolveStoredGenIdx(
+    const reco::Candidate *cand,
+    const std::unordered_map<const reco::Candidate *, unsigned int> &addressToHandleIndex,
+    const std::unordered_map<unsigned int, int> &handleToNtupleIndex) {
+  if (cand == nullptr) {
+    return -1;
+  }
+
+  const auto handleIt = addressToHandleIndex.find(cand);
+  if (handleIt == addressToHandleIndex.end()) {
+    return -1;
+  }
+
+  const auto ntupleIt = handleToNtupleIndex.find(handleIt->second);
+  if (ntupleIt == handleToNtupleIndex.end()) {
+    return -1;
+  }
+
+  return ntupleIt->second;
+}
+
 }  // namespace
 
 /*****************************************************************************
@@ -314,6 +335,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Ups_pxErr(nullptr), Ups_pyErr(nullptr), Ups_pzErr(nullptr), Ups_ptErr(nullptr),
       // MC gen-level (new)
       MC_GenPart_pdgId(nullptr), MC_GenPart_status(nullptr), MC_GenPart_motherPdgId(nullptr),
+      MC_GenPart_motherGenIdx(nullptr),
       MC_GenPart_handleIndex(nullptr),
       MC_GenPart_px(nullptr), MC_GenPart_py(nullptr), MC_GenPart_pz(nullptr), MC_GenPart_mass(nullptr),
       MC_GenPart_pt(nullptr), MC_GenPart_eta(nullptr), MC_GenPart_phi(nullptr),
@@ -482,6 +504,12 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
     // Flat gen-particle storage: store all relevant particles
     // (J/psi=443, Upsilon=553, phi=333, mu=13, K=321)
     static const std::unordered_set<int> interestingPdgIds = {443, 553, 333, 13, 321};
+    std::unordered_map<const reco::Candidate *, unsigned int> addressToHandleIndex;
+    std::vector<unsigned int> storedHandleIndices;
+
+    for (unsigned int i = 0; i < genParticles->size(); ++i) {
+        addressToHandleIndex[&genParticles->at(i)] = i;
+    }
 
     for (size_t i = 0; i < genParticles->size(); ++i) {
         const auto &particle = genParticles->at(i);
@@ -512,8 +540,21 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
                 MC_GenPart_eta->push_back(particle.eta());
                 MC_GenPart_phi->push_back(particle.phi());
                 handleToNtupleIndex_[i] = ntupleIndex;
+                storedHandleIndices.push_back(i);
             }
         }
+    }
+
+    for (unsigned int handleIndex : storedHandleIndices) {
+        const auto &particle = genParticles->at(handleIndex);
+        int motherGenIdx = -1;
+
+        if (particle.numberOfMothers() > 0) {
+            motherGenIdx = resolveStoredGenIdx(
+                particle.mother(0), addressToHandleIndex, handleToNtupleIndex_);
+        }
+
+        MC_GenPart_motherGenIdx->push_back(motherGenIdx);
     }
 }
 
@@ -1576,6 +1617,7 @@ void MultiLepPAT::clearEventData()
     if (doMC) {
         MC_GenPart_pdgId->clear(); MC_GenPart_status->clear();
         MC_GenPart_motherPdgId->clear();
+        MC_GenPart_motherGenIdx->clear();
         MC_GenPart_handleIndex->clear();
         MC_GenPart_px->clear(); MC_GenPart_py->clear();
         MC_GenPart_pz->clear(); MC_GenPart_mass->clear();
@@ -2173,6 +2215,7 @@ void MultiLepPAT::beginJob()
         X_One_Tree_->Branch("MC_GenPart_pdgId", &MC_GenPart_pdgId);
         X_One_Tree_->Branch("MC_GenPart_status", &MC_GenPart_status);
         X_One_Tree_->Branch("MC_GenPart_motherPdgId", &MC_GenPart_motherPdgId);
+        X_One_Tree_->Branch("MC_GenPart_motherGenIdx", &MC_GenPart_motherGenIdx);
         X_One_Tree_->Branch("MC_GenPart_handleIndex", &MC_GenPart_handleIndex);
         X_One_Tree_->Branch("MC_GenPart_px", &MC_GenPart_px);
         X_One_Tree_->Branch("MC_GenPart_py", &MC_GenPart_py);
