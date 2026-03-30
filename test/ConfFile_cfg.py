@@ -235,6 +235,21 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     # ====== Muon matching ======
     MuMatchTrkMomentumRelDiffThr = cms.untracked.double(0.5),
 
+    # ====== Muon-track matching method ======
+    # Method: "first" (default), "leastDiff", "addDz", "sigma"
+    MuTrkMatchMethod = cms.untracked.string("first"),
+    MuTrkMatchDebug = cms.untracked.bool(True),
+    MuTrkMatchDzMax = cms.untracked.double(1.0),
+    MuTrkMatchSigmaThr = cms.untracked.double(5.0),
+
+    # ====== Store all primary vertices and muon quantities ======
+    StoreAllPVs = cms.untracked.bool(True),
+    StoreMuonMomentumErrors = cms.untracked.bool(True),
+    StoreMuonPVAssoc = cms.untracked.bool(True),
+
+    # ====== Final fitted mass window check ======
+    CheckFinalMass = cms.untracked.bool(True),
+
     # ====== Vertex ambiguity ======
     resolvePileUpAmbiguity   = cms.untracked.bool(True),
     addXlessPrimaryVertex    = cms.untracked.bool(True),

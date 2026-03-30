@@ -142,7 +142,26 @@ public:
 
     // Analysis mode enumeration
     enum class AnalysisChannel { JpsiJpsiPhi, JpsiJpsiUps, JpsiUpsPhi };
-  
+
+    // Muon-track matching method enumeration
+    enum class MuTrkMatchMethod {
+        FIRST_PASS_THRESHOLD,  // Current method (default) - first match below threshold
+        LEAST_MOMENTUM_DIFF,   // Best momentum match - minimum (Δp/p)²
+        ADD_DZ_CUT,           // Include dZ position consistency
+        SIGMA_BASED           // Use momentum errors for chi2-based matching
+    };
+
+    // Result structure for muon-track matching
+    struct MuonTrackMatchResult {
+        bool matched;           // Whether a match was found
+        int fromPV;             // fromPV value from packed candidate
+        int pvAssocQuality;     // PV association quality from packed candidate
+        int pdgId;              // PDG ID from packed candidate
+        float relDiff;          // Relative momentum diff (or chi2 for sigma method)
+        float dz;               // dZ difference (for addDz method)
+        int nCandidates;        // Number of candidates considered (for debug)
+    };
+
 private:
     // ======================== Framework methods ========================
     virtual void beginJob() override;
@@ -239,6 +258,27 @@ private:
     
     void printKinematics(const RefCountedKinematicParticle& particle, const std::string& name);
 
+    // ======================== Muon-track matching methods ========================
+    MuonTrackMatchResult matchMuonToTrack_FirstPass(
+        const pat::Muon* muon,
+        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+        double momentumRelDiffThr);
+
+    MuonTrackMatchResult matchMuonToTrack_LeastDiff(
+        const pat::Muon* muon,
+        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks);
+
+    MuonTrackMatchResult matchMuonToTrack_AddDz(
+        const pat::Muon* muon,
+        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+        const reco::Vertex& primaryV,
+        double dzMax);
+
+    MuonTrackMatchResult matchMuonToTrack_Sigma(
+        const pat::Muon* muon,
+        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+        double sigmaThr);
+
     // Store resonance fit results into branches (reduces code duplication)
     void storeResonanceBranches(
         const RefCountedKinematicParticle& fitPart,
@@ -325,7 +365,21 @@ private:
     
     // -- Muon momentum matching thresholds --
     double MuMatchTrkMomentumRelDiffThr_c;
-    
+
+    // -- Muon-track matching method selection --
+    std::string muTrkMatchMethod_;
+    bool muTrkMatchDebug_;
+    double muTrkMatchDzMax_;
+    double muTrkMatchSigmaThr_;
+
+    // -- Store all primary vertices --
+    bool storeAllPVs_;
+    bool storeMuonMomentumErrors_;
+    bool storeMuonPVAssoc_;
+
+    // -- Final fitted mass window check --
+    bool checkFinalMass_;
+
     // -- Trigger info --
     bool resolveAmbiguity_; 
     bool addXlessPrimaryVertex_;
@@ -386,7 +440,20 @@ private:
     vector<float>  *PriVtxXCorrX, *PriVtxXCorrY, *PriVtxXCorrZ;
     vector<double> *PriVtxXCorrEX, *PriVtxXCorrEY, *PriVtxXCorrEZ;
     vector<float>  *PriVtxXCorrC2, *PriVtxXCorrCL;
-    
+
+    // -- All primary vertices (not just selected) --
+    unsigned int nRecVtx;
+    vector<float> *RecVtx_x;
+    vector<float> *RecVtx_y;
+    vector<float> *RecVtx_z;
+    vector<float> *RecVtx_xErr;
+    vector<float> *RecVtx_yErr;
+    vector<float> *RecVtx_zErr;
+    vector<float> *RecVtx_chi2;
+    vector<float> *RecVtx_ndof;
+    vector<float> *RecVtx_vtxProb;
+    vector<int>   *RecVtx_nTracks;
+
     // -- All muons: kinematics --
     unsigned int nMu;
     vector<float> *muPx, *muPy, *muPz;
@@ -408,13 +475,32 @@ private:
     vector<int> *muIsJpsiFilterMatch, *muIsUpsFilterMatch;
     vector<int> *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
     vector<int> *muFromPV, *muPVAssocQuality;
-    
+
+    // -- Muon momentum errors --
+    vector<float> *muPxErr;
+    vector<float> *muPyErr;
+    vector<float> *muPzErr;
+    vector<float> *muPtErr;
+
+    // -- Muon PV association (surplus from sourceCandidatePtr) --
+    vector<int>   *muVertexId;          // Which PV this muon is associated to (from sourceCandidatePtr)
+    vector<float> *muDzAssocPV;         // dZ w.r.t. associated PV
+    vector<float> *muDxyAssocPV;        // dxy w.r.t. associated PV
+    vector<int>   *muFromPVAssocPV;     // fromPV from sourceCandidatePtr
+    vector<int>   *muPdgId;             // PDG ID from sourceCandidatePtr
+
     // -- Muon ID variables --
     vector<float> *muMVAMuonID, *musegmentCompatibility;
     vector<float> *mupulldXdZ_pos_noArb, *mupulldYdZ_pos_noArb;
     vector<float> *mupulldXdZ_pos_ArbDef, *mupulldYdZ_pos_ArbDef;
     vector<float> *mupulldXdZ_pos_ArbST, *mupulldYdZ_pos_ArbST;
     vector<float> *mupulldXdZ_pos_noArb_any, *mupulldYdZ_pos_noArb_any;
+
+    // -- Muon-track matching debug (only if muTrkMatchDebug_) --
+    vector<int>   *muMatch_nCandidates;
+    vector<float> *muMatch_bestRelDiff;
+    vector<float> *muMatch_bestDz;
+    vector<int>   *muMatch_methodUsed;
 
     // -- Resonance candidate indices --
     vector<float> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx;

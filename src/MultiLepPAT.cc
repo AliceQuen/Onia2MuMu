@@ -163,6 +163,17 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       // Muon matching
       MuMatchTrkMomentumRelDiffThr_c(iConfig.getUntrackedParameter<double>(
           "MuMatchTrkMomentumRelDiffThr", 0.5)),
+      // Muon-track matching method selection
+      muTrkMatchMethod_(iConfig.getUntrackedParameter<std::string>("MuTrkMatchMethod", "first")),
+      muTrkMatchDebug_(iConfig.getUntrackedParameter<bool>("MuTrkMatchDebug", false)),
+      muTrkMatchDzMax_(iConfig.getUntrackedParameter<double>("MuTrkMatchDzMax", 1.0)),
+      muTrkMatchSigmaThr_(iConfig.getUntrackedParameter<double>("MuTrkMatchSigmaThr", 5.0)),
+      // Store all primary vertices and muon quantities
+      storeAllPVs_(iConfig.getUntrackedParameter<bool>("StoreAllPVs", true)),
+      storeMuonMomentumErrors_(iConfig.getUntrackedParameter<bool>("StoreMuonMomentumErrors", true)),
+      storeMuonPVAssoc_(iConfig.getUntrackedParameter<bool>("StoreMuonPVAssoc", true)),
+      // Final fitted mass window check
+      checkFinalMass_(iConfig.getUntrackedParameter<bool>("CheckFinalMass", true)),
       // Trigger info
       resolveAmbiguity_(iConfig.getUntrackedParameter<bool>("resolvePileUpAmbiguity", true)),
       addXlessPrimaryVertex_(iConfig.getUntrackedParameter<bool>("addXlessPrimaryVertex", true)),
@@ -178,6 +189,12 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       PriVtxXCorrX(nullptr), PriVtxXCorrY(nullptr), PriVtxXCorrZ(nullptr),
       PriVtxXCorrEX(nullptr), PriVtxXCorrEY(nullptr), PriVtxXCorrEZ(nullptr),
       PriVtxXCorrC2(nullptr), PriVtxXCorrCL(nullptr),
+      // All primary vertices (not just selected)
+      nRecVtx(0),
+      RecVtx_x(nullptr), RecVtx_y(nullptr), RecVtx_z(nullptr),
+      RecVtx_xErr(nullptr), RecVtx_yErr(nullptr), RecVtx_zErr(nullptr),
+      RecVtx_chi2(nullptr), RecVtx_ndof(nullptr), RecVtx_vtxProb(nullptr),
+      RecVtx_nTracks(nullptr),
       nMu(0),
       muPx(nullptr), muPy(nullptr), muPz(nullptr),
       muD0(nullptr), muD0E(nullptr), muDz(nullptr),
@@ -194,11 +211,19 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       muIsPatLooseMuon(nullptr), muIsPatTightMuon(nullptr),
       muIsPatSoftMuon(nullptr), muIsPatMediumMuon(nullptr),
       muFromPV(nullptr), muPVAssocQuality(nullptr),
+      // Muon momentum errors
+      muPxErr(nullptr), muPyErr(nullptr), muPzErr(nullptr), muPtErr(nullptr),
+      // Muon PV association (surplus from sourceCandidatePtr)
+      muVertexId(nullptr), muDzAssocPV(nullptr), muDxyAssocPV(nullptr),
+      muFromPVAssocPV(nullptr), muPdgId(nullptr),
       muMVAMuonID(nullptr), musegmentCompatibility(nullptr),
       mupulldXdZ_pos_noArb(nullptr), mupulldYdZ_pos_noArb(nullptr),
       mupulldXdZ_pos_ArbDef(nullptr), mupulldYdZ_pos_ArbDef(nullptr),
       mupulldXdZ_pos_ArbST(nullptr), mupulldYdZ_pos_ArbST(nullptr),
       mupulldXdZ_pos_noArb_any(nullptr), mupulldYdZ_pos_noArb_any(nullptr),
+      // Muon-track matching debug (only if muTrkMatchDebug_)
+      muMatch_nCandidates(nullptr), muMatch_bestRelDiff(nullptr),
+      muMatch_bestDz(nullptr), muMatch_methodUsed(nullptr),
       Jpsi_1_mu_1_Idx(nullptr), Jpsi_1_mu_2_Idx(nullptr),
       Jpsi_2_mu_1_Idx(nullptr), Jpsi_2_mu_2_Idx(nullptr),
       Phi_K_1_Idx(nullptr), Phi_K_2_Idx(nullptr),
@@ -535,6 +560,31 @@ void MultiLepPAT::reconstructPrimaryVertex(const edm::Event &iEvent)
     }
     nGoodPrimVtx = myNGoodPrimVtx;
 
+    // Store ALL PVs information
+    if (storeAllPVs_) {
+        nRecVtx = recVtxs->size();
+        for (unsigned ipv = 0; ipv < recVtxs->size(); ++ipv) {
+            const auto& vtx = (*recVtxs)[ipv];
+            RecVtx_x->push_back(vtx.x());
+            RecVtx_y->push_back(vtx.y());
+            RecVtx_z->push_back(vtx.z());
+            RecVtx_xErr->push_back(vtx.xError());
+            RecVtx_yErr->push_back(vtx.yError());
+            RecVtx_zErr->push_back(vtx.zError());
+            RecVtx_chi2->push_back(vtx.chi2());
+            RecVtx_ndof->push_back(vtx.ndof());
+            RecVtx_nTracks->push_back(vtx.nTracks());
+
+            double vtxProb = -9;
+            try {
+                vtxProb = ChiSquaredProbability(vtx.chi2(), vtx.ndof());
+            } catch (...) { vtxProb = -9; }
+            RecVtx_vtxProb->push_back(vtxProb);
+        }
+    } else {
+        nRecVtx = 0;
+    }
+
     if (recVtxs->begin() != recVtxs->end()) {
         if (pvSelectionMode_ == "mostTracks") {
             unsigned int nVtxTrks = 0;
@@ -603,6 +653,61 @@ void MultiLepPAT::fillMuonBlock(const edm::Event& iEvent,
         muPz->push_back(iMuonP->pz());
         muCharge->push_back(iMuonP->charge());
 
+        // Muon momentum errors
+        if (storeMuonMomentumErrors_) {
+            float pxErr = -9, pyErr = -9, pzErr = -9, ptErr = -9;
+            reco::TrackRef muTrack = iMuonP->track();
+
+            if (muTrack.isNull() || !muTrack.isAvailable()) {
+                // Try bestTrack() as fallback
+                try {
+                    auto bestTrk = iMuonP->muonBestTrack();
+                    if (bestTrk.isAvailable()) {
+                        auto cov = bestTrk->covariance();
+                        pxErr = std::sqrt(std::max(cov(0,0), 0.0));
+                        pyErr = std::sqrt(std::max(cov(1,1), 0.0));
+                        pzErr = std::sqrt(std::max(cov(2,2), 0.0));
+
+                        float px = bestTrk->momentum().x();
+                        float py = bestTrk->momentum().y();
+                        float pt = std::sqrt(px*px + py*py);
+                        if (pt > 0) {
+                            float dpt_dpx = px/pt;
+                            float dpt_dpy = py/pt;
+                            ptErr = std::sqrt(dpt_dpx*dpt_dpx*cov(0,0) +
+                                              dpt_dpy*dpt_dpy*cov(1,1) +
+                                              2.0*dpt_dpx*dpt_dpy*cov(0,1));
+                        }
+                    }
+                } catch (...) { /* keep -9 */ }
+            } else {
+                auto cov = muTrack->covariance();
+                pxErr = std::sqrt(std::max(cov(0,0), 0.0));
+                pyErr = std::sqrt(std::max(cov(1,1), 0.0));
+                pzErr = std::sqrt(std::max(cov(2,2), 0.0));
+
+                float px = muTrack->momentum().x();
+                float py = muTrack->momentum().y();
+                float pt = std::sqrt(px*px + py*py);
+                if (pt > 0) {
+                    float dpt_dpx = px/pt;
+                    float dpt_dpy = py/pt;
+                    ptErr = std::sqrt(dpt_dpx*dpt_dpx*cov(0,0) +
+                                      dpt_dpy*dpt_dpy*cov(1,1) +
+                                      2.0*dpt_dpx*dpt_dpy*cov(0,1));
+                }
+            }
+            muPxErr->push_back(pxErr);
+            muPyErr->push_back(pyErr);
+            muPzErr->push_back(pzErr);
+            muPtErr->push_back(ptErr);
+        } else {
+            muPxErr->push_back(-9);
+            muPyErr->push_back(-9);
+            muPzErr->push_back(-9);
+            muPtErr->push_back(-9);
+        }
+
         // Match muon to packed candidate for fromPV info
         unsigned int curFromPV = 0;
         unsigned int curPVAssocQuality = 0;
@@ -628,6 +733,55 @@ void MultiLepPAT::fillMuonBlock(const edm::Event& iEvent,
         
         muFromPV->push_back(curFromPV);
         muPVAssocQuality->push_back(curPVAssocQuality);
+
+        // Surplus: Try to get PV association via sourceCandidatePtr
+        if (storeMuonPVAssoc_) {
+            int vertexId = -1;
+            float dzAssocPV = -9, dxyAssocPV = -9;
+            int fromPVAssocPV = 0;
+            int pdgId = 0;
+
+            try {
+                for (size_t i = 0; i < iMuonP->numberOfSourceCandidatePtrs(); ++i) {
+                    reco::CandidatePtr sourcePtr = iMuonP->sourceCandidatePtr(i);
+                    if (sourcePtr.isAvailable()) {
+                        const pat::PackedCandidate* pfcand =
+                            dynamic_cast<const pat::PackedCandidate*>(sourcePtr.get());
+                        if (pfcand) {
+                            vertexId = pfcand->vertexRef().key();
+                            // Get associated PV position for dz/dxy calculation
+                            edm::Handle<VertexCollection> recVtxs;
+                            iEvent.getByToken(gtprimaryVtxToken_, recVtxs);
+                            if (vertexId >= 0 && vertexId < (int)recVtxs->size()) {
+                                const auto& assocPV = (*recVtxs)[vertexId];
+                                auto bestTrk = iMuonP->muonBestTrack();
+                                if (bestTrk.isAvailable()) {
+                                    dzAssocPV = bestTrk->dz(assocPV.position());
+                                    dxyAssocPV = bestTrk->dxy(assocPV.position());
+                                }
+                            }
+                            fromPVAssocPV = pfcand->fromPV();
+                            pdgId = pfcand->pdgId();
+                            break;
+                        }
+                    }
+                }
+            } catch (...) {
+                // Keep default values
+            }
+
+            muVertexId->push_back(vertexId);
+            muDzAssocPV->push_back(dzAssocPV);
+            muDxyAssocPV->push_back(dxyAssocPV);
+            muFromPVAssocPV->push_back(fromPVAssocPV);
+            muPdgId->push_back(pdgId);
+        } else {
+            muVertexId->push_back(-1);
+            muDzAssocPV->push_back(-9);
+            muDxyAssocPV->push_back(-9);
+            muFromPVAssocPV->push_back(0);
+            muPdgId->push_back(0);
+        }
 
         // Trigger matching
         bool isJpsiTrigMatch = false;
@@ -948,6 +1102,30 @@ void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
                 interOnia.push_back(fitMeson);
 
                 bool validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
+
+                // Check FINAL fitted mass against mass windows (not just pre-fit)
+                if (checkFinalMass_) {
+                    double fittedMass1 = fit1->currentState().mass();
+                    double fittedMass2 = fit2->currentState().mass();
+                    double fittedMassMeson = fitMeson->currentState().mass();
+
+                    // Determine mass windows based on analysis mode
+                    double onia1MassMin = JpsiMassMin_, onia1MassMax = JpsiMassMax_;
+                    double onia2MassMin = JpsiMassMin_, onia2MassMax = JpsiMassMax_;
+                    if (analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
+                        onia2MassMin = UpsMassMin_;
+                        onia2MassMax = UpsMassMax_;
+                    }
+
+                    bool fittedMass1InRange = (onia1MassMin < fittedMass1 && fittedMass1 < onia1MassMax);
+                    bool fittedMass2InRange = (onia2MassMin < fittedMass2 && fittedMass2 < onia2MassMax);
+                    bool fittedMassMesonInRange = (PhiMassMin_ < fittedMassMeson && fittedMassMeson < PhiMassMax_);
+
+                    if (!fittedMass1InRange || !fittedMass2InRange || !fittedMassMesonInRange) {
+                        continue;
+                    }
+                }
+
                 if (!validPri) {
                     // 3-body fit failed: store sentinel for Pri and keep the rest
                     storeSentinelPri();
@@ -1065,6 +1243,22 @@ void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
                 interOnia.push_back(fitUps);
 
                 bool validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
+                
+                // Check FINAL fitted masses
+                if (checkFinalMass_) {
+                    double fittedMass1 = fit1->currentState().mass();
+                    double fittedMass2 = fit2->currentState().mass();
+                    double fittedMassUps = fitUps->currentState().mass();
+
+                    bool fittedMass1InRange = (JpsiMassMin_ < fittedMass1 && fittedMass1 < JpsiMassMax_);
+                    bool fittedMass2InRange = (JpsiMassMin_ < fittedMass2 && fittedMass2 < JpsiMassMax_);
+                    bool fittedMassUpsInRange = (UpsMassMin_ < fittedMassUps && fittedMassUps < UpsMassMax_);
+
+                    if (!fittedMass1InRange || !fittedMass2InRange || !fittedMassUpsInRange) {
+                        continue;
+                    }
+                }
+                
                 if (!validPri) {
                     // 3-body fit failed: store sentinel for Pri and keep the rest
                     storeSentinelPri();
@@ -1236,6 +1430,13 @@ void MultiLepPAT::clearEventData()
     PriVtxXCorrEX->clear(); PriVtxXCorrEY->clear(); PriVtxXCorrEZ->clear();
     PriVtxXCorrC2->clear(); PriVtxXCorrCL->clear();
 
+    // All primary vertices
+    nRecVtx = 0;
+    RecVtx_x->clear(); RecVtx_y->clear(); RecVtx_z->clear();
+    RecVtx_xErr->clear(); RecVtx_yErr->clear(); RecVtx_zErr->clear();
+    RecVtx_chi2->clear(); RecVtx_ndof->clear(); RecVtx_vtxProb->clear();
+    RecVtx_nTracks->clear();
+
     nMu = 0;
     muPx->clear(); muPy->clear(); muPz->clear();
     muD0->clear(); muD0E->clear(); muDz->clear();
@@ -1258,6 +1459,19 @@ void MultiLepPAT::clearEventData()
     muIsPatLooseMuon->clear(); muIsPatTightMuon->clear();
     muIsPatSoftMuon->clear(); muIsPatMediumMuon->clear();
     muFromPV->clear(); muPVAssocQuality->clear();
+
+    // Muon momentum errors
+    muPxErr->clear(); muPyErr->clear(); muPzErr->clear(); muPtErr->clear();
+
+    // Muon PV association (surplus from sourceCandidatePtr)
+    muVertexId->clear(); muDzAssocPV->clear(); muDxyAssocPV->clear();
+    muFromPVAssocPV->clear(); muPdgId->clear();
+
+    // Muon-track matching debug
+    if (muTrkMatchDebug_) {
+        muMatch_nCandidates->clear(); muMatch_bestRelDiff->clear();
+        muMatch_bestDz->clear(); muMatch_methodUsed->clear();
+    }
 
     // Resonance branches
     Pri_mass->clear(); Pri_massErr->clear();
@@ -1620,6 +1834,19 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("PriVtxXCorrC2", &PriVtxXCorrC2);
     X_One_Tree_->Branch("PriVtxXCorrCL", &PriVtxXCorrCL);
 
+    // All primary vertices (not just selected)
+    X_One_Tree_->Branch("nRecVtx", &nRecVtx, "nRecVtx/i");
+    X_One_Tree_->Branch("RecVtx_x", &RecVtx_x);
+    X_One_Tree_->Branch("RecVtx_y", &RecVtx_y);
+    X_One_Tree_->Branch("RecVtx_z", &RecVtx_z);
+    X_One_Tree_->Branch("RecVtx_xErr", &RecVtx_xErr);
+    X_One_Tree_->Branch("RecVtx_yErr", &RecVtx_yErr);
+    X_One_Tree_->Branch("RecVtx_zErr", &RecVtx_zErr);
+    X_One_Tree_->Branch("RecVtx_chi2", &RecVtx_chi2);
+    X_One_Tree_->Branch("RecVtx_ndof", &RecVtx_ndof);
+    X_One_Tree_->Branch("RecVtx_vtxProb", &RecVtx_vtxProb);
+    X_One_Tree_->Branch("RecVtx_nTracks", &RecVtx_nTracks);
+
     // Muon branches
     X_One_Tree_->Branch("nMu", &nMu, "nMu/i");
     X_One_Tree_->Branch("muPx", &muPx); X_One_Tree_->Branch("muPy", &muPy); X_One_Tree_->Branch("muPz", &muPz);
@@ -1647,6 +1874,20 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("muIsPatMediumMuon", &muIsPatMediumMuon);
     X_One_Tree_->Branch("muFromPV", &muFromPV);
     X_One_Tree_->Branch("muPVAssocQuality", &muPVAssocQuality);
+
+    // Muon momentum errors
+    X_One_Tree_->Branch("muPxErr", &muPxErr);
+    X_One_Tree_->Branch("muPyErr", &muPyErr);
+    X_One_Tree_->Branch("muPzErr", &muPzErr);
+    X_One_Tree_->Branch("muPtErr", &muPtErr);
+
+    // Muon PV association (surplus from sourceCandidatePtr)
+    X_One_Tree_->Branch("muVertexId", &muVertexId);
+    X_One_Tree_->Branch("muDzAssocPV", &muDzAssocPV);
+    X_One_Tree_->Branch("muDxyAssocPV", &muDxyAssocPV);
+    X_One_Tree_->Branch("muFromPVAssocPV", &muFromPVAssocPV);
+    X_One_Tree_->Branch("muPdgId", &muPdgId);
+
     X_One_Tree_->Branch("muIsJpsiTrigMatch", &muIsJpsiTrigMatch);
     X_One_Tree_->Branch("muIsUpsTrigMatch", &muIsUpsTrigMatch);
     X_One_Tree_->Branch("muIsJpsiFilterMatch", &muIsJpsiFilterMatch);
@@ -1661,6 +1902,14 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("mupulldYdZ_pos_ArbST", &mupulldYdZ_pos_ArbST);
     X_One_Tree_->Branch("mupulldXdZ_pos_noArb_any", &mupulldXdZ_pos_noArb_any);
     X_One_Tree_->Branch("mupulldYdZ_pos_noArb_any", &mupulldYdZ_pos_noArb_any);
+
+    // Muon-track matching debug (only if muTrkMatchDebug_)
+    if (muTrkMatchDebug_) {
+        X_One_Tree_->Branch("muMatch_nCandidates", &muMatch_nCandidates);
+        X_One_Tree_->Branch("muMatch_bestRelDiff", &muMatch_bestRelDiff);
+        X_One_Tree_->Branch("muMatch_bestDz", &muMatch_bestDz);
+        X_One_Tree_->Branch("muMatch_methodUsed", &muMatch_methodUsed);
+    }
 
     // Resonance branches (with momentum errors)
     auto branchReso = [&](const std::string& prefix,
@@ -1760,6 +2009,241 @@ void MultiLepPAT::beginJob()
         X_One_Tree_->Branch("MC_GenPart_eta", &MC_GenPart_eta);
         X_One_Tree_->Branch("MC_GenPart_phi", &MC_GenPart_phi);
     }
+}
+
+/*****************************************************************************
+ * Muon-track matching: Method 1 - First pass below threshold (current method)
+ *****************************************************************************/
+MultiLepPAT::MuonTrackMatchResult
+MultiLepPAT::matchMuonToTrack_FirstPass(
+    const pat::Muon* muon,
+    std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+    double momentumRelDiffThr)
+{
+    MuonTrackMatchResult result;
+    result.matched = false;
+    result.fromPV = 0;
+    result.pvAssocQuality = 0;
+    result.pdgId = 0;
+    result.nCandidates = 0;
+    result.relDiff = -9;
+    result.dz = -9;
+
+    double muMomentum = std::sqrt(
+        muon->px()*muon->px() + muon->py()*muon->py() + muon->pz()*muon->pz());
+
+    for (auto iTrackfID = tracks.begin(); iTrackfID != tracks.end(); ++iTrackfID) {
+        try {
+            if (muon->track().isNull()) continue;
+            auto iTrackf = *iTrackfID;
+            result.nCandidates++;
+
+            if (fabs(iTrackf->px() - muon->px()) < momentumRelDiffThr * muMomentum &&
+                fabs(iTrackf->py() - muon->py()) < momentumRelDiffThr * muMomentum &&
+                fabs(iTrackf->pz() - muon->pz()) < momentumRelDiffThr * muMomentum &&
+                iTrackf->charge() == muon->charge()) {
+
+                tracks.erase(iTrackfID);
+                result.matched = true;
+                result.fromPV = iTrackf->fromPV();
+                result.pvAssocQuality = iTrackf->pvAssociationQuality();
+                result.pdgId = iTrackf->pdgId();
+                result.relDiff = fabs(iTrackf->p() - muMomentum) / muMomentum;
+                return result;
+            }
+        } catch (...) { continue; }
+    }
+    return result;
+}
+
+/*****************************************************************************
+ * Muon-track matching: Method 2 - Least momentum difference
+ *****************************************************************************/
+MultiLepPAT::MuonTrackMatchResult
+MultiLepPAT::matchMuonToTrack_LeastDiff(
+    const pat::Muon* muon,
+    std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks)
+{
+    MuonTrackMatchResult result;
+    result.matched = false;
+    result.fromPV = 0;
+    result.pvAssocQuality = 0;
+    result.pdgId = 0;
+    result.nCandidates = 0;
+    result.relDiff = 999.0;
+    result.dz = -9;
+
+    double muMomentum = std::sqrt(
+        muon->px()*muon->px() + muon->py()*muon->py() + muon->pz()*muon->pz());
+    auto bestIter = tracks.end();
+
+    for (auto iTrackfID = tracks.begin(); iTrackfID != tracks.end(); ++iTrackfID) {
+        try {
+            if (muon->track().isNull()) continue;
+            auto iTrackf = *iTrackfID;
+            result.nCandidates++;
+
+            if (iTrackf->charge() != muon->charge()) continue;
+
+            double relDiff = fabs(iTrackf->p() - muMomentum) / muMomentum;
+
+            if (relDiff < result.relDiff) {
+                result.relDiff = relDiff;
+                bestIter = iTrackfID;
+                result.fromPV = iTrackf->fromPV();
+                result.pvAssocQuality = iTrackf->pvAssociationQuality();
+                result.pdgId = iTrackf->pdgId();
+            }
+        } catch (...) { continue; }
+    }
+
+    if (bestIter != tracks.end()) {
+        tracks.erase(bestIter);
+        result.matched = true;
+    }
+
+    return result;
+}
+
+/*****************************************************************************
+ * Muon-track matching: Method 3 - Add dZ position consistency
+ *****************************************************************************/
+MultiLepPAT::MuonTrackMatchResult
+MultiLepPAT::matchMuonToTrack_AddDz(
+    const pat::Muon* muon,
+    std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+    const reco::Vertex& primaryV,
+    double dzMax)
+{
+    MuonTrackMatchResult result;
+    result.matched = false;
+    result.fromPV = 0;
+    result.pvAssocQuality = 0;
+    result.pdgId = 0;
+    result.nCandidates = 0;
+    result.relDiff = 999.0;
+    result.dz = 999.0;
+
+    double muMomentum = std::sqrt(
+        muon->px()*muon->px() + muon->py()*muon->py() + muon->pz()*muon->pz());
+    auto bestIter = tracks.end();
+
+    double muDz = -999;
+    try {
+        auto bestTrk = muon->muonBestTrack();
+        if (bestTrk.isAvailable()) {
+            muDz = bestTrk->dz(primaryV.position());
+        }
+    } catch (...) { return result; }
+
+    if (muDz < -900) return result;
+
+    for (auto iTrackfID = tracks.begin(); iTrackfID != tracks.end(); ++iTrackfID) {
+        try {
+            if (muon->track().isNull()) continue;
+            auto iTrackf = *iTrackfID;
+            result.nCandidates++;
+
+            if (iTrackf->charge() != muon->charge()) continue;
+
+            double trackDz = -999;
+            if (iTrackf->hasTrackDetails() && iTrackf->bestTrack() != nullptr) {
+                trackDz = iTrackf->bestTrack()->dz(primaryV.position());
+            }
+
+            double relDiff = fabs(iTrackf->p() - muMomentum) / muMomentum;
+
+            if (relDiff < 1.0 && fabs(trackDz - muDz) < dzMax) {
+                double score = relDiff + fabs(trackDz - muDz) / dzMax;
+
+                if (score < result.relDiff + result.dz) {
+                    result.relDiff = relDiff;
+                    result.dz = fabs(trackDz - muDz);
+                    bestIter = iTrackfID;
+                    result.fromPV = iTrackf->fromPV();
+                    result.pvAssocQuality = iTrackf->pvAssociationQuality();
+                    result.pdgId = iTrackf->pdgId();
+                }
+            }
+        } catch (...) { continue; }
+    }
+
+    if (bestIter != tracks.end()) {
+        tracks.erase(bestIter);
+        result.matched = true;
+    }
+
+    return result;
+}
+
+/*****************************************************************************
+ * Muon-track matching: Method 4 - Sigma-based (using momentum errors)
+ *****************************************************************************/
+MultiLepPAT::MuonTrackMatchResult
+MultiLepPAT::matchMuonToTrack_Sigma(
+    const pat::Muon* muon,
+    std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
+    double sigmaThr)
+{
+    MuonTrackMatchResult result;
+    result.matched = false;
+    result.fromPV = 0;
+    result.pvAssocQuality = 0;
+    result.pdgId = 0;
+    result.nCandidates = 0;
+    result.relDiff = 999.0;
+    result.dz = -9;
+
+    double muPxErr = -9, muPyErr = -9, muPzErr = -9;
+    try {
+        reco::TrackRef muTrack = muon->track();
+        if (!muTrack.isNull() && muTrack.isAvailable()) {
+            auto cov = muTrack->covariance();
+            muPxErr = std::sqrt(std::max(cov(0,0), 1e-6));
+            muPyErr = std::sqrt(std::max(cov(1,1), 1e-6));
+            muPzErr = std::sqrt(std::max(cov(2,2), 1e-6));
+        }
+    } catch (...) { }
+
+    if (muPxErr < 0) return result;
+
+    double muPx = muon->px(), muPy = muon->py(), muPz = muon->pz();
+    auto bestIter = tracks.end();
+    double bestChi2 = 999.0;
+
+    for (auto iTrackfID = tracks.begin(); iTrackfID != tracks.end(); ++iTrackfID) {
+        try {
+            if (muon->track().isNull()) continue;
+            auto iTrackf = *iTrackfID;
+            result.nCandidates++;
+
+            if (iTrackf->charge() != muon->charge()) continue;
+
+            double dpx = iTrackf->px() - muPx;
+            double dpy = iTrackf->py() - muPy;
+            double dpz = iTrackf->pz() - muPz;
+
+            double chi2 = (dpx*dpx)/(muPxErr*muPxErr) +
+                          (dpy*dpy)/(muPyErr*muPyErr) +
+                          (dpz*dpz)/(muPzErr*muPzErr);
+
+            if (chi2 < sigmaThr * sigmaThr && chi2 < bestChi2) {
+                bestChi2 = chi2;
+                bestIter = iTrackfID;
+                result.fromPV = iTrackf->fromPV();
+                result.pvAssocQuality = iTrackf->pvAssociationQuality();
+                result.pdgId = iTrackf->pdgId();
+                result.relDiff = chi2;
+            }
+        } catch (...) { continue; }
+    }
+
+    if (bestIter != tracks.end()) {
+        tracks.erase(bestIter);
+        result.matched = true;
+    }
+
+    return result;
 }
 
 void MultiLepPAT::endJob()
