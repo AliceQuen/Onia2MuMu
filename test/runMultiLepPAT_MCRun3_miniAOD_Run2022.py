@@ -8,7 +8,8 @@
 # Usage:
 #   cmsRun runMultiLepPAT_MCRun3_miniAOD_Run2022.py \
 #       inputFiles=file:/path/to/MINIAOD.root \
-#       outputFile=output.root
+#       outputFile=output.root \
+#       maxEvents=10
 ###############################################################################
 
 import FWCore.ParameterSet.Config as cms
@@ -50,7 +51,7 @@ process.out = cms.OutputModule("PoolOutputModule",
 )
 
 # --- MaxEvents ---
-process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(-1))
+process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(ivars.maxEvents))
 
 # --- Global Tag ---
 process.load('Configuration.StandardSequences.FrontierConditions_GlobalTag_cff')
