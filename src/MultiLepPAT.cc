@@ -383,6 +383,9 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Jpsi_1_pxErr(nullptr), Jpsi_1_pyErr(nullptr), Jpsi_1_pzErr(nullptr), Jpsi_1_ptErr(nullptr),
       Jpsi_2_pxErr(nullptr), Jpsi_2_pyErr(nullptr), Jpsi_2_pzErr(nullptr), Jpsi_2_ptErr(nullptr),
       Phi_pxErr(nullptr), Phi_pyErr(nullptr), Phi_pzErr(nullptr), Phi_ptErr(nullptr),
+      Phi_fitPass(nullptr), Phi_commonAssocPVPass(nullptr), Phi_commonAssocPVIdx(nullptr),
+      Phi_trackPVPass(nullptr), Phi_vertexCriteriaPass(nullptr),
+      Phi_maxAbsDzPV(nullptr), Phi_maxAbsDxyPV(nullptr),
       Pri_mass(nullptr), Pri_massErr(nullptr),
       Pri_ctau(nullptr), Pri_ctauErr(nullptr), Pri_Chi2(nullptr),
       Pri_ndof(nullptr), Pri_VtxProb(nullptr),
@@ -399,6 +402,10 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Phi_K_1_fromPV(nullptr), Phi_K_2_fromPV(nullptr),
       Phi_K_1_pvAssocQuality(nullptr), Phi_K_2_pvAssocQuality(nullptr),
       Phi_K_1_vertexId(nullptr), Phi_K_2_vertexId(nullptr),
+      Phi_K_1_hasAssocPV(nullptr), Phi_K_2_hasAssocPV(nullptr),
+      Phi_K_1_passDzPV(nullptr), Phi_K_2_passDzPV(nullptr),
+      Phi_K_1_passDxyPV(nullptr), Phi_K_2_passDxyPV(nullptr),
+      Phi_K_1_passTrackPV(nullptr), Phi_K_2_passTrackPV(nullptr),
       Phi_K_1_dzPV(nullptr), Phi_K_1_dxyPV(nullptr), Phi_K_1_dzAssocPV(nullptr), Phi_K_1_dxyAssocPV(nullptr),
       Phi_K_2_dzPV(nullptr), Phi_K_2_dxyPV(nullptr), Phi_K_2_dzAssocPV(nullptr), Phi_K_2_dxyAssocPV(nullptr),
       Phi_K_1_genMatchIdx(nullptr), Phi_K_1_genMatchSource(nullptr),
@@ -1528,6 +1535,16 @@ void MultiLepPAT::combineCandidates(
                     *nonMuonTrack_[KPair.second[0]], thePrimaryV_, genParticles);
                 const auto kaon2Diagnostics = buildPhiKaonDiagnostics(
                     *nonMuonTrack_[KPair.second[1]], thePrimaryV_, genParticles);
+                const auto phiVertexDiagnostics = buildPhiVertexDiagnostics(
+                    validMeson, kaon1Diagnostics, kaon2Diagnostics);
+
+                Phi_fitPass->push_back(phiVertexDiagnostics.fitPass ? 1 : 0);
+                Phi_commonAssocPVPass->push_back(phiVertexDiagnostics.commonAssocPVPass ? 1 : 0);
+                Phi_commonAssocPVIdx->push_back(phiVertexDiagnostics.commonAssocPVIdx);
+                Phi_trackPVPass->push_back(phiVertexDiagnostics.trackPVPass ? 1 : 0);
+                Phi_vertexCriteriaPass->push_back(phiVertexDiagnostics.vertexCriteriaPass ? 1 : 0);
+                Phi_maxAbsDzPV->push_back(phiVertexDiagnostics.maxAbsDzPV);
+                Phi_maxAbsDxyPV->push_back(phiVertexDiagnostics.maxAbsDxyPV);
 
                 // Store kaon kinematics
                 Phi_K_1_px->push_back(nonMuonTrack_[KPair.second[0]]->px());
@@ -1539,6 +1556,10 @@ void MultiLepPAT::combineCandidates(
                 Phi_K_1_fromPV->push_back(kaon1Diagnostics.fromPV);
                 Phi_K_1_pvAssocQuality->push_back(kaon1Diagnostics.pvAssocQuality);
                 Phi_K_1_vertexId->push_back(kaon1Diagnostics.vertexId);
+                Phi_K_1_hasAssocPV->push_back(kaon1Diagnostics.hasAssocPV ? 1 : 0);
+                Phi_K_1_passDzPV->push_back(kaon1Diagnostics.passDzPV ? 1 : 0);
+                Phi_K_1_passDxyPV->push_back(kaon1Diagnostics.passDxyPV ? 1 : 0);
+                Phi_K_1_passTrackPV->push_back(kaon1Diagnostics.passTrackPV ? 1 : 0);
                 Phi_K_1_dzPV->push_back(kaon1Diagnostics.dzPV);
                 Phi_K_1_dxyPV->push_back(kaon1Diagnostics.dxyPV);
                 Phi_K_1_dzAssocPV->push_back(kaon1Diagnostics.dzAssocPV);
@@ -1556,6 +1577,10 @@ void MultiLepPAT::combineCandidates(
                 Phi_K_2_fromPV->push_back(kaon2Diagnostics.fromPV);
                 Phi_K_2_pvAssocQuality->push_back(kaon2Diagnostics.pvAssocQuality);
                 Phi_K_2_vertexId->push_back(kaon2Diagnostics.vertexId);
+                Phi_K_2_hasAssocPV->push_back(kaon2Diagnostics.hasAssocPV ? 1 : 0);
+                Phi_K_2_passDzPV->push_back(kaon2Diagnostics.passDzPV ? 1 : 0);
+                Phi_K_2_passDxyPV->push_back(kaon2Diagnostics.passDxyPV ? 1 : 0);
+                Phi_K_2_passTrackPV->push_back(kaon2Diagnostics.passTrackPV ? 1 : 0);
                 Phi_K_2_dzPV->push_back(kaon2Diagnostics.dzPV);
                 Phi_K_2_dxyPV->push_back(kaon2Diagnostics.dxyPV);
                 Phi_K_2_dzAssocPV->push_back(kaon2Diagnostics.dzAssocPV);
@@ -1795,6 +1820,10 @@ MultiLepPAT::buildPhiKaonDiagnostics(
     diagnostics.pvAssocQuality = cand.pvAssociationQuality();
     diagnostics.genMatchIdx = -1;
     diagnostics.genMatchSource = 0;
+    diagnostics.hasAssocPV = false;
+    diagnostics.passDzPV = false;
+    diagnostics.passDxyPV = false;
+    diagnostics.passTrackPV = false;
     diagnostics.dzPV = -9.f;
     diagnostics.dxyPV = -9.f;
     diagnostics.dzAssocPV = -9.f;
@@ -1807,10 +1836,14 @@ MultiLepPAT::buildPhiKaonDiagnostics(
     if (track != nullptr) {
         diagnostics.dzPV = track->dz(primaryV.position());
         diagnostics.dxyPV = track->dxy(primaryV.position());
+        diagnostics.passDzPV = std::abs(diagnostics.dzPV) <= priTrackDzPVMax_;
+        diagnostics.passDxyPV = std::abs(diagnostics.dxyPV) <= priTrackDxyPVMax_;
+        diagnostics.passTrackPV = diagnostics.passDzPV && diagnostics.passDxyPV;
     }
 
     const auto assocVtxRef = cand.vertexRef();
     if (assocVtxRef.isNonnull() && assocVtxRef.isAvailable()) {
+        diagnostics.hasAssocPV = true;
         diagnostics.vertexId = static_cast<int>(assocVtxRef.key());
         if (track != nullptr) {
             diagnostics.dzAssocPV = track->dz(assocVtxRef->position());
@@ -1876,6 +1909,26 @@ MultiLepPAT::buildPhiKaonDiagnostics(
         diagnostics.genMatchSource = 2;
     }
 
+    return diagnostics;
+}
+
+MultiLepPAT::PhiVertexDiagnostics
+MultiLepPAT::buildPhiVertexDiagnostics(
+    bool fitPass,
+    const PhiKaonDiagnostics& kaon1,
+    const PhiKaonDiagnostics& kaon2) const
+{
+    PhiVertexDiagnostics diagnostics{};
+    diagnostics.fitPass = fitPass;
+    diagnostics.commonAssocPVPass =
+        kaon1.hasAssocPV && kaon2.hasAssocPV && kaon1.vertexId == kaon2.vertexId;
+    diagnostics.trackPVPass = kaon1.passTrackPV && kaon2.passTrackPV;
+    diagnostics.vertexCriteriaPass =
+        diagnostics.commonAssocPVPass && diagnostics.trackPVPass;
+    diagnostics.commonAssocPVIdx =
+        diagnostics.commonAssocPVPass ? kaon1.vertexId : -1;
+    diagnostics.maxAbsDzPV = std::max(std::abs(kaon1.dzPV), std::abs(kaon2.dzPV));
+    diagnostics.maxAbsDxyPV = std::max(std::abs(kaon1.dxyPV), std::abs(kaon2.dxyPV));
     return diagnostics;
 }
 
@@ -2066,10 +2119,15 @@ void MultiLepPAT::clearEventData()
     Phi_px->clear(); Phi_py->clear(); Phi_pz->clear();
     Phi_phi->clear(); Phi_eta->clear(); Phi_pt->clear();
     Phi_pxErr->clear(); Phi_pyErr->clear(); Phi_pzErr->clear(); Phi_ptErr->clear();
+    Phi_fitPass->clear(); Phi_commonAssocPVPass->clear(); Phi_commonAssocPVIdx->clear();
+    Phi_trackPVPass->clear(); Phi_vertexCriteriaPass->clear();
+    Phi_maxAbsDzPV->clear(); Phi_maxAbsDxyPV->clear();
 
     Phi_K_1_Idx->clear(); Phi_K_1_px->clear(); Phi_K_1_py->clear(); Phi_K_1_pz->clear();
     Phi_K_1_phi->clear(); Phi_K_1_eta->clear(); Phi_K_1_pt->clear();
     Phi_K_1_fromPV->clear(); Phi_K_1_pvAssocQuality->clear();
+    Phi_K_1_hasAssocPV->clear(); Phi_K_1_passDzPV->clear();
+    Phi_K_1_passDxyPV->clear(); Phi_K_1_passTrackPV->clear();
     Phi_K_1_vertexId->clear();
     Phi_K_1_dzPV->clear(); Phi_K_1_dxyPV->clear();
     Phi_K_1_dzAssocPV->clear(); Phi_K_1_dxyAssocPV->clear();
@@ -2077,6 +2135,8 @@ void MultiLepPAT::clearEventData()
     Phi_K_2_Idx->clear(); Phi_K_2_px->clear(); Phi_K_2_py->clear(); Phi_K_2_pz->clear();
     Phi_K_2_phi->clear(); Phi_K_2_eta->clear(); Phi_K_2_pt->clear();
     Phi_K_2_fromPV->clear(); Phi_K_2_pvAssocQuality->clear();
+    Phi_K_2_hasAssocPV->clear(); Phi_K_2_passDzPV->clear();
+    Phi_K_2_passDxyPV->clear(); Phi_K_2_passTrackPV->clear();
     Phi_K_2_vertexId->clear();
     Phi_K_2_dzPV->clear(); Phi_K_2_dxyPV->clear();
     Phi_K_2_dzAssocPV->clear(); Phi_K_2_dxyAssocPV->clear();
@@ -2547,6 +2607,13 @@ void MultiLepPAT::beginJob()
                Phi_ctau, Phi_ctauErr, Phi_Chi2, Phi_ndof, Phi_VtxProb,
                Phi_px, Phi_py, Phi_pz, Phi_phi, Phi_eta, Phi_pt,
                Phi_pxErr, Phi_pyErr, Phi_pzErr, Phi_ptErr);
+    X_One_Tree_->Branch("Phi_fitPass", &Phi_fitPass);
+    X_One_Tree_->Branch("Phi_commonAssocPVPass", &Phi_commonAssocPVPass);
+    X_One_Tree_->Branch("Phi_commonAssocPVIdx", &Phi_commonAssocPVIdx);
+    X_One_Tree_->Branch("Phi_trackPVPass", &Phi_trackPVPass);
+    X_One_Tree_->Branch("Phi_vertexCriteriaPass", &Phi_vertexCriteriaPass);
+    X_One_Tree_->Branch("Phi_maxAbsDzPV", &Phi_maxAbsDzPV);
+    X_One_Tree_->Branch("Phi_maxAbsDxyPV", &Phi_maxAbsDxyPV);
     X_One_Tree_->Branch("Phi_K_1_Idx", &Phi_K_1_Idx);
     X_One_Tree_->Branch("Phi_K_2_Idx", &Phi_K_2_Idx);
 
@@ -2570,6 +2637,10 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Phi_K_1_eta", &Phi_K_1_eta); X_One_Tree_->Branch("Phi_K_1_pt", &Phi_K_1_pt);
     X_One_Tree_->Branch("Phi_K_1_fromPV", &Phi_K_1_fromPV);
     X_One_Tree_->Branch("Phi_K_1_pvAssocQuality", &Phi_K_1_pvAssocQuality);
+    X_One_Tree_->Branch("Phi_K_1_hasAssocPV", &Phi_K_1_hasAssocPV);
+    X_One_Tree_->Branch("Phi_K_1_passDzPV", &Phi_K_1_passDzPV);
+    X_One_Tree_->Branch("Phi_K_1_passDxyPV", &Phi_K_1_passDxyPV);
+    X_One_Tree_->Branch("Phi_K_1_passTrackPV", &Phi_K_1_passTrackPV);
     X_One_Tree_->Branch("Phi_K_1_vertexId", &Phi_K_1_vertexId);
     X_One_Tree_->Branch("Phi_K_1_dzPV", &Phi_K_1_dzPV);
     X_One_Tree_->Branch("Phi_K_1_dxyPV", &Phi_K_1_dxyPV);
@@ -2583,6 +2654,10 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Phi_K_2_eta", &Phi_K_2_eta); X_One_Tree_->Branch("Phi_K_2_pt", &Phi_K_2_pt);
     X_One_Tree_->Branch("Phi_K_2_fromPV", &Phi_K_2_fromPV);
     X_One_Tree_->Branch("Phi_K_2_pvAssocQuality", &Phi_K_2_pvAssocQuality);
+    X_One_Tree_->Branch("Phi_K_2_hasAssocPV", &Phi_K_2_hasAssocPV);
+    X_One_Tree_->Branch("Phi_K_2_passDzPV", &Phi_K_2_passDzPV);
+    X_One_Tree_->Branch("Phi_K_2_passDxyPV", &Phi_K_2_passDxyPV);
+    X_One_Tree_->Branch("Phi_K_2_passTrackPV", &Phi_K_2_passTrackPV);
     X_One_Tree_->Branch("Phi_K_2_vertexId", &Phi_K_2_vertexId);
     X_One_Tree_->Branch("Phi_K_2_dzPV", &Phi_K_2_dzPV);
     X_One_Tree_->Branch("Phi_K_2_dxyPV", &Phi_K_2_dxyPV);

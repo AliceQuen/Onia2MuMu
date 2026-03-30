@@ -188,11 +188,25 @@ public:
         int pvAssocQuality;
         int genMatchIdx;
         int genMatchSource;
+        bool hasAssocPV;
+        bool passDzPV;
+        bool passDxyPV;
+        bool passTrackPV;
         float dzPV;
         float dxyPV;
         float dzAssocPV;
         float dxyAssocPV;
         float genMatchChi2;
+    };
+
+    struct PhiVertexDiagnostics {
+        bool fitPass;
+        bool commonAssocPVPass;
+        bool trackPVPass;
+        bool vertexCriteriaPass;
+        int commonAssocPVIdx;
+        float maxAbsDzPV;
+        float maxAbsDxyPV;
     };
 
 private:
@@ -307,6 +321,10 @@ private:
         const pat::PackedCandidate& cand,
         const reco::Vertex& primaryV,
         const edm::Handle<reco::GenParticleCollection>& genParticles) const;
+    PhiVertexDiagnostics buildPhiVertexDiagnostics(
+        bool fitPass,
+        const PhiKaonDiagnostics& kaon1,
+        const PhiKaonDiagnostics& kaon2) const;
     void storePriDiagnostics(const PriCandidateDiagnostics& diagnostics);
 
     // Store resonance fit results into branches (reduces code duplication)
@@ -576,6 +594,8 @@ private:
     vector<float> *Jpsi_1_pxErr, *Jpsi_1_pyErr, *Jpsi_1_pzErr, *Jpsi_1_ptErr;
     vector<float> *Jpsi_2_pxErr, *Jpsi_2_pyErr, *Jpsi_2_pzErr, *Jpsi_2_ptErr;
     vector<float> *Phi_pxErr, *Phi_pyErr, *Phi_pzErr, *Phi_ptErr;
+    vector<int>   *Phi_fitPass, *Phi_commonAssocPVPass, *Phi_commonAssocPVIdx, *Phi_trackPVPass, *Phi_vertexCriteriaPass;
+    vector<float> *Phi_maxAbsDzPV, *Phi_maxAbsDxyPV;
     
     // -- Primary (combined) vertex --
     vector<float> *Pri_mass, *Pri_massErr;
@@ -594,6 +614,10 @@ private:
     vector<float> *Phi_K_1_fromPV, *Phi_K_2_fromPV;
     vector<float> *Phi_K_1_pvAssocQuality, *Phi_K_2_pvAssocQuality;
     vector<int>   *Phi_K_1_vertexId, *Phi_K_2_vertexId;
+    vector<int>   *Phi_K_1_hasAssocPV, *Phi_K_2_hasAssocPV;
+    vector<int>   *Phi_K_1_passDzPV, *Phi_K_2_passDzPV;
+    vector<int>   *Phi_K_1_passDxyPV, *Phi_K_2_passDxyPV;
+    vector<int>   *Phi_K_1_passTrackPV, *Phi_K_2_passTrackPV;
     vector<float> *Phi_K_1_dzPV, *Phi_K_1_dxyPV, *Phi_K_1_dzAssocPV, *Phi_K_1_dxyAssocPV;
     vector<float> *Phi_K_2_dzPV, *Phi_K_2_dxyPV, *Phi_K_2_dzAssocPV, *Phi_K_2_dxyAssocPV;
     vector<int>   *Phi_K_1_genMatchIdx, *Phi_K_1_genMatchSource;
