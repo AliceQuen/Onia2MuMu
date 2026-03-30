@@ -247,6 +247,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     MuonPackedMatchDzPvChi2Max = cms.untracked.double(25.0),
     MuonPackedMatchDzAssocChi2Max = cms.untracked.double(25.0),
     RecoGenMuonMatchChi2Max = cms.untracked.double(25.0),
+    RecoGenKaonMatchChi2Max = cms.untracked.double(25.0),
 
     # ====== Muon-track matching method ======
     # Methods: "sourceCandidatePtr" (default), "vector", "chi2", "dzAssoc", "dzPv"

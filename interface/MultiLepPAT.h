@@ -182,6 +182,19 @@ public:
         float maxAbsDxyPV;
     };
 
+    struct PhiKaonDiagnostics {
+        int vertexId;
+        int fromPV;
+        int pvAssocQuality;
+        int genMatchIdx;
+        int genMatchSource;
+        float dzPV;
+        float dxyPV;
+        float dzAssocPV;
+        float dxyAssocPV;
+        float genMatchChi2;
+    };
+
 private:
     // ======================== Framework methods ========================
     virtual void beginJob() override;
@@ -206,7 +219,8 @@ private:
     void pairTracks(const std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
                     const MagneticField& bField);
     // Step 7: Combine resonances and fill final candidate branches
-    void combineCandidates(const reco::Vertex& beamSpotV);
+    void combineCandidates(const reco::Vertex& beamSpotV,
+                           const edm::Handle<reco::GenParticleCollection>& genParticles);
     // Step 8: MC gen-level matching for efficiency studies
     void doMCGenMatching(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
                          const edm::Handle<edm::View<pat::PackedCandidate>>& trackHandle);
@@ -289,6 +303,10 @@ private:
         float priVtxProb,
         const std::vector<const pat::PackedCandidate*>& daughterPackedCands,
         const std::vector<const reco::Track*>& daughterTracks) const;
+    PhiKaonDiagnostics buildPhiKaonDiagnostics(
+        const pat::PackedCandidate& cand,
+        const reco::Vertex& primaryV,
+        const edm::Handle<reco::GenParticleCollection>& genParticles) const;
     void storePriDiagnostics(const PriCandidateDiagnostics& diagnostics);
 
     // Store resonance fit results into branches (reduces code duplication)
@@ -391,6 +409,7 @@ private:
     bool storeMuonMomentumErrors_;
     bool storeMuonPVAssoc_;
     double recoGenMuonMatchChi2Max_;
+    double recoGenKaonMatchChi2Max_;
     bool priRequireCommonAssocPV_;
     bool priRequireTrackPVCompatibility_;
     double priTrackDzPVMax_;
@@ -574,6 +593,12 @@ private:
     vector<float> *Phi_K_2_eta, *Phi_K_2_phi, *Phi_K_2_pt;
     vector<float> *Phi_K_1_fromPV, *Phi_K_2_fromPV;
     vector<float> *Phi_K_1_pvAssocQuality, *Phi_K_2_pvAssocQuality;
+    vector<int>   *Phi_K_1_vertexId, *Phi_K_2_vertexId;
+    vector<float> *Phi_K_1_dzPV, *Phi_K_1_dxyPV, *Phi_K_1_dzAssocPV, *Phi_K_1_dxyAssocPV;
+    vector<float> *Phi_K_2_dzPV, *Phi_K_2_dxyPV, *Phi_K_2_dzAssocPV, *Phi_K_2_dxyAssocPV;
+    vector<int>   *Phi_K_1_genMatchIdx, *Phi_K_1_genMatchSource;
+    vector<int>   *Phi_K_2_genMatchIdx, *Phi_K_2_genMatchSource;
+    vector<float> *Phi_K_1_genMatchChi2, *Phi_K_2_genMatchChi2;
 
     // -- Upsilon candidate (for JpsiJpsiUps and JpsiUpsPhi modes) --
     vector<float> *Ups_mu_1_Idx, *Ups_mu_2_Idx;

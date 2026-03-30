@@ -153,6 +153,19 @@ double recoGenMuonChi2(const pat::Muon &muon, const reco::GenParticle &gen) {
   return recoMuonCandidateChi2(muon, gen, *track);
 }
 
+double recoPackedCandidateChi2(const pat::PackedCandidate &cand,
+                               const reco::Candidate &gen,
+                               const reco::Track &track) {
+  const double sigmaPt = std::max(track.ptError(), 1e-6);
+  const double sigmaEta = std::max(track.etaError(), 1e-6);
+  const double sigmaPhi = std::max(track.phiError(), 1e-6);
+  const double dphi = wrappedDeltaPhi(cand.phi(), gen.phi());
+
+  return std::pow((cand.pt() - gen.pt()) / sigmaPt, 2) +
+         std::pow((cand.eta() - gen.eta()) / sigmaEta, 2) +
+         std::pow(dphi / sigmaPhi, 2);
+}
+
 double muonPackedVectorRelP(const pat::Muon &muon, const pat::PackedCandidate &cand) {
   const double muMomentum = muon.p();
   if (muMomentum <= 0.) {
@@ -287,6 +300,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       storeMuonMomentumErrors_(iConfig.getUntrackedParameter<bool>("StoreMuonMomentumErrors", true)),
       storeMuonPVAssoc_(iConfig.getUntrackedParameter<bool>("StoreMuonPVAssoc", true)),
       recoGenMuonMatchChi2Max_(iConfig.getUntrackedParameter<double>("RecoGenMuonMatchChi2Max", 25.0)),
+      recoGenKaonMatchChi2Max_(iConfig.getUntrackedParameter<double>("RecoGenKaonMatchChi2Max", 25.0)),
       priRequireCommonAssocPV_(iConfig.getUntrackedParameter<bool>("PriRequireCommonAssocPV", true)),
       priRequireTrackPVCompatibility_(iConfig.getUntrackedParameter<bool>("PriRequireTrackPVCompatibility", true)),
       priTrackDzPVMax_(iConfig.getUntrackedParameter<double>("PriTrackDzPVMax", 2.0)),
@@ -384,6 +398,12 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Phi_K_2_eta(nullptr), Phi_K_2_phi(nullptr), Phi_K_2_pt(nullptr),
       Phi_K_1_fromPV(nullptr), Phi_K_2_fromPV(nullptr),
       Phi_K_1_pvAssocQuality(nullptr), Phi_K_2_pvAssocQuality(nullptr),
+      Phi_K_1_vertexId(nullptr), Phi_K_2_vertexId(nullptr),
+      Phi_K_1_dzPV(nullptr), Phi_K_1_dxyPV(nullptr), Phi_K_1_dzAssocPV(nullptr), Phi_K_1_dxyAssocPV(nullptr),
+      Phi_K_2_dzPV(nullptr), Phi_K_2_dxyPV(nullptr), Phi_K_2_dzAssocPV(nullptr), Phi_K_2_dxyAssocPV(nullptr),
+      Phi_K_1_genMatchIdx(nullptr), Phi_K_1_genMatchSource(nullptr),
+      Phi_K_2_genMatchIdx(nullptr), Phi_K_2_genMatchSource(nullptr),
+      Phi_K_1_genMatchChi2(nullptr), Phi_K_2_genMatchChi2(nullptr),
       // Upsilon branches
       Ups_mu_1_Idx(nullptr), Ups_mu_2_Idx(nullptr),
       Ups_mass(nullptr), Ups_massErr(nullptr), Ups_massDiff(nullptr),
@@ -493,6 +513,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     // Step 5: Get muon and track handles
     iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle_);
     iEvent.getByToken(trackToken_, theTrackHandle_);
+    edm::Handle<reco::GenParticleCollection> genParticles;
+    if (doMC) {
+        iEvent.getByToken(genParticlesToken_, genParticles);
+    }
 
     // Build non-muon track list
     nonMuonTrack_.clear();
@@ -539,7 +563,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     }
 
     // Step 10: Combine candidates and fill branches
-    combineCandidates(theBeamSpotV_);
+    combineCandidates(theBeamSpotV_, genParticles);
 
     // Fill tree if candidates found (or if MC)
     if (Pri_VtxProb->size() > 0 || doMC) {
@@ -1290,7 +1314,9 @@ void MultiLepPAT::pairTracks(
 /*****************************************************************************
  * Step 7: Combine candidates and fill final branches
  *****************************************************************************/
-void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
+void MultiLepPAT::combineCandidates(
+    const reco::Vertex& beamSpotV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
 {
     RefCountedKinematicTree vtxFitTree_1, vtxFitTree_2, vtxFitTree_Meson, vtxFitTree_Pri;
     RefCountedKinematicParticle fit1, fit2, fitMeson, fitPri;
@@ -1498,6 +1524,11 @@ void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
                     Phi_phi, Phi_eta, Phi_pt,
                     Phi_pxErr, Phi_pyErr, Phi_pzErr, Phi_ptErr);
 
+                const auto kaon1Diagnostics = buildPhiKaonDiagnostics(
+                    *nonMuonTrack_[KPair.second[0]], thePrimaryV_, genParticles);
+                const auto kaon2Diagnostics = buildPhiKaonDiagnostics(
+                    *nonMuonTrack_[KPair.second[1]], thePrimaryV_, genParticles);
+
                 // Store kaon kinematics
                 Phi_K_1_px->push_back(nonMuonTrack_[KPair.second[0]]->px());
                 Phi_K_1_py->push_back(nonMuonTrack_[KPair.second[0]]->py());
@@ -1505,8 +1536,16 @@ void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
                 Phi_K_1_pt->push_back(nonMuonTrack_[KPair.second[0]]->pt());
                 Phi_K_1_eta->push_back(nonMuonTrack_[KPair.second[0]]->eta());
                 Phi_K_1_phi->push_back(nonMuonTrack_[KPair.second[0]]->phi());
-                Phi_K_1_fromPV->push_back(nonMuonTrack_[KPair.second[0]]->fromPV());
-                Phi_K_1_pvAssocQuality->push_back(nonMuonTrack_[KPair.second[0]]->pvAssociationQuality());
+                Phi_K_1_fromPV->push_back(kaon1Diagnostics.fromPV);
+                Phi_K_1_pvAssocQuality->push_back(kaon1Diagnostics.pvAssocQuality);
+                Phi_K_1_vertexId->push_back(kaon1Diagnostics.vertexId);
+                Phi_K_1_dzPV->push_back(kaon1Diagnostics.dzPV);
+                Phi_K_1_dxyPV->push_back(kaon1Diagnostics.dxyPV);
+                Phi_K_1_dzAssocPV->push_back(kaon1Diagnostics.dzAssocPV);
+                Phi_K_1_dxyAssocPV->push_back(kaon1Diagnostics.dxyAssocPV);
+                Phi_K_1_genMatchIdx->push_back(kaon1Diagnostics.genMatchIdx);
+                Phi_K_1_genMatchSource->push_back(kaon1Diagnostics.genMatchSource);
+                Phi_K_1_genMatchChi2->push_back(kaon1Diagnostics.genMatchChi2);
 
                 Phi_K_2_px->push_back(nonMuonTrack_[KPair.second[1]]->px());
                 Phi_K_2_py->push_back(nonMuonTrack_[KPair.second[1]]->py());
@@ -1514,8 +1553,16 @@ void MultiLepPAT::combineCandidates(const reco::Vertex& beamSpotV)
                 Phi_K_2_pt->push_back(nonMuonTrack_[KPair.second[1]]->pt());
                 Phi_K_2_eta->push_back(nonMuonTrack_[KPair.second[1]]->eta());
                 Phi_K_2_phi->push_back(nonMuonTrack_[KPair.second[1]]->phi());
-                Phi_K_2_fromPV->push_back(nonMuonTrack_[KPair.second[1]]->fromPV());
-                Phi_K_2_pvAssocQuality->push_back(nonMuonTrack_[KPair.second[1]]->pvAssociationQuality());
+                Phi_K_2_fromPV->push_back(kaon2Diagnostics.fromPV);
+                Phi_K_2_pvAssocQuality->push_back(kaon2Diagnostics.pvAssocQuality);
+                Phi_K_2_vertexId->push_back(kaon2Diagnostics.vertexId);
+                Phi_K_2_dzPV->push_back(kaon2Diagnostics.dzPV);
+                Phi_K_2_dxyPV->push_back(kaon2Diagnostics.dxyPV);
+                Phi_K_2_dzAssocPV->push_back(kaon2Diagnostics.dzAssocPV);
+                Phi_K_2_dxyAssocPV->push_back(kaon2Diagnostics.dxyAssocPV);
+                Phi_K_2_genMatchIdx->push_back(kaon2Diagnostics.genMatchIdx);
+                Phi_K_2_genMatchSource->push_back(kaon2Diagnostics.genMatchSource);
+                Phi_K_2_genMatchChi2->push_back(kaon2Diagnostics.genMatchChi2);
             }
         }
     }
@@ -1736,6 +1783,102 @@ MultiLepPAT::evaluatePriCandidateDiagnostics(
     return diagnostics;
 }
 
+MultiLepPAT::PhiKaonDiagnostics
+MultiLepPAT::buildPhiKaonDiagnostics(
+    const pat::PackedCandidate& cand,
+    const reco::Vertex& primaryV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles) const
+{
+    PhiKaonDiagnostics diagnostics{};
+    diagnostics.vertexId = -1;
+    diagnostics.fromPV = cand.fromPV();
+    diagnostics.pvAssocQuality = cand.pvAssociationQuality();
+    diagnostics.genMatchIdx = -1;
+    diagnostics.genMatchSource = 0;
+    diagnostics.dzPV = -9.f;
+    diagnostics.dxyPV = -9.f;
+    diagnostics.dzAssocPV = -9.f;
+    diagnostics.dxyAssocPV = -9.f;
+    diagnostics.genMatchChi2 = -1.f;
+
+    const reco::Track* track =
+        (cand.hasTrackDetails() && cand.bestTrack() != nullptr) ? cand.bestTrack() : nullptr;
+
+    if (track != nullptr) {
+        diagnostics.dzPV = track->dz(primaryV.position());
+        diagnostics.dxyPV = track->dxy(primaryV.position());
+    }
+
+    const auto assocVtxRef = cand.vertexRef();
+    if (assocVtxRef.isNonnull() && assocVtxRef.isAvailable()) {
+        diagnostics.vertexId = static_cast<int>(assocVtxRef.key());
+        if (track != nullptr) {
+            diagnostics.dzAssocPV = track->dz(assocVtxRef->position());
+            diagnostics.dxyAssocPV = track->dxy(assocVtxRef->position());
+        }
+    }
+
+    if (!genParticles.isValid() || track == nullptr) {
+        return diagnostics;
+    }
+
+    auto chargeCompatible = [&](const reco::GenParticle& gen) {
+        return gen.charge() == 0 || gen.charge() == cand.charge();
+    };
+
+    auto matchesPhiMother = [](const reco::GenParticle& gen) {
+        return gen.numberOfMothers() > 0 && gen.mother(0) != nullptr &&
+               std::abs(gen.mother(0)->pdgId()) == 333;
+    };
+
+    auto scanGenKaons = [&](bool requirePhiMother, float& bestChi2) {
+        int bestIdx = -1;
+        double bestChi2Value = recoGenKaonMatchChi2Max_;
+        bestChi2 = -1.f;
+
+        for (size_t genIdx = 0; genIdx < genParticles->size(); ++genIdx) {
+            const auto& gen = genParticles->at(genIdx);
+            if (std::abs(gen.pdgId()) != 321 || gen.status() != 1 || !chargeCompatible(gen)) {
+                continue;
+            }
+            if (requirePhiMother && !matchesPhiMother(gen)) {
+                continue;
+            }
+
+            const auto mapIt = handleToNtupleIndex_.find(genIdx);
+            if (mapIt == handleToNtupleIndex_.end()) {
+                continue;
+            }
+
+            const double chi2 = recoPackedCandidateChi2(cand, gen, *track);
+            if (!std::isfinite(chi2) || chi2 >= bestChi2Value) {
+                continue;
+            }
+
+            bestChi2Value = chi2;
+            bestIdx = mapIt->second;
+        }
+
+        if (bestIdx >= 0) {
+            bestChi2 = static_cast<float>(bestChi2Value);
+        }
+        return bestIdx;
+    };
+
+    diagnostics.genMatchIdx = scanGenKaons(true, diagnostics.genMatchChi2);
+    if (diagnostics.genMatchIdx >= 0) {
+        diagnostics.genMatchSource = 1;
+        return diagnostics;
+    }
+
+    diagnostics.genMatchIdx = scanGenKaons(false, diagnostics.genMatchChi2);
+    if (diagnostics.genMatchIdx >= 0) {
+        diagnostics.genMatchSource = 2;
+    }
+
+    return diagnostics;
+}
+
 void MultiLepPAT::storePriDiagnostics(const PriCandidateDiagnostics& diagnostics)
 {
     Pri_fitValid->push_back(diagnostics.fitValid ? 1 : 0);
@@ -1927,9 +2070,17 @@ void MultiLepPAT::clearEventData()
     Phi_K_1_Idx->clear(); Phi_K_1_px->clear(); Phi_K_1_py->clear(); Phi_K_1_pz->clear();
     Phi_K_1_phi->clear(); Phi_K_1_eta->clear(); Phi_K_1_pt->clear();
     Phi_K_1_fromPV->clear(); Phi_K_1_pvAssocQuality->clear();
+    Phi_K_1_vertexId->clear();
+    Phi_K_1_dzPV->clear(); Phi_K_1_dxyPV->clear();
+    Phi_K_1_dzAssocPV->clear(); Phi_K_1_dxyAssocPV->clear();
+    Phi_K_1_genMatchIdx->clear(); Phi_K_1_genMatchSource->clear(); Phi_K_1_genMatchChi2->clear();
     Phi_K_2_Idx->clear(); Phi_K_2_px->clear(); Phi_K_2_py->clear(); Phi_K_2_pz->clear();
     Phi_K_2_phi->clear(); Phi_K_2_eta->clear(); Phi_K_2_pt->clear();
     Phi_K_2_fromPV->clear(); Phi_K_2_pvAssocQuality->clear();
+    Phi_K_2_vertexId->clear();
+    Phi_K_2_dzPV->clear(); Phi_K_2_dxyPV->clear();
+    Phi_K_2_dzAssocPV->clear(); Phi_K_2_dxyAssocPV->clear();
+    Phi_K_2_genMatchIdx->clear(); Phi_K_2_genMatchSource->clear(); Phi_K_2_genMatchChi2->clear();
 
     // Upsilon branches
     Ups_mu_1_Idx->clear(); Ups_mu_2_Idx->clear();
@@ -2419,11 +2570,27 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Phi_K_1_eta", &Phi_K_1_eta); X_One_Tree_->Branch("Phi_K_1_pt", &Phi_K_1_pt);
     X_One_Tree_->Branch("Phi_K_1_fromPV", &Phi_K_1_fromPV);
     X_One_Tree_->Branch("Phi_K_1_pvAssocQuality", &Phi_K_1_pvAssocQuality);
+    X_One_Tree_->Branch("Phi_K_1_vertexId", &Phi_K_1_vertexId);
+    X_One_Tree_->Branch("Phi_K_1_dzPV", &Phi_K_1_dzPV);
+    X_One_Tree_->Branch("Phi_K_1_dxyPV", &Phi_K_1_dxyPV);
+    X_One_Tree_->Branch("Phi_K_1_dzAssocPV", &Phi_K_1_dzAssocPV);
+    X_One_Tree_->Branch("Phi_K_1_dxyAssocPV", &Phi_K_1_dxyAssocPV);
+    X_One_Tree_->Branch("Phi_K_1_genMatchIdx", &Phi_K_1_genMatchIdx);
+    X_One_Tree_->Branch("Phi_K_1_genMatchSource", &Phi_K_1_genMatchSource);
+    X_One_Tree_->Branch("Phi_K_1_genMatchChi2", &Phi_K_1_genMatchChi2);
     X_One_Tree_->Branch("Phi_K_2_px", &Phi_K_2_px); X_One_Tree_->Branch("Phi_K_2_py", &Phi_K_2_py);
     X_One_Tree_->Branch("Phi_K_2_pz", &Phi_K_2_pz); X_One_Tree_->Branch("Phi_K_2_phi", &Phi_K_2_phi);
     X_One_Tree_->Branch("Phi_K_2_eta", &Phi_K_2_eta); X_One_Tree_->Branch("Phi_K_2_pt", &Phi_K_2_pt);
     X_One_Tree_->Branch("Phi_K_2_fromPV", &Phi_K_2_fromPV);
     X_One_Tree_->Branch("Phi_K_2_pvAssocQuality", &Phi_K_2_pvAssocQuality);
+    X_One_Tree_->Branch("Phi_K_2_vertexId", &Phi_K_2_vertexId);
+    X_One_Tree_->Branch("Phi_K_2_dzPV", &Phi_K_2_dzPV);
+    X_One_Tree_->Branch("Phi_K_2_dxyPV", &Phi_K_2_dxyPV);
+    X_One_Tree_->Branch("Phi_K_2_dzAssocPV", &Phi_K_2_dzAssocPV);
+    X_One_Tree_->Branch("Phi_K_2_dxyAssocPV", &Phi_K_2_dxyAssocPV);
+    X_One_Tree_->Branch("Phi_K_2_genMatchIdx", &Phi_K_2_genMatchIdx);
+    X_One_Tree_->Branch("Phi_K_2_genMatchSource", &Phi_K_2_genMatchSource);
+    X_One_Tree_->Branch("Phi_K_2_genMatchChi2", &Phi_K_2_genMatchChi2);
 
     // Upsilon branches
     branchReso("Ups", Ups_mass, Ups_massErr, Ups_massDiff,

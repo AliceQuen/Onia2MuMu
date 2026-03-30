@@ -230,6 +230,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     MuonPackedMatchDzPvChi2Max = cms.untracked.double(25.0),
     MuonPackedMatchDzAssocChi2Max = cms.untracked.double(25.0),
     RecoGenMuonMatchChi2Max = cms.untracked.double(25.0),
+    RecoGenKaonMatchChi2Max = cms.untracked.double(25.0),
 
     # ====== Vertex ambiguity ======
     resolvePileUpAmbiguity   = cms.untracked.bool(True),
