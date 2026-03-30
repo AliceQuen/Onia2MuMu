@@ -289,8 +289,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       recoGenMuonMatchChi2Max_(iConfig.getUntrackedParameter<double>("RecoGenMuonMatchChi2Max", 25.0)),
       priRequireCommonAssocPV_(iConfig.getUntrackedParameter<bool>("PriRequireCommonAssocPV", true)),
       priRequireTrackPVCompatibility_(iConfig.getUntrackedParameter<bool>("PriRequireTrackPVCompatibility", true)),
-      priTrackDzPVMax_(iConfig.getUntrackedParameter<double>("PriTrackDzPVMax", 20.0)),
-      priTrackDxyPVMax_(iConfig.getUntrackedParameter<double>("PriTrackDxyPVMax", 1.0)),
+      priTrackDzPVMax_(iConfig.getUntrackedParameter<double>("PriTrackDzPVMax", 2.0)),
+      priTrackDxyPVMax_(iConfig.getUntrackedParameter<double>("PriTrackDxyPVMax", 0.1)),
       // Final fitted mass window check
       checkFinalMass_(iConfig.getUntrackedParameter<bool>("CheckFinalMass", true)),
       // Trigger info

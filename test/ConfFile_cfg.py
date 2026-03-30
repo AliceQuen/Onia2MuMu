@@ -214,8 +214,8 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     PriVtxProbCut       = cms.untracked.double(0.0),
     PriRequireCommonAssocPV = cms.untracked.bool(True),
     PriRequireTrackPVCompatibility = cms.untracked.bool(True),
-    PriTrackDzPVMax = cms.untracked.double(20.0),
-    PriTrackDxyPVMax = cms.untracked.double(1.0),
+    PriTrackDzPVMax = cms.untracked.double(2.0),
+    PriTrackDxyPVMax = cms.untracked.double(0.1),
 
     # ====== Per-resonance candidate pT/eta pre-cuts ======
     JpsiCandPtMin  = cms.untracked.double(0.0),
