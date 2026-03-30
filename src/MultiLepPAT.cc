@@ -32,6 +32,7 @@
 #include <iostream>
 #include <string>
 #include <cmath>
+#include <limits>
 #include <unordered_set>
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -105,6 +106,45 @@
 
 typedef math::Error<3>::type CovarianceMatrix;
 
+namespace {
+
+const reco::Track *bestMuonTrackForGenMatch(const pat::Muon &muon) {
+  const reco::TrackRef bestTrack = muon.muonBestTrack();
+  if (bestTrack.isNonnull() && bestTrack.isAvailable()) {
+    return bestTrack.get();
+  }
+
+  const reco::TrackRef innerTrack = muon.innerTrack();
+  if (innerTrack.isNonnull() && innerTrack.isAvailable()) {
+    return innerTrack.get();
+  }
+
+  return nullptr;
+}
+
+double recoGenMuonChi2(const pat::Muon &muon, const reco::GenParticle &gen) {
+  const reco::Track *track = bestMuonTrackForGenMatch(muon);
+  if (track == nullptr) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const double sigmaPt = std::max(track->ptError(), 1e-6);
+  const double sigmaEta = std::max(track->etaError(), 1e-6);
+  const double sigmaPhi = std::max(track->phiError(), 1e-6);
+
+  double dphi = muon.phi() - gen.phi();
+  while (dphi > M_PI)
+    dphi -= 2. * M_PI;
+  while (dphi <= -M_PI)
+    dphi += 2. * M_PI;
+
+  return std::pow((muon.pt() - gen.pt()) / sigmaPt, 2) +
+         std::pow((muon.eta() - gen.eta()) / sigmaEta, 2) +
+         std::pow(dphi / sigmaPhi, 2);
+}
+
+}  // namespace
+
 /*****************************************************************************
  * Constructor
  *****************************************************************************/
@@ -112,7 +152,11 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     : hlTriggerResults_(iConfig.getUntrackedParameter<edm::InputTag>(
           "HLTriggerResults", edm::InputTag("TriggerResults::HLT"))),
       inputGEN_(iConfig.getUntrackedParameter<edm::InputTag>(
-          "inputGEN", edm::InputTag("genParticles"))),
+          "inputGEN", edm::InputTag("prunedGenParticles"))),
+      muonLabel_(iConfig.getUntrackedParameter<edm::InputTag>(
+          "MuonLabel", edm::InputTag("slimmedMuons"))),
+      trackLabel_(iConfig.getUntrackedParameter<edm::InputTag>(
+          "TrackLabel", edm::InputTag("packedPFCandidates"))),
       magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
       theTTBuilderToken_(esConsumes<TransientTrackBuilder, TransientTrackRecord>(
           edm::ESInputTag("", "TransientTrackBuilder"))),
@@ -172,6 +216,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       storeAllPVs_(iConfig.getUntrackedParameter<bool>("StoreAllPVs", true)),
       storeMuonMomentumErrors_(iConfig.getUntrackedParameter<bool>("StoreMuonMomentumErrors", true)),
       storeMuonPVAssoc_(iConfig.getUntrackedParameter<bool>("StoreMuonPVAssoc", true)),
+      recoGenMuonMatchChi2Max_(iConfig.getUntrackedParameter<double>("RecoGenMuonMatchChi2Max", 25.0)),
       // Final fitted mass window check
       checkFinalMass_(iConfig.getUntrackedParameter<bool>("CheckFinalMass", true)),
       // Trigger info
@@ -216,6 +261,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       // Muon PV association (surplus from sourceCandidatePtr)
       muVertexId(nullptr), muDzAssocPV(nullptr), muDxyAssocPV(nullptr),
       muFromPVAssocPV(nullptr), muPdgId(nullptr),
+      muGenMatchIdx(nullptr), muGenMatchSource(nullptr), muGenMatchChi2(nullptr),
       muMVAMuonID(nullptr), musegmentCompatibility(nullptr),
       mupulldXdZ_pos_noArb(nullptr), mupulldYdZ_pos_noArb(nullptr),
       mupulldXdZ_pos_ArbDef(nullptr), mupulldYdZ_pos_ArbDef(nullptr),
@@ -268,6 +314,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Ups_pxErr(nullptr), Ups_pyErr(nullptr), Ups_pzErr(nullptr), Ups_ptErr(nullptr),
       // MC gen-level (new)
       MC_GenPart_pdgId(nullptr), MC_GenPart_status(nullptr), MC_GenPart_motherPdgId(nullptr),
+      MC_GenPart_handleIndex(nullptr),
       MC_GenPart_px(nullptr), MC_GenPart_py(nullptr), MC_GenPart_pz(nullptr), MC_GenPart_mass(nullptr),
       MC_GenPart_pt(nullptr), MC_GenPart_eta(nullptr), MC_GenPart_phi(nullptr),
       // MC gen-level (legacy)
@@ -316,10 +363,10 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     gtRecordToken_     = consumes<L1GlobalTriggerReadoutRecord>(edm::InputTag("gtDigis"));
     gtbeamspotToken_   = consumes<BeamSpot>(edm::InputTag("offlineBeamSpot"));
     gtprimaryVtxToken_ = consumes<VertexCollection>(edm::InputTag("offlineSlimmedPrimaryVertices"));
-    gtpatmuonToken_    = consumes<edm::View<pat::Muon>>(edm::InputTag("slimmedMuons"));
+    gtpatmuonToken_    = consumes<edm::View<pat::Muon>>(muonLabel_);
     gttriggerToken_    = consumes<edm::TriggerResults>(edm::InputTag("TriggerResults::HLT"));
-    trackToken_        = consumes<edm::View<pat::PackedCandidate>>(edm::InputTag("packedPFCandidates"));
-    genParticlesToken_ = consumes<reco::GenParticleCollection>(edm::InputTag("genParticles"));
+    trackToken_        = consumes<edm::View<pat::PackedCandidate>>(trackLabel_);
+    genParticlesToken_ = consumes<reco::GenParticleCollection>(inputGEN_);
 }
 
 MultiLepPAT::~MultiLepPAT() {}
@@ -363,25 +410,27 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     // Step 5: Get muon and track handles
     iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle_);
     iEvent.getByToken(trackToken_, theTrackHandle_);
-    
+
     // Build non-muon track list
     nonMuonTrack_.clear();
-    for (auto iTrack = theTrackHandle_->begin(); iTrack != theTrackHandle_->end(); ++iTrack) {
-        nonMuonTrack_.push_back(iTrack);
+    if (theTrackHandle_.isValid()) {
+        for (auto iTrack = theTrackHandle_->begin(); iTrack != theTrackHandle_->end(); ++iTrack) {
+            nonMuonTrack_.push_back(iTrack);
+        }
     }
 
-    // Step 6: Fill muon block (requires >= minMuonCount_ muons)
-    if (thePATMuonHandle_->size() >= minMuonCount_) {
+    // Step 6: Fill the muon block for all available muons.
+    if (thePATMuonHandle_.isValid()) {
         fillMuonBlock(iEvent, iSetup, thePrimaryV_);
     }
 
     // Step 7: MC matching of tracks
-    if (doMC) {
+    if (doMC && thePATMuonHandle_.isValid() && theTrackHandle_.isValid()) {
         doMCGenMatching(thePATMuonHandle_, theTrackHandle_);
     }
 
     // Step 8: Pair muons
-    if (thePATMuonHandle_->size() < minMuonCount_) {
+    if (!thePATMuonHandle_.isValid() || thePATMuonHandle_->size() < minMuonCount_) {
         // Not enough muons: still fill tree if MC
         if (doMC) {
             X_One_Tree_->Fill();
@@ -395,6 +444,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     // Step 9: Pair tracks into meson candidates
     bool needsTrackPairs = (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
                             analysisChannel_ == AnalysisChannel::JpsiUpsPhi);
+    if (needsTrackPairs && !theTrackHandle_.isValid()) {
+        if (doMC) {
+            X_One_Tree_->Fill();
+        }
+        clearEventData();
+        return;
+    }
     if (needsTrackPairs) {
         pairTracks(nonMuonTrack_, bFieldHandle);
     }
@@ -416,15 +472,19 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
  *****************************************************************************/
 void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
 {
+    handleToNtupleIndex_.clear();
+
     edm::Handle<reco::GenParticleCollection> genParticles;
     iEvent.getByToken(genParticlesToken_, genParticles);
-    if (!genParticles.isValid()) return;
+    if (!genParticles.isValid())
+        return;
 
     // Flat gen-particle storage: store all relevant particles
     // (J/psi=443, Upsilon=553, phi=333, mu=13, K=321)
     static const std::unordered_set<int> interestingPdgIds = {443, 553, 333, 13, 321};
 
-    for (const auto &particle : *(genParticles.product())) {
+    for (size_t i = 0; i < genParticles->size(); ++i) {
+        const auto &particle = genParticles->at(i);
         int absPdgId = std::abs(particle.pdgId());
         if (interestingPdgIds.count(absPdgId) || particle.numberOfDaughters() >= 2) {
             // Store if it's a relevant particle or a mother with daughters
@@ -435,6 +495,7 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
                     hasMuDaughters = true;
             }
             if (isInteresting || hasMuDaughters) {
+                const int ntupleIndex = MC_GenPart_pdgId->size();
                 MC_GenPart_pdgId->push_back(particle.pdgId());
                 MC_GenPart_status->push_back(particle.status());
                 int motherPdgId = 0;
@@ -442,6 +503,7 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
                     motherPdgId = particle.mother(0)->pdgId();
                 }
                 MC_GenPart_motherPdgId->push_back(motherPdgId);
+                MC_GenPart_handleIndex->push_back(static_cast<int>(i));
                 MC_GenPart_px->push_back(particle.px());
                 MC_GenPart_py->push_back(particle.py());
                 MC_GenPart_pz->push_back(particle.pz());
@@ -449,6 +511,7 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
                 MC_GenPart_pt->push_back(particle.pt());
                 MC_GenPart_eta->push_back(particle.eta());
                 MC_GenPart_phi->push_back(particle.phi());
+                handleToNtupleIndex_[i] = ntupleIndex;
             }
         }
     }
@@ -640,6 +703,91 @@ void MultiLepPAT::fillMuonBlock(const edm::Event& iEvent,
     edm::Handle<edm::TriggerResults> hltresults;
     try { iEvent.getByToken(gttriggerToken_, hltresults); } catch (...) {}
 
+    edm::Handle<reco::GenParticleCollection> genParticles;
+    bool haveGenParticles = false;
+    edm::ProductID genProductId;
+    if (doMC) {
+        iEvent.getByToken(genParticlesToken_, genParticles);
+        haveGenParticles = genParticles.isValid();
+        if (haveGenParticles) {
+            genProductId = genParticles.id();
+        }
+    }
+
+    auto chargeCompatible = [](const pat::Muon &muon, const reco::GenParticle &gen) {
+        return gen.charge() == 0 || muon.charge() == gen.charge();
+    };
+
+    auto matchMuonFromPatRefs = [&](const pat::Muon &muon, float &bestChi2) {
+        int bestIdx = -1;
+        int firstValidIdx = -1;
+        double bestChi2Value = std::numeric_limits<double>::infinity();
+        bestChi2 = -1.f;
+
+        for (size_t genIdx = 0; genIdx < muon.genParticlesSize(); ++genIdx) {
+            const auto genRef = muon.genParticleRef(genIdx);
+            if (!genRef.isNonnull() || !genRef.isAvailable())
+                continue;
+            if (genRef.id() != genProductId || genRef.key() >= genParticles->size())
+                continue;
+
+            const auto mapIt = handleToNtupleIndex_.find(genRef.key());
+            if (mapIt == handleToNtupleIndex_.end())
+                continue;
+
+            const auto &gen = genParticles->at(genRef.key());
+            if (std::abs(gen.pdgId()) != 13 || !chargeCompatible(muon, gen))
+                continue;
+
+            if (firstValidIdx < 0)
+                firstValidIdx = mapIt->second;
+
+            const double chi2 = recoGenMuonChi2(muon, gen);
+            if (!std::isfinite(chi2))
+                continue;
+
+            if (chi2 < bestChi2Value) {
+                bestChi2Value = chi2;
+                bestIdx = mapIt->second;
+            }
+        }
+
+        if (bestIdx >= 0) {
+            bestChi2 = static_cast<float>(bestChi2Value);
+            return bestIdx;
+        }
+
+        return firstValidIdx;
+    };
+
+    auto matchMuonByChi2 = [&](const pat::Muon &muon, float &bestChi2) {
+        int bestIdx = -1;
+        double bestChi2Value = recoGenMuonMatchChi2Max_;
+        bestChi2 = -1.f;
+
+        for (size_t genIdx = 0; genIdx < genParticles->size(); ++genIdx) {
+            const auto &gen = genParticles->at(genIdx);
+            if (std::abs(gen.pdgId()) != 13 || !chargeCompatible(muon, gen))
+                continue;
+
+            const auto mapIt = handleToNtupleIndex_.find(genIdx);
+            if (mapIt == handleToNtupleIndex_.end())
+                continue;
+
+            const double chi2 = recoGenMuonChi2(muon, gen);
+            if (!std::isfinite(chi2) || chi2 >= bestChi2Value)
+                continue;
+
+            bestChi2Value = chi2;
+            bestIdx = mapIt->second;
+        }
+
+        if (bestIdx >= 0)
+            bestChi2 = static_cast<float>(bestChi2Value);
+
+        return bestIdx;
+    };
+
     for (auto iMuonP = thePATMuonHandle_->begin();
          iMuonP != thePATMuonHandle_->end(); ++iMuonP) {
         ++nMu;
@@ -782,6 +930,24 @@ void MultiLepPAT::fillMuonBlock(const edm::Event& iEvent,
             muFromPVAssocPV->push_back(0);
             muPdgId->push_back(0);
         }
+
+        int genMatchIdx = -1;
+        int genMatchSource = 0;
+        float genMatchChi2 = -1.f;
+        if (haveGenParticles) {
+            genMatchIdx = matchMuonFromPatRefs(*iMuonP, genMatchChi2);
+            if (genMatchIdx >= 0) {
+                genMatchSource = 1;
+            } else {
+                genMatchIdx = matchMuonByChi2(*iMuonP, genMatchChi2);
+                if (genMatchIdx >= 0)
+                    genMatchSource = 2;
+            }
+        }
+
+        muGenMatchIdx->push_back(genMatchIdx);
+        muGenMatchSource->push_back(genMatchSource);
+        muGenMatchChi2->push_back(genMatchChi2);
 
         // Trigger matching
         bool isJpsiTrigMatch = false;
@@ -1410,6 +1576,7 @@ void MultiLepPAT::clearEventData()
     if (doMC) {
         MC_GenPart_pdgId->clear(); MC_GenPart_status->clear();
         MC_GenPart_motherPdgId->clear();
+        MC_GenPart_handleIndex->clear();
         MC_GenPart_px->clear(); MC_GenPart_py->clear();
         MC_GenPart_pz->clear(); MC_GenPart_mass->clear();
         MC_GenPart_pt->clear(); MC_GenPart_eta->clear();
@@ -1466,6 +1633,7 @@ void MultiLepPAT::clearEventData()
     // Muon PV association (surplus from sourceCandidatePtr)
     muVertexId->clear(); muDzAssocPV->clear(); muDxyAssocPV->clear();
     muFromPVAssocPV->clear(); muPdgId->clear();
+    muGenMatchIdx->clear(); muGenMatchSource->clear(); muGenMatchChi2->clear();
 
     // Muon-track matching debug
     if (muTrkMatchDebug_) {
@@ -1521,6 +1689,7 @@ void MultiLepPAT::clearEventData()
     Ups_pxErr->clear(); Ups_pyErr->clear(); Ups_pzErr->clear(); Ups_ptErr->clear();
 
     // Clear intermediate storage
+    handleToNtupleIndex_.clear();
     muPairCand_Onia1_.clear();
     muPairCand_Onia2_.clear();
     muQuad_Onia_.clear();
@@ -1887,6 +2056,9 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("muDxyAssocPV", &muDxyAssocPV);
     X_One_Tree_->Branch("muFromPVAssocPV", &muFromPVAssocPV);
     X_One_Tree_->Branch("muPdgId", &muPdgId);
+    X_One_Tree_->Branch("muGenMatchIdx", &muGenMatchIdx);
+    X_One_Tree_->Branch("muGenMatchSource", &muGenMatchSource);
+    X_One_Tree_->Branch("muGenMatchChi2", &muGenMatchChi2);
 
     X_One_Tree_->Branch("muIsJpsiTrigMatch", &muIsJpsiTrigMatch);
     X_One_Tree_->Branch("muIsUpsTrigMatch", &muIsUpsTrigMatch);
@@ -2001,6 +2173,7 @@ void MultiLepPAT::beginJob()
         X_One_Tree_->Branch("MC_GenPart_pdgId", &MC_GenPart_pdgId);
         X_One_Tree_->Branch("MC_GenPart_status", &MC_GenPart_status);
         X_One_Tree_->Branch("MC_GenPart_motherPdgId", &MC_GenPart_motherPdgId);
+        X_One_Tree_->Branch("MC_GenPart_handleIndex", &MC_GenPart_handleIndex);
         X_One_Tree_->Branch("MC_GenPart_px", &MC_GenPart_px);
         X_One_Tree_->Branch("MC_GenPart_py", &MC_GenPart_py);
         X_One_Tree_->Branch("MC_GenPart_pz", &MC_GenPart_pz);

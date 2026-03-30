@@ -46,6 +46,7 @@
 // system include files
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 
@@ -310,6 +311,8 @@ private:
     // -- Essentials --
     InputTag hlTriggerResults_;
     InputTag inputGEN_;
+    InputTag muonLabel_;
+    InputTag trackLabel_;
     edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magneticFieldToken_;
     edm::ESGetToken<TransientTrackBuilder, TransientTrackRecord> theTTBuilderToken_;
     
@@ -376,6 +379,7 @@ private:
     bool storeAllPVs_;
     bool storeMuonMomentumErrors_;
     bool storeMuonPVAssoc_;
+    double recoGenMuonMatchChi2Max_;
 
     // -- Final fitted mass window check --
     bool checkFinalMass_;
@@ -409,6 +413,7 @@ private:
     edm::Handle<edm::View<pat::Muon>> thePATMuonHandle_;
     edm::Handle<edm::View<pat::PackedCandidate>> theTrackHandle_;
     std::vector<edm::View<pat::PackedCandidate>::const_iterator> nonMuonTrack_;
+    std::unordered_map<unsigned int, int> handleToNtupleIndex_;
     
     // Muon pair candidates
     std::vector<muList_t> muPairCand_Onia1_;  // J/psi (or 1st quarkonium)
@@ -488,6 +493,9 @@ private:
     vector<float> *muDxyAssocPV;        // dxy w.r.t. associated PV
     vector<int>   *muFromPVAssocPV;     // fromPV from sourceCandidatePtr
     vector<int>   *muPdgId;             // PDG ID from sourceCandidatePtr
+    vector<int>   *muGenMatchIdx;       // Index into MC_GenPart_* branches
+    vector<int>   *muGenMatchSource;    // 0=none, 1=PAT ref, 2=chi2 fallback
+    vector<float> *muGenMatchChi2;      // Best chi2 used for the assignment
 
     // -- Muon ID variables --
     vector<float> *muMVAMuonID, *musegmentCompatibility;
@@ -557,6 +565,7 @@ private:
     vector<int>   *MC_GenPart_pdgId;
     vector<int>   *MC_GenPart_status;
     vector<int>   *MC_GenPart_motherPdgId;
+    vector<int>   *MC_GenPart_handleIndex;
     vector<float> *MC_GenPart_px, *MC_GenPart_py, *MC_GenPart_pz, *MC_GenPart_mass;
     vector<float> *MC_GenPart_pt, *MC_GenPart_eta, *MC_GenPart_phi;
     

@@ -168,7 +168,9 @@ process.muonMatchHLTTrackMu.maxDPtRel = 10.0
 # --- MultiLepPAT analyzer (refactored) ---
 process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     HLTriggerResults = cms.untracked.InputTag("TriggerResults", "", "HLT"),
-    inputGEN = cms.untracked.InputTag("genParticles"),
+    inputGEN = cms.untracked.InputTag("prunedGenParticles"),
+    MuonLabel = cms.untracked.InputTag("slimmedMuons"),
+    TrackLabel = cms.untracked.InputTag("packedPFCandidates"),
 
     # ====== Analysis mode ======
     AnalysisMode = cms.untracked.string("JpsiJpsiPhi"),
@@ -218,6 +220,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
 
     # ====== Muon matching ======
     MuMatchTrkMomentumRelDiffThr = cms.untracked.double(0.5),
+    RecoGenMuonMatchChi2Max = cms.untracked.double(25.0),
 
     # ====== Vertex ambiguity ======
     resolvePileUpAmbiguity   = cms.untracked.bool(True),
@@ -241,11 +244,11 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
 )
 
 if HIFormat:
-    process.mkcands.GenLabel = cms.InputTag('hiGenParticles')
+    process.mkcands.inputGEN = cms.untracked.InputTag('hiGenParticles')
 if UseGenPlusSim:
-    process.mkcands.GenLabel = cms.InputTag('genParticlePlusGEANT')
+    process.mkcands.inputGEN = cms.untracked.InputTag('genParticlePlusGEANT')
 if UsepatMuonsWithTrigger:
-    process.mkcands.MuonLabel = cms.InputTag('patMuonsWithTrigger')
+    process.mkcands.MuonLabel = cms.untracked.InputTag('patMuonsWithTrigger')
 
 # --- Output ---
 process.TFileService = cms.Service("TFileService",

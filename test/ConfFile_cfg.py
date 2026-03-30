@@ -109,6 +109,9 @@ globalTagDict = {
 
 ivars.parseArguments()
 
+if ivars.runOnMC and ivars.era == 'Run2023C':
+    ivars.era = 'Run2022'
+
 if ivars.analysisMode not in ['JpsiJpsiPhi', 'JpsiJpsiUps', 'JpsiUpsPhi']:
     raise ValueError(f"Invalid analysis mode: {ivars.analysisMode}. "
                      f"Valid options are: JpsiJpsiPhi, JpsiJpsiUps, JpsiUpsPhi")
@@ -175,7 +178,9 @@ process.filter = cms.Sequence(process.primaryVertexFilter + process.noscraping)
 # --- MultiLepPAT analyzer ---
 process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     HLTriggerResults = cms.untracked.InputTag("TriggerResults", "", "HLT"),
-    inputGEN = cms.untracked.InputTag("genParticles"),
+    inputGEN = cms.untracked.InputTag("prunedGenParticles"),
+    MuonLabel = cms.untracked.InputTag("slimmedMuons"),
+    TrackLabel = cms.untracked.InputTag("packedPFCandidates"),
 
     # ====== Analysis mode ======
     # Options: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi"
@@ -234,6 +239,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
 
     # ====== Muon matching ======
     MuMatchTrkMomentumRelDiffThr = cms.untracked.double(0.5),
+    RecoGenMuonMatchChi2Max = cms.untracked.double(25.0),
 
     # ====== Muon-track matching method ======
     # Method: "first" (default), "leastDiff", "addDz", "sigma"
