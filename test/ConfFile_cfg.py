@@ -212,6 +212,10 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     # ====== Vertex probability cuts ======
     OniaDecayVtxProbCut = cms.untracked.double(0.0),
     PriVtxProbCut       = cms.untracked.double(0.0),
+    PriRequireCommonAssocPV = cms.untracked.bool(True),
+    PriRequireTrackPVCompatibility = cms.untracked.bool(True),
+    PriTrackDzPVMax = cms.untracked.double(20.0),
+    PriTrackDxyPVMax = cms.untracked.double(1.0),
 
     # ====== Per-resonance candidate pT/eta pre-cuts ======
     JpsiCandPtMin  = cms.untracked.double(0.0),
@@ -238,15 +242,16 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     Debug_Output = cms.untracked.bool(False),
 
     # ====== Muon matching ======
-    MuMatchTrkMomentumRelDiffThr = cms.untracked.double(0.5),
+    MuonPackedMatchVectorRelPMax = cms.untracked.double(0.01),
+    MuonPackedMatchChi2Max = cms.untracked.double(25.0),
+    MuonPackedMatchDzPvChi2Max = cms.untracked.double(25.0),
+    MuonPackedMatchDzAssocChi2Max = cms.untracked.double(25.0),
     RecoGenMuonMatchChi2Max = cms.untracked.double(25.0),
 
     # ====== Muon-track matching method ======
-    # Method: "first" (default), "leastDiff", "addDz", "sigma"
-    MuTrkMatchMethod = cms.untracked.string("first"),
+    # Methods: "sourceCandidatePtr" (default), "vector", "chi2", "dzAssoc", "dzPv"
+    MuTrkMatchMethod = cms.untracked.string("sourceCandidatePtr"),
     MuTrkMatchDebug = cms.untracked.bool(True),
-    MuTrkMatchDzMax = cms.untracked.double(1.0),
-    MuTrkMatchSigmaThr = cms.untracked.double(5.0),
 
     # ====== Store all primary vertices and muon quantities ======
     StoreAllPVs = cms.untracked.bool(True),

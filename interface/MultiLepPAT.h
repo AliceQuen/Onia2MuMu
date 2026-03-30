@@ -146,21 +146,40 @@ public:
 
     // Muon-track matching method enumeration
     enum class MuTrkMatchMethod {
-        FIRST_PASS_THRESHOLD,  // Current method (default) - first match below threshold
-        LEAST_MOMENTUM_DIFF,   // Best momentum match - minimum (Δp/p)²
-        ADD_DZ_CUT,           // Include dZ position consistency
-        SIGMA_BASED           // Use momentum errors for chi2-based matching
+        SourceCandidatePtr = 1,
+        Vector = 2,
+        Chi2 = 3,
+        DzAssoc = 4,
+        DzPv = 5
     };
 
     // Result structure for muon-track matching
     struct MuonTrackMatchResult {
-        bool matched;           // Whether a match was found
-        int fromPV;             // fromPV value from packed candidate
-        int pvAssocQuality;     // PV association quality from packed candidate
-        int pdgId;              // PDG ID from packed candidate
-        float relDiff;          // Relative momentum diff (or chi2 for sigma method)
-        float dz;               // dZ difference (for addDz method)
-        int nCandidates;        // Number of candidates considered (for debug)
+        bool matched;
+        int packedHandleIdx;
+        int trackPoolIdx;
+        int vertexId;
+        int fromPV;
+        int pvAssocQuality;
+        int pdgId;
+        int nCandidates;
+        int methodUsed;
+        float vectorRelP;
+        float chi2;
+        float dzSelectedPV;
+        float dzAssocPV;
+        float dxyAssocPV;
+    };
+
+    struct PriCandidateDiagnostics {
+        bool fitValid;
+        bool fitPass;
+        bool assocPVPass;
+        bool trackPVPass;
+        bool passAny;
+        int assocPVIdx;
+        float maxAbsDzPV;
+        float maxAbsDxyPV;
     };
 
 private:
@@ -260,25 +279,17 @@ private:
     void printKinematics(const RefCountedKinematicParticle& particle, const std::string& name);
 
     // ======================== Muon-track matching methods ========================
-    MuonTrackMatchResult matchMuonToTrack_FirstPass(
-        const pat::Muon* muon,
-        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
-        double momentumRelDiffThr);
-
-    MuonTrackMatchResult matchMuonToTrack_LeastDiff(
-        const pat::Muon* muon,
-        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks);
-
-    MuonTrackMatchResult matchMuonToTrack_AddDz(
-        const pat::Muon* muon,
-        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
-        const reco::Vertex& primaryV,
-        double dzMax);
-
-    MuonTrackMatchResult matchMuonToTrack_Sigma(
-        const pat::Muon* muon,
-        std::vector<edm::View<pat::PackedCandidate>::const_iterator>& tracks,
-        double sigmaThr);
+    MuonTrackMatchResult matchMuonToTrack(
+        const pat::Muon& muon,
+        const edm::Handle<edm::View<pat::PackedCandidate>>& packedHandle,
+        const edm::Handle<VertexCollection>& recVtxs,
+        const reco::Vertex& primaryV) const;
+    PriCandidateDiagnostics evaluatePriCandidateDiagnostics(
+        bool priFitValid,
+        float priVtxProb,
+        const std::vector<const pat::PackedCandidate*>& daughterPackedCands,
+        const std::vector<const reco::Track*>& daughterTracks) const;
+    void storePriDiagnostics(const PriCandidateDiagnostics& diagnostics);
 
     // Store resonance fit results into branches (reduces code duplication)
     void storeResonanceBranches(
@@ -366,20 +377,24 @@ private:
     // -- Minimum number of muons required --
     unsigned int minMuonCount_;
     
-    // -- Muon momentum matching thresholds --
-    double MuMatchTrkMomentumRelDiffThr_c;
-
     // -- Muon-track matching method selection --
     std::string muTrkMatchMethod_;
+    MuTrkMatchMethod muTrkMatchMode_;
     bool muTrkMatchDebug_;
-    double muTrkMatchDzMax_;
-    double muTrkMatchSigmaThr_;
+    double muonPackedMatchVectorRelPMax_;
+    double muonPackedMatchChi2Max_;
+    double muonPackedMatchDzPvChi2Max_;
+    double muonPackedMatchDzAssocChi2Max_;
 
     // -- Store all primary vertices --
     bool storeAllPVs_;
     bool storeMuonMomentumErrors_;
     bool storeMuonPVAssoc_;
     double recoGenMuonMatchChi2Max_;
+    bool priRequireCommonAssocPV_;
+    bool priRequireTrackPVCompatibility_;
+    double priTrackDzPVMax_;
+    double priTrackDxyPVMax_;
 
     // -- Final fitted mass window check --
     bool checkFinalMass_;
@@ -493,6 +508,12 @@ private:
     vector<float> *muDxyAssocPV;        // dxy w.r.t. associated PV
     vector<int>   *muFromPVAssocPV;     // fromPV from sourceCandidatePtr
     vector<int>   *muPdgId;             // PDG ID from sourceCandidatePtr
+    vector<int>   *muPackedMatchIdx;    // Handle index in packedPFCandidates
+    vector<int>   *muPackedMatchMethod; // MuTrkMatchMethod enum value
+    vector<float> *muPackedMatchVectorRelP;
+    vector<float> *muPackedMatchChi2;
+    vector<float> *muPackedMatchDzPV;
+    vector<float> *muPackedMatchDzAssocPV;
     vector<int>   *muGenMatchIdx;       // Index into MC_GenPart_* branches
     vector<int>   *muGenMatchSource;    // 0=none, 1=PAT ref, 2=chi2 fallback
     vector<float> *muGenMatchChi2;      // Best chi2 used for the assignment
@@ -543,6 +564,8 @@ private:
     vector<float> *Pri_px, *Pri_py, *Pri_pz;
     vector<float> *Pri_phi, *Pri_eta, *Pri_pt;
     vector<float> *Pri_pxErr, *Pri_pyErr, *Pri_pzErr, *Pri_ptErr;
+    vector<int>   *Pri_fitValid, *Pri_fitPass, *Pri_assocPVPass, *Pri_assocPVIdx, *Pri_trackPVPass, *Pri_passAny;
+    vector<float> *Pri_maxAbsDzPV, *Pri_maxAbsDxyPV;
 
     // -- Kaon tracks from Phi (or other meson) decay --
     vector<float> *Phi_K_1_px, *Phi_K_1_py, *Phi_K_1_pz;
