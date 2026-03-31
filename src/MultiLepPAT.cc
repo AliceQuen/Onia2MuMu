@@ -237,6 +237,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       theTTBuilderToken_(esConsumes<TransientTrackBuilder, TransientTrackRecord>(
           edm::ESInputTag("", "TransientTrackBuilder"))),
       doMC(iConfig.getUntrackedParameter<bool>("DoMonteCarloTree", false)),
+      requireAcceptedCandidatesForMonteCarloTree_(iConfig.getUntrackedParameter<bool>(
+          "RequireAcceptedCandidatesForMonteCarloTree", false)),
       doJPsiMassCost(iConfig.getUntrackedParameter<bool>("DoJPsiMassConstraint", false)),
       Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
       // Analysis mode: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi"
@@ -543,10 +545,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         doMCGenMatching(thePATMuonHandle_, theTrackHandle_);
     }
 
+    const auto shouldFillCurrentEvent = [&]() {
+        const bool hasAcceptedCandidate = !Pri_VtxProb->empty();
+        if (hasAcceptedCandidate) {
+            return true;
+        }
+        return doMC && !requireAcceptedCandidatesForMonteCarloTree_;
+    };
+
     // Step 8: Pair muons
     if (!thePATMuonHandle_.isValid() || thePATMuonHandle_->size() < minMuonCount_) {
-        // Not enough muons: still fill tree if MC
-        if (doMC) {
+        if (shouldFillCurrentEvent()) {
             X_One_Tree_->Fill();
         }
         clearEventData();
@@ -559,7 +568,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     bool needsTrackPairs = (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
                             analysisChannel_ == AnalysisChannel::JpsiUpsPhi);
     if (needsTrackPairs && !theTrackHandle_.isValid()) {
-        if (doMC) {
+        if (shouldFillCurrentEvent()) {
             X_One_Tree_->Fill();
         }
         clearEventData();
@@ -572,8 +581,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     // Step 10: Combine candidates and fill branches
     combineCandidates(theBeamSpotV_, genParticles);
 
-    // Fill tree if candidates found (or if MC)
-    if (Pri_VtxProb->size() > 0 || doMC) {
+    if (shouldFillCurrentEvent()) {
         X_One_Tree_->Fill();
     }
 

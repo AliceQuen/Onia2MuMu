@@ -13,11 +13,13 @@
 # Usage:
 #   cmsRun ConfFile_cfg.py
 #   cmsRun  ConfFile_cfg.py \
-#           inputFiles=file:myInput.root \
+#           inputFiles_load=myInputs.list \
 #           outputFile=output.root \
+#           maxEvents=10000 \
 #           analysisMode=JpsiJpsiUps \
 #           runOnMC=False \
-#           era=Run2023C
+#           era=Run2023C \
+#           duplicateCheckMode=noDuplicateCheck
 ###############################################################################
 
 import FWCore.ParameterSet.Config as cms
@@ -53,10 +55,28 @@ ivars.register('eventRange',
     mytype=VarParsing.VarParsing.varType.string,
     info='Event range to process, in the format "run:event" or "run:event-run:event" (e.g. "369943:103642411")'
 )
+ivars.register('reportEvery',
+    default=1,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.int,
+    info='Framework report frequency for processed events (default: 1)'
+)
+ivars.register('duplicateCheckMode',
+    default='',
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.string,
+    info='PoolSource duplicate check mode override, e.g. noDuplicateCheck'
+)
+ivars.register('requireAcceptedCandidatesForMonteCarloTree',
+    default=False,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='For MC, keep tree entries only when at least one candidate is stored (default: False)'
+)
 
 # --- Default values ---
 
-ivars.inputFiles = ('file:input.root',)
+ivars.inputFiles = ()
 ivars.outputFile = 'mymultilep.root'
 
 ivars.analysisMode = 'JpsiJpsiPhi'
@@ -130,7 +150,7 @@ process = cms.Process("mkcands")
 process.load("FWCore.MessageService.MessageLogger_cfi")
 process.MessageLogger.suppressInfo = cms.untracked.vstring("mkcands")
 process.MessageLogger.suppressWarning = cms.untracked.vstring("mkcands")
-process.MessageLogger.cerr.FwkReport.reportEvery = 1
+process.MessageLogger.cerr.FwkReport.reportEvery = ivars.reportEvery
 
 # --- Geometry / B-field / TransientTrack ---
 process.load("TrackingTools/TransientTrack/TransientTrackBuilder_cfi")
@@ -152,13 +172,15 @@ else:
 process.GlobalTag = GlobalTag(process.GlobalTag, myGlobalTag, '')
 
 # --- Input ---
-process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(-1))
+process.maxEvents = cms.untracked.PSet(input=cms.untracked.int32(ivars.maxEvents))
 process.source = cms.Source("PoolSource",
     skipEvents = cms.untracked.uint32(0),
     fileNames  = cms.untracked.vstring(ivars.inputFiles),
 )
 if ivars.eventRange != '':
     process.source.eventRange = cms.untracked.VEventRange(ivars.eventRange)
+if ivars.duplicateCheckMode != '':
+    process.source.duplicateCheckMode = cms.untracked.string(ivars.duplicateCheckMode)
 
 # --- Primary vertex filter ---
 process.primaryVertexFilter = cms.EDFilter("GoodVertexFilter",
@@ -237,7 +259,10 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     MinMuonCount = cms.untracked.uint32(4),
 
     # ====== MC toggle ======
+    # DoMonteCarloTree enables MC branches; the retention switch below controls
+    # whether MC events without kept candidates are still written to the tree.
     DoMonteCarloTree = cms.untracked.bool(ivars.runOnMC),
+    RequireAcceptedCandidatesForMonteCarloTree = cms.untracked.bool(ivars.requireAcceptedCandidatesForMonteCarloTree),
     DoJPsiMassConstraint = cms.untracked.bool(True),
     Debug_Output = cms.untracked.bool(False),
 

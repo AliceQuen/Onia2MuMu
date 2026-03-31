@@ -364,6 +364,7 @@ private:
     edm::ESGetToken<TransientTrackBuilder, TransientTrackRecord> theTTBuilderToken_;
     
     bool    doMC;
+    bool    requireAcceptedCandidatesForMonteCarloTree_;
     bool    doJPsiMassCost;
     bool    Debug_;
     

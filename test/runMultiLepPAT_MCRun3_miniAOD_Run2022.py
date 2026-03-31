@@ -16,9 +16,7 @@ import FWCore.ParameterSet.Config as cms
 import FWCore.ParameterSet.VarParsing as VarParsing
 
 ivars = VarParsing.VarParsing('analysis')
-ivars.inputFiles = (
-    'file:/eos/user/x/xcheng/learn_MC/loopmix_pythia/CMSSW_12_4_14_patch3/src/JJP_DPS_1_GEN2MINIAOD/output/test_mixed_MINIAOD.root',
-)
+ivars.inputFiles = ()
 ivars.outputFile = 'mymultilep_MC_DPS1.root'
 ivars.parseArguments()
 
@@ -219,8 +217,11 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     MinMuonCount = cms.untracked.uint32(4),
 
     # ====== MC-specific ======
+    # DoMonteCarloTree enables MC branches; the retention switch below controls
+    # whether MC events without kept candidates are still written to the tree.
     DoJPsiMassConstraint = cms.untracked.bool(True),
     DoMonteCarloTree = cms.untracked.bool(True),
+    RequireAcceptedCandidatesForMonteCarloTree = cms.untracked.bool(False),
     Debug_Output = cms.untracked.bool(False),
 
     # ====== Muon matching ======
