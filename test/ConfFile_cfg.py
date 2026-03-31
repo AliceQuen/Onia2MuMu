@@ -105,11 +105,11 @@ globalTagDict = {
         'Run2024H': '150X_dataRun3_v2',
         'Run2024I': '150X_dataRun3_v2',
         # Data from 2025, eras C-G. (Consistent run throughout the year. One GT.)
-        'Run2025C': '150X_dataRun3_v2',
-        'Run2025D': '150X_dataRun3_v2',
-        'Run2025E': '150X_dataRun3_v2',
-        'Run2025F': '150X_dataRun3_v2',
-        'Run2025G': '150X_dataRun3_v2',
+        'Run2025C': '150X_dataRun3_Prompt_v1',
+        'Run2025D': '150X_dataRun3_Prompt_v1',
+        'Run2025E': '150X_dataRun3_Prompt_v1',
+        'Run2025F': '150X_dataRun3_Prompt_v1',
+        'Run2025G': '150X_dataRun3_Prompt_v1',
     },
     'MC': {
         # MC for 2022, with 'postEE' period.
