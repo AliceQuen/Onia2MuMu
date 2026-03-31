@@ -224,8 +224,8 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     UpsMassMax  = cms.untracked.double(12.0),
 
     # ====== Meson mass window (GeV) ======
-    PhiMassMin = cms.untracked.double(0.8),
-    PhiMassMax = cms.untracked.double(1.2),
+    PhiMassMin = cms.untracked.double(0.95),
+    PhiMassMax = cms.untracked.double(1.07),
 
     # ====== Track kinematics ======
     TrackPtMin = cms.untracked.double(1.0),
