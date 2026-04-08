@@ -53,7 +53,19 @@ ivars.register('eventRange',
     default='',
     mult=VarParsing.VarParsing.multiplicity.singleton,
     mytype=VarParsing.VarParsing.varType.string,
-    info='Event range to process, in the format "run:event" or "run:event-run:event" (e.g. "369943:103642411")'
+    info='Event range to process, preferably as "run:lumi:event-run:lumi:event" for single-event debugging'
+)
+ivars.register('lumiRange',
+    default='',
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.string,
+    info='Lumi range to process, in the format "run:lumi-run:lumi"'
+)
+ivars.register('debugOutput',
+    default=False,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable verbose candidate-level stdout debug (default: False)'
 )
 ivars.register('reportEvery',
     default=1,
@@ -72,6 +84,36 @@ ivars.register('requireAcceptedCandidatesForMonteCarloTree',
     mult=VarParsing.VarParsing.multiplicity.singleton,
     mytype=VarParsing.VarParsing.varType.bool,
     info='For MC, keep tree entries only when at least one candidate is stored (default: False)'
+)
+ivars.register('doJpsiDecayVtxFit',
+    default=True,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable J/psi decay-vertex kinematic fits (default: True)'
+)
+ivars.register('doUpsDecayVtxFit',
+    default=True,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable Upsilon decay-vertex kinematic fits (default: True)'
+)
+ivars.register('doPhiDecayVtxFit',
+    default=True,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable phi decay-vertex kinematic fits (default: True)'
+)
+ivars.register('doDiOniaVtxFit',
+    default=True,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable DiOnia common-vertex kinematic fits (default: True)'
+)
+ivars.register('doPriVtxFit',
+    default=True,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='Enable final tri-particle common-vertex kinematic fits (default: True)'
 )
 
 # --- Default values ---
@@ -178,7 +220,9 @@ process.source = cms.Source("PoolSource",
     fileNames  = cms.untracked.vstring(ivars.inputFiles),
 )
 if ivars.eventRange != '':
-    process.source.eventRange = cms.untracked.VEventRange(ivars.eventRange)
+    process.source.eventsToProcess = cms.untracked.VEventRange(ivars.eventRange)
+if ivars.lumiRange != '':
+    process.source.lumisToProcess = cms.untracked.VLuminosityBlockRange(ivars.lumiRange)
 if ivars.duplicateCheckMode != '':
     process.source.duplicateCheckMode = cms.untracked.string(ivars.duplicateCheckMode)
 
@@ -232,8 +276,17 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     TrackDRMax = cms.untracked.double(0.7),
 
     # ====== Vertex probability cuts ======
-    OniaDecayVtxProbCut = cms.untracked.double(0.0),
+    OniaDecayVtxProbCut = cms.untracked.double(5e-4),
+    JpsiDecayVtxProbCut = cms.untracked.double(5e-4),
+    UpsDecayVtxProbCut  = cms.untracked.double(5e-4),
+    PhiDecayVtxProbCut  = cms.untracked.double(5e-4),
+    DiOniaVtxProbCut    = cms.untracked.double(5e-3),
     PriVtxProbCut       = cms.untracked.double(0.0),
+    DoJpsiDecayVtxFit   = cms.untracked.bool(ivars.doJpsiDecayVtxFit),
+    DoUpsDecayVtxFit    = cms.untracked.bool(ivars.doUpsDecayVtxFit),
+    DoPhiDecayVtxFit    = cms.untracked.bool(ivars.doPhiDecayVtxFit),
+    DoDiOniaVtxFit      = cms.untracked.bool(ivars.doDiOniaVtxFit),
+    DoPriVtxFit         = cms.untracked.bool(ivars.doPriVtxFit),
     PriRequireCommonAssocPV = cms.untracked.bool(True),
     PriRequireTrackPVCompatibility = cms.untracked.bool(True),
     PriTrackDzPVMax = cms.untracked.double(2.0),
@@ -264,7 +317,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     DoMonteCarloTree = cms.untracked.bool(ivars.runOnMC),
     RequireAcceptedCandidatesForMonteCarloTree = cms.untracked.bool(ivars.requireAcceptedCandidatesForMonteCarloTree),
     DoJPsiMassConstraint = cms.untracked.bool(True),
-    Debug_Output = cms.untracked.bool(False),
+    Debug_Output = cms.untracked.bool(ivars.debugOutput),
 
     # ====== Muon matching ======
     MuonPackedMatchVectorRelPMax = cms.untracked.double(0.01),

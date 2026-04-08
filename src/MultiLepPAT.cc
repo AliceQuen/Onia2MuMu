@@ -267,8 +267,17 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       trackPtMin_(iConfig.getUntrackedParameter<double>("TrackPtMin", 2.0)),
       trackDRMax_(iConfig.getUntrackedParameter<double>("TrackDRMax", 0.7)),
       // Vertex prob cuts
-      OniaDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("OniaDecayVtxProbCut", 0.001)),
+      legacyOniaDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("OniaDecayVtxProbCut", 5e-4)),
+      JpsiDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("JpsiDecayVtxProbCut", legacyOniaDecayVtxProbCut_)),
+      UpsDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("UpsDecayVtxProbCut", legacyOniaDecayVtxProbCut_)),
+      PhiDecayVtxProbCut_(iConfig.getUntrackedParameter<double>("PhiDecayVtxProbCut", legacyOniaDecayVtxProbCut_)),
+      DiOniaVtxProbCut_(iConfig.getUntrackedParameter<double>("DiOniaVtxProbCut", 5e-3)),
       PriVtxProbCut_(iConfig.getUntrackedParameter<double>("PriVtxProbCut", 0.0)),
+      DoJpsiDecayVtxFit_(iConfig.getUntrackedParameter<bool>("DoJpsiDecayVtxFit", true)),
+      DoUpsDecayVtxFit_(iConfig.getUntrackedParameter<bool>("DoUpsDecayVtxFit", true)),
+      DoPhiDecayVtxFit_(iConfig.getUntrackedParameter<bool>("DoPhiDecayVtxFit", true)),
+      DoDiOniaVtxFit_(iConfig.getUntrackedParameter<bool>("DoDiOniaVtxFit", true)),
+      DoPriVtxFit_(iConfig.getUntrackedParameter<bool>("DoPriVtxFit", true)),
       // Per-resonance candidate pT/eta pre-cuts
       jpsiCandPtMin_(iConfig.getUntrackedParameter<double>("JpsiCandPtMin", 0.0)),
       jpsiCandEtaMax_(iConfig.getUntrackedParameter<double>("JpsiCandEtaMax", 999.0)),
@@ -317,6 +326,11 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       TriggersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("TriggersForUpsilon")),
       FiltersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForUpsilon")),
       X_One_Tree_(nullptr),
+      X_Config_Tree_(nullptr),
+      configHLTriggerResultsTag_(),
+      configInputGENTag_(),
+      configMuonLabelTag_(),
+      configTrackLabelTag_(),
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
       trigRes(nullptr), trigNames(nullptr), L1TT(nullptr), MatchJpsiTrigNames(nullptr), MatchUpsTrigNames(nullptr),
       priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXE(0), priVtxYE(0), priVtxZE(0),
@@ -397,6 +411,9 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Pri_fitValid(nullptr), Pri_fitPass(nullptr), Pri_assocPVPass(nullptr),
       Pri_assocPVIdx(nullptr), Pri_trackPVPass(nullptr), Pri_passAny(nullptr),
       Pri_maxAbsDzPV(nullptr), Pri_maxAbsDxyPV(nullptr),
+      DiOnia_fitValid(nullptr), DiOnia_fitPass(nullptr), DiOnia_commonRecVtxPass(nullptr),
+      DiOnia_commonRecVtxIdx(nullptr), DiOnia_passAny(nullptr),
+      DiOnia_Chi2(nullptr), DiOnia_ndof(nullptr), DiOnia_VtxProb(nullptr),
       Phi_K_1_px(nullptr), Phi_K_1_py(nullptr), Phi_K_1_pz(nullptr),
       Phi_K_2_px(nullptr), Phi_K_2_py(nullptr), Phi_K_2_pz(nullptr),
       Phi_K_1_eta(nullptr), Phi_K_1_phi(nullptr), Phi_K_1_pt(nullptr),
@@ -470,6 +487,10 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     }
 
     muTrkMatchMode_ = parseMuTrkMatchMethod(muTrkMatchMethod_);
+    configHLTriggerResultsTag_ = hlTriggerResults_.encode();
+    configInputGENTag_ = inputGEN_.encode();
+    configMuonLabelTag_ = muonLabel_.encode();
+    configTrackLabelTag_ = trackLabel_.encode();
     
     // EDM tokens
     gtRecordToken_     = consumes<L1GlobalTriggerReadoutRecord>(edm::InputTag("gtDigis"));
@@ -750,8 +771,8 @@ void MultiLepPAT::reconstructPrimaryVertex(const edm::Event &iEvent)
         theBeamSpotV_ = Vertex(beamSpot.position(), beamSpot.covariance3D());
     }
 
-    edm::Handle<VertexCollection> recVtxs;
-    iEvent.getByToken(gtprimaryVtxToken_, recVtxs);
+    iEvent.getByToken(gtprimaryVtxToken_, thePrimaryVtxHandle_);
+    const edm::Handle<VertexCollection>& recVtxs = thePrimaryVtxHandle_;
 
     // Count good vertices using configurable cuts
     int myNGoodPrimVtx = 0;
@@ -1115,7 +1136,7 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
 
     muPairCand_Onia1_.clear();
     muPairCand_Onia2_.clear();
-    muQuad_Onia_.clear();
+    diOniaCands_.clear();
 
     // Determine mass windows based on analysis mode
     double onia1MassMin = JpsiMassMin_, onia1MassMax = JpsiMassMax_;
@@ -1128,6 +1149,13 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
         onia2MassMin = UpsMassMin_;
         onia2MassMax = UpsMassMax_;
     }
+
+    const auto onia2DecayCut = [&]() -> double {
+        return (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? JpsiDecayVtxProbCut_ : UpsDecayVtxProbCut_;
+    };
+    const auto onia2DecayFitEnabled = [&]() -> bool {
+        return (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? DoJpsiDecayVtxFit_ : DoUpsDecayVtxFit_;
+    };
 
     for (auto iMuon1 = muonHandle->begin(); iMuon1 != muonHandle->end(); ++iMuon1) {
         TrackRef muTrack1 = iMuon1->track();
@@ -1173,25 +1201,32 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
             transMuonPair.push_back(muPairFactory.particle(transTrk2, muMass, chi2, ndof, muMassSigma));
             transMuPairId.push_back(iMuon2 - muonHandle->begin());
 
-            if (!particlesToVtx(transMuonPair, OniaDecayVtxProbCut_)) {
-                transMuonPair.pop_back();
-                transMuPairId.pop_back();
-                continue;
-            }
+            bool onia1FitPass = false;
+            bool onia2FitPass = false;
 
-            RefCountedKinematicTree muVtxFitTree;
-            particlesToVtx(muVtxFitTree, transMuonPair, "muon pair", OniaDecayVtxProbCut_);
+            if (isOnia1 && DoJpsiDecayVtxFit_) {
+                onia1FitPass = particlesToVtx(transMuonPair, JpsiDecayVtxProbCut_);
+            }
+            if (isOnia2 && onia2DecayFitEnabled()) {
+                if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) {
+                    onia2FitPass = onia1FitPass;
+                } else {
+                    onia2FitPass = particlesToVtx(transMuonPair, onia2DecayCut());
+                }
+            }
 
             // Store in appropriate container based on mass window and analysis mode
             if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) {
                 // JpsiJpsiPhi: Onia1==Onia2==J/psi, store all in Onia1_ (upper-triangle quartets)
-                muPairCand_Onia1_.push_back(std::make_pair(transMuonPair, transMuPairId));
-            } else {
-                // JpsiJpsiUps or JpsiUpsPhi: separate Jpsi→Onia1, Ups→Onia2
-                if (isOnia1) {
+                if (onia1FitPass) {
                     muPairCand_Onia1_.push_back(std::make_pair(transMuonPair, transMuPairId));
                 }
-                if (isOnia2) {
+            } else {
+                // JpsiJpsiUps or JpsiUpsPhi: separate Jpsi→Onia1, Ups→Onia2
+                if (isOnia1 && onia1FitPass) {
+                    muPairCand_Onia1_.push_back(std::make_pair(transMuonPair, transMuPairId));
+                }
+                if (isOnia2 && onia2FitPass) {
                     muPairCand_Onia2_.push_back(std::make_pair(transMuonPair, transMuPairId));
                 }
             }
@@ -1210,27 +1245,80 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
     double massErr1, massErr2;
     std::vector<RefCountedKinematicParticle> interOnia;
 
+    const auto buildDiOniaCandidate = [&](const muList_t& pair1,
+                                          const muList_t& pair2,
+                                          const std::string& onia1Label,
+                                          const std::string& onia2Label,
+                                          const double onia1Cut,
+                                          const double onia2Cut) {
+        if (!particlesToVtx(vtxFitTree_1, pair1.first, onia1Label, onia1Cut) ||
+            !particlesToVtx(vtxFitTree_2, pair2.first, onia2Label, onia2Cut)) {
+            return;
+        }
+
+        extractFitRes(vtxFitTree_1, fit1, vtx1, massErr1);
+        extractFitRes(vtxFitTree_2, fit2, vtx2, massErr2);
+        if (massErr1 < 0.0 || massErr2 < 0.0) {
+            return;
+        }
+
+        DiOniaCandidate candidate{};
+        candidate.onia1 = pair1;
+        candidate.onia2 = pair2;
+        candidate.commonRecVtxPass = false;
+        candidate.commonRecVtxIdx = -1;
+        candidate.fitValid = false;
+        candidate.fitPass = false;
+        candidate.passAny = false;
+        candidate.chi2 = -999999.f;
+        candidate.ndof = -999999.f;
+        candidate.vtxProb = -999999.f;
+
+        std::vector<unsigned int> muIndices{
+            pair1.second[0], pair1.second[1], pair2.second[0], pair2.second[1]
+        };
+        candidate.commonRecVtxIdx = commonMuonVertexId(muIndices);
+        candidate.commonRecVtxPass = candidate.commonRecVtxIdx >= 0;
+
+        if (DoDiOniaVtxFit_) {
+            RefCountedKinematicTree vtxFitTree_DiOnia;
+            interOnia.clear();
+            interOnia.push_back(fit1);
+            interOnia.push_back(fit2);
+            candidate.fitValid = particlesToVtx(vtxFitTree_DiOnia, interOnia, "DiOnia");
+            if (candidate.fitValid) {
+                try {
+                    auto diOniaVtx = vtxFitTree_DiOnia->currentDecayVertex();
+                    candidate.chi2 = diOniaVtx->chiSquared();
+                    candidate.ndof = diOniaVtx->degreesOfFreedom();
+                    candidate.vtxProb = ChiSquaredProbability(
+                        static_cast<double>(candidate.chi2),
+                        static_cast<double>(candidate.ndof));
+                    candidate.fitPass = candidate.vtxProb >= DiOniaVtxProbCut_;
+                } catch (...) {
+                    candidate.fitValid = false;
+                    candidate.fitPass = false;
+                    candidate.chi2 = -999999.f;
+                    candidate.ndof = -999999.f;
+                    candidate.vtxProb = -999999.f;
+                }
+            }
+            interOnia.clear();
+        }
+
+        candidate.passAny = candidate.commonRecVtxPass || candidate.fitPass;
+        if (candidate.passAny) {
+            diOniaCands_.push_back(candidate);
+        }
+    };
+
     if (analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
         // JpsiUpsPhi: cross-product Onia1(J/psi) × Onia2(Upsilon)
         for (auto& pair1 : muPairCand_Onia1_) {
             for (auto& pair2 : muPairCand_Onia2_) {
                 if (isOverlapPair(pair1, pair2)) continue;
-
-                bool valid1 = particlesToVtx(vtxFitTree_1, pair1.first, "Onia_1", OniaDecayVtxProbCut_);
-                bool valid2 = particlesToVtx(vtxFitTree_2, pair2.first, "Onia_2", OniaDecayVtxProbCut_);
-
-                if (valid1 && valid2) {
-                    extractFitRes(vtxFitTree_1, fit1, vtx1, massErr1);
-                    extractFitRes(vtxFitTree_2, fit2, vtx2, massErr2);
-                    if (massErr1 >= 0.0 && massErr2 >= 0.0) {
-                        interOnia.push_back(fit1);
-                        interOnia.push_back(fit2);
-                        if (particlesToVtx(interOnia, OniaDecayVtxProbCut_)) {
-                            muQuad_Onia_.push_back(std::make_pair(pair1, pair2));
-                        }
-                        interOnia.clear();
-                    }
-                }
+                buildDiOniaCandidate(pair1, pair2, "Onia_1", "Onia_2",
+                                     JpsiDecayVtxProbCut_, UpsDecayVtxProbCut_);
             }
         }
     } else {
@@ -1238,22 +1326,8 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
         for (auto pair1 = muPairCand_Onia1_.begin(); pair1 != muPairCand_Onia1_.end(); ++pair1) {
             for (auto pair2 = pair1 + 1; pair2 != muPairCand_Onia1_.end(); ++pair2) {
                 if (isOverlapPair(*pair1, *pair2)) continue;
-
-                bool valid1 = particlesToVtx(vtxFitTree_1, pair1->first, "Onia_1", OniaDecayVtxProbCut_);
-                bool valid2 = particlesToVtx(vtxFitTree_2, pair2->first, "Onia_2", OniaDecayVtxProbCut_);
-
-                if (valid1 && valid2) {
-                    extractFitRes(vtxFitTree_1, fit1, vtx1, massErr1);
-                    extractFitRes(vtxFitTree_2, fit2, vtx2, massErr2);
-                    if (massErr1 >= 0.0 && massErr2 >= 0.0) {
-                        interOnia.push_back(fit1);
-                        interOnia.push_back(fit2);
-                        if (particlesToVtx(interOnia, OniaDecayVtxProbCut_)) {
-                            muQuad_Onia_.push_back(std::make_pair(*pair1, *pair2));
-                        }
-                        interOnia.clear();
-                    }
-                }
+                buildDiOniaCandidate(*pair1, *pair2, "Onia_1", "Onia_2",
+                                     JpsiDecayVtxProbCut_, JpsiDecayVtxProbCut_);
             }
         }
     }
@@ -1267,6 +1341,9 @@ void MultiLepPAT::pairTracks(
     const MagneticField& bField)
 {
     KPairCand_Meson_.clear();
+    if (!DoPhiDecayVtxFit_) {
+        return;
+    }
     KinematicParticleFactoryFromTransientTrack PhiFactory;
     ParticleMass KMass = myKMass;
     float KMassSigma = myKMassErr;
@@ -1315,7 +1392,7 @@ void MultiLepPAT::pairTracks(
             transTrackPair.push_back(PhiFactory.particle(trackTT2, KMass, chi2, ndof, KMassSigma));
             transTrackPairId.push_back(iTrack2ID - tracks.begin());
 
-            if (particlesToVtx(transTrackPair, OniaDecayVtxProbCut_)) {
+            if (particlesToVtx(transTrackPair, PhiDecayVtxProbCut_)) {
                 KPairCand_Meson_.push_back(std::make_pair(transTrackPair, transTrackPairId));
             }
             transTrackPair.pop_back();
@@ -1338,12 +1415,6 @@ void MultiLepPAT::combineCandidates(
     RefCountedKinematicVertex vtx1, vtx2, vtxMeson, vtxPri;
     double massErr1, massErr2, massErrMeson, massErrPri;
     std::vector<RefCountedKinematicParticle> interOnia;
-
-    // Determine the PDG mass for the 3rd resonance
-    double mesonPdgMass = myPhiMass;
-    if (analysisChannel_ == AnalysisChannel::JpsiJpsiUps) {
-        mesonPdgMass = myUpsMass;
-    }
 
     reco::Vertex bsV = const_cast<reco::Vertex&>(beamSpotV);
 
@@ -1401,19 +1472,22 @@ void MultiLepPAT::combineCandidates(
         }
     };
 
+    const auto onia2DecayCut = [&]() -> double {
+        return (analysisChannel_ == AnalysisChannel::JpsiUpsPhi) ? UpsDecayVtxProbCut_ : JpsiDecayVtxProbCut_;
+    };
+
     // For JpsiJpsiPhi and JpsiUpsPhi: loop over track pairs + muon quartets
     if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
         analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
-        
         for (auto& KPair : KPairCand_Meson_) {
-            bool validMeson = particlesToVtx(vtxFitTree_Meson, KPair.first, "Meson", OniaDecayVtxProbCut_);
+            bool validMeson = particlesToVtx(vtxFitTree_Meson, KPair.first, "Meson", PhiDecayVtxProbCut_);
             if (!validMeson) continue;
             extractFitRes(vtxFitTree_Meson, fitMeson, vtxMeson, massErrMeson);
             if (massErrMeson < 0) continue;
 
-            for (auto& muQuad : muQuad_Onia_) {
-                bool valid1 = particlesToVtx(vtxFitTree_1, muQuad.first.first, "Onia_1", OniaDecayVtxProbCut_);
-                bool valid2 = particlesToVtx(vtxFitTree_2, muQuad.second.first, "Onia_2", OniaDecayVtxProbCut_);
+            for (const auto& diOnia : diOniaCands_) {
+                bool valid1 = particlesToVtx(vtxFitTree_1, diOnia.onia1.first, "Onia_1", JpsiDecayVtxProbCut_);
+                bool valid2 = particlesToVtx(vtxFitTree_2, diOnia.onia2.first, "Onia_2", onia2DecayCut());
 
                 if (!valid1 || !valid2) continue;
                 extractFitRes(vtxFitTree_1, fit1, vtx1, massErr1);
@@ -1425,8 +1499,34 @@ void MultiLepPAT::combineCandidates(
                 interOnia.push_back(fit2);
                 interOnia.push_back(fitMeson);
 
-                bool validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
-                const float priVtxProb = priVtxProbValue(vtxFitTree_Pri);
+                if (Debug_) {
+                    const std::string channelLabel =
+                        (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? "JpsiJpsiPhi" : "JpsiUpsPhi";
+                    const std::string onia2Label =
+                        (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? "Jpsi_2" : "Ups";
+                    printCompositeCandidateDebug(
+                        channelLabel,
+                        {
+                            {"Jpsi_1", &fit1, &vtx1, massErr1,
+                             {{"mu1", true, diOnia.onia1.second[0]},
+                              {"mu2", true, diOnia.onia1.second[1]}}},
+                            {onia2Label, &fit2, &vtx2, massErr2,
+                             {{"mu3", true, diOnia.onia2.second[0]},
+                              {"mu4", true, diOnia.onia2.second[1]}}},
+                            {"Phi", &fitMeson, &vtxMeson, massErrMeson,
+                             {{"trk1", false, KPair.second[0]},
+                              {"trk2", false, KPair.second[1]}}}
+                        },
+                        thePrimaryV_,
+                        genParticles);
+                }
+
+                bool validPri = false;
+                float priVtxProb = -999999.f;
+                if (DoPriVtxFit_) {
+                    validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
+                    priVtxProb = priVtxProbValue(vtxFitTree_Pri);
+                }
 
                 // Check FINAL fitted mass against mass windows (not just pre-fit)
                 if (checkFinalMass_) {
@@ -1455,16 +1555,16 @@ void MultiLepPAT::combineCandidates(
                 std::vector<const reco::Track*> daughterTracks;
                 daughterPackedCands.reserve(6);
                 daughterTracks.reserve(6);
-                daughterPackedCands.push_back(muonPackedCand(muQuad.first.second[0]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.first.second[1]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.second.second[0]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.second.second[1]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia1.second[0]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia1.second[1]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia2.second[0]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia2.second[1]));
                 daughterPackedCands.push_back(trackCand(KPair.second[0]));
                 daughterPackedCands.push_back(trackCand(KPair.second[1]));
-                daughterTracks.push_back(muonTrack(muQuad.first.second[0]));
-                daughterTracks.push_back(muonTrack(muQuad.first.second[1]));
-                daughterTracks.push_back(muonTrack(muQuad.second.second[0]));
-                daughterTracks.push_back(muonTrack(muQuad.second.second[1]));
+                daughterTracks.push_back(muonTrack(diOnia.onia1.second[0]));
+                daughterTracks.push_back(muonTrack(diOnia.onia1.second[1]));
+                daughterTracks.push_back(muonTrack(diOnia.onia2.second[0]));
+                daughterTracks.push_back(muonTrack(diOnia.onia2.second[1]));
                 daughterTracks.push_back(packedTrack(KPair.second[0]));
                 daughterTracks.push_back(packedTrack(KPair.second[1]));
 
@@ -1487,6 +1587,7 @@ void MultiLepPAT::combineCandidates(
                         Pri_pxErr, Pri_pyErr, Pri_pzErr, Pri_ptErr);
                 }
                 storePriDiagnostics(priDiagnostics);
+                storeDiOniaDiagnostics(diOnia);
 
                 // Store Onia 1 (J/psi)
                 storeResonanceBranches(fit1, vtx1, massErr1, myJpsiMass, bsV,
@@ -1496,26 +1597,24 @@ void MultiLepPAT::combineCandidates(
                     Jpsi_1_px, Jpsi_1_py, Jpsi_1_pz,
                     Jpsi_1_phi, Jpsi_1_eta, Jpsi_1_pt,
                     Jpsi_1_pxErr, Jpsi_1_pyErr, Jpsi_1_pzErr, Jpsi_1_ptErr);
-                // Store muon indices
-                Jpsi_1_mu_1_Idx->push_back(muQuad.first.second[0]);
-                Jpsi_1_mu_2_Idx->push_back(muQuad.first.second[1]);
+                Jpsi_1_mu_1_Idx->push_back(diOnia.onia1.second[0]);
+                Jpsi_1_mu_2_Idx->push_back(diOnia.onia1.second[1]);
+
                 // Store Onia 2 (J/psi for JpsiJpsiPhi, Upsilon for JpsiUpsPhi)
-                double onia2PdgMass = myJpsiMass;
                 if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) {
-                    storeResonanceBranches(fit2, vtx2, massErr2, onia2PdgMass, bsV,
+                    storeResonanceBranches(fit2, vtx2, massErr2, myJpsiMass, bsV,
                         Jpsi_2_mass, Jpsi_2_massErr, Jpsi_2_massDiff,
                         Jpsi_2_ctau, Jpsi_2_ctauErr,
                         Jpsi_2_Chi2, Jpsi_2_ndof, Jpsi_2_VtxProb,
                         Jpsi_2_px, Jpsi_2_py, Jpsi_2_pz,
                         Jpsi_2_phi, Jpsi_2_eta, Jpsi_2_pt,
                         Jpsi_2_pxErr, Jpsi_2_pyErr, Jpsi_2_pzErr, Jpsi_2_ptErr);
-                    Jpsi_2_mu_1_Idx->push_back(muQuad.second.second[0]);
-                    Jpsi_2_mu_2_Idx->push_back(muQuad.second.second[1]);
-                    }
+                    Jpsi_2_mu_1_Idx->push_back(diOnia.onia2.second[0]);
+                    Jpsi_2_mu_2_Idx->push_back(diOnia.onia2.second[1]);
+                }
 
                 // For JpsiUpsPhi: also store Upsilon info in Ups_* branches
                 if (analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
-                    onia2PdgMass = myUpsMass;
                     storeResonanceBranches(fit2, vtx2, massErr2, myUpsMass, bsV,
                         Ups_mass, Ups_massErr, Ups_massDiff,
                         Ups_ctau, Ups_ctauErr,
@@ -1523,15 +1622,15 @@ void MultiLepPAT::combineCandidates(
                         Ups_px, Ups_py, Ups_pz,
                         Ups_phi, Ups_eta, Ups_pt,
                         Ups_pxErr, Ups_pyErr, Ups_pzErr, Ups_ptErr);
-                    Ups_mu_1_Idx->push_back(muQuad.second.second[0]);
-                    Ups_mu_2_Idx->push_back(muQuad.second.second[1]);
+                    Ups_mu_1_Idx->push_back(diOnia.onia2.second[0]);
+                    Ups_mu_2_Idx->push_back(diOnia.onia2.second[1]);
                 }
 
                 Phi_K_1_Idx->push_back(KPair.second[0]);
                 Phi_K_2_Idx->push_back(KPair.second[1]);
 
                 // Store meson (Phi)
-                storeResonanceBranches(fitMeson, vtxMeson, massErrMeson, mesonPdgMass, bsV,
+                storeResonanceBranches(fitMeson, vtxMeson, massErrMeson, myPhiMass, bsV,
                     Phi_mass, Phi_massErr, Phi_massDiff,
                     Phi_ctau, Phi_ctauErr,
                     Phi_Chi2, Phi_ndof, Phi_VtxProb,
@@ -1601,17 +1700,17 @@ void MultiLepPAT::combineCandidates(
     }
     // For JpsiJpsiUps: loop over J/psi quartets + Upsilon pair (6 muons total)
     if (analysisChannel_ == AnalysisChannel::JpsiJpsiUps) {
-        for (auto& muQuad : muQuad_Onia_) {
+        for (const auto& diOnia : diOniaCands_) {
             for (auto& upsPair : muPairCand_Onia2_) {
                 // Check no overlap between quartet muons and Ups pair muons
-                if (isOverlapPair(muQuad.first, upsPair) ||
-                    isOverlapPair(muQuad.second, upsPair)) continue;
+                if (isOverlapPair(diOnia.onia1, upsPair) ||
+                    isOverlapPair(diOnia.onia2, upsPair)) continue;
 
-                bool valid1 = particlesToVtx(vtxFitTree_1, muQuad.first.first, "Jpsi_1", OniaDecayVtxProbCut_);
-                bool valid2 = particlesToVtx(vtxFitTree_2, muQuad.second.first, "Jpsi_2", OniaDecayVtxProbCut_);
+                bool valid1 = particlesToVtx(vtxFitTree_1, diOnia.onia1.first, "Jpsi_1", JpsiDecayVtxProbCut_);
+                bool valid2 = particlesToVtx(vtxFitTree_2, diOnia.onia2.first, "Jpsi_2", JpsiDecayVtxProbCut_);
 
                 RefCountedKinematicTree vtxFitTree_Ups;
-                bool validUps = particlesToVtx(vtxFitTree_Ups, upsPair.first, "Ups", OniaDecayVtxProbCut_);
+                bool validUps = particlesToVtx(vtxFitTree_Ups, upsPair.first, "Ups", UpsDecayVtxProbCut_);
 
                 if (!valid1 || !valid2 || !validUps) continue;
 
@@ -1629,8 +1728,30 @@ void MultiLepPAT::combineCandidates(
                 interOnia.push_back(fit2);
                 interOnia.push_back(fitUps);
 
-                bool validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
-                const float priVtxProb = priVtxProbValue(vtxFitTree_Pri);
+                if (Debug_) {
+                    printCompositeCandidateDebug(
+                        "JpsiJpsiUps",
+                        {
+                            {"Jpsi_1", &fit1, &vtx1, massErr1,
+                             {{"mu1", true, diOnia.onia1.second[0]},
+                              {"mu2", true, diOnia.onia1.second[1]}}},
+                            {"Jpsi_2", &fit2, &vtx2, massErr2,
+                             {{"mu3", true, diOnia.onia2.second[0]},
+                              {"mu4", true, diOnia.onia2.second[1]}}},
+                            {"Ups", &fitUps, &vtxUps, massErrUps,
+                             {{"mu5", true, upsPair.second[0]},
+                              {"mu6", true, upsPair.second[1]}}}
+                        },
+                        thePrimaryV_,
+                        genParticles);
+                }
+
+                bool validPri = false;
+                float priVtxProb = -999999.f;
+                if (DoPriVtxFit_) {
+                    validPri = particlesToVtx(vtxFitTree_Pri, interOnia, "primary vertex");
+                    priVtxProb = priVtxProbValue(vtxFitTree_Pri);
+                }
                 
                 // Check FINAL fitted masses
                 if (checkFinalMass_) {
@@ -1651,16 +1772,16 @@ void MultiLepPAT::combineCandidates(
                 std::vector<const reco::Track*> daughterTracks;
                 daughterPackedCands.reserve(6);
                 daughterTracks.reserve(6);
-                daughterPackedCands.push_back(muonPackedCand(muQuad.first.second[0]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.first.second[1]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.second.second[0]));
-                daughterPackedCands.push_back(muonPackedCand(muQuad.second.second[1]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia1.second[0]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia1.second[1]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia2.second[0]));
+                daughterPackedCands.push_back(muonPackedCand(diOnia.onia2.second[1]));
                 daughterPackedCands.push_back(muonPackedCand(upsPair.second[0]));
                 daughterPackedCands.push_back(muonPackedCand(upsPair.second[1]));
-                daughterTracks.push_back(muonTrack(muQuad.first.second[0]));
-                daughterTracks.push_back(muonTrack(muQuad.first.second[1]));
-                daughterTracks.push_back(muonTrack(muQuad.second.second[0]));
-                daughterTracks.push_back(muonTrack(muQuad.second.second[1]));
+                daughterTracks.push_back(muonTrack(diOnia.onia1.second[0]));
+                daughterTracks.push_back(muonTrack(diOnia.onia1.second[1]));
+                daughterTracks.push_back(muonTrack(diOnia.onia2.second[0]));
+                daughterTracks.push_back(muonTrack(diOnia.onia2.second[1]));
                 daughterTracks.push_back(muonTrack(upsPair.second[0]));
                 daughterTracks.push_back(muonTrack(upsPair.second[1]));
 
@@ -1683,6 +1804,7 @@ void MultiLepPAT::combineCandidates(
                         Pri_pxErr, Pri_pyErr, Pri_pzErr, Pri_ptErr);
                 }
                 storePriDiagnostics(priDiagnostics);
+                storeDiOniaDiagnostics(diOnia);
 
                 // Store J/psi 1
                 storeResonanceBranches(fit1, vtx1, massErr1, myJpsiMass, bsV,
@@ -1712,10 +1834,10 @@ void MultiLepPAT::combineCandidates(
                     Ups_pxErr, Ups_pyErr, Ups_pzErr, Ups_ptErr);
 
                 // Store muon indices
-                Jpsi_1_mu_1_Idx->push_back(muQuad.first.second[0]);
-                Jpsi_1_mu_2_Idx->push_back(muQuad.first.second[1]);
-                Jpsi_2_mu_1_Idx->push_back(muQuad.second.second[0]);
-                Jpsi_2_mu_2_Idx->push_back(muQuad.second.second[1]);
+                Jpsi_1_mu_1_Idx->push_back(diOnia.onia1.second[0]);
+                Jpsi_1_mu_2_Idx->push_back(diOnia.onia1.second[1]);
+                Jpsi_2_mu_1_Idx->push_back(diOnia.onia2.second[0]);
+                Jpsi_2_mu_2_Idx->push_back(diOnia.onia2.second[1]);
                 Ups_mu_1_Idx->push_back(upsPair.second[0]);
                 Ups_mu_2_Idx->push_back(upsPair.second[1]);
             }
@@ -1812,7 +1934,7 @@ MultiLepPAT::evaluatePriCandidateDiagnostics(
         diagnostics.maxAbsDxyPV = maxAbsDxyPV;
     }
 
-    diagnostics.passAny = diagnostics.fitPass || diagnostics.assocPVPass || diagnostics.trackPVPass;
+    diagnostics.passAny = diagnostics.fitPass || diagnostics.assocPVPass;
     return diagnostics;
 }
 
@@ -1931,13 +2053,49 @@ MultiLepPAT::buildPhiVertexDiagnostics(
     diagnostics.commonAssocPVPass =
         kaon1.hasAssocPV && kaon2.hasAssocPV && kaon1.vertexId == kaon2.vertexId;
     diagnostics.trackPVPass = kaon1.passTrackPV && kaon2.passTrackPV;
-    diagnostics.vertexCriteriaPass =
-        diagnostics.commonAssocPVPass && diagnostics.trackPVPass;
+    diagnostics.vertexCriteriaPass = diagnostics.fitPass;
     diagnostics.commonAssocPVIdx =
         diagnostics.commonAssocPVPass ? kaon1.vertexId : -1;
     diagnostics.maxAbsDzPV = std::max(std::abs(kaon1.dzPV), std::abs(kaon2.dzPV));
     diagnostics.maxAbsDxyPV = std::max(std::abs(kaon1.dxyPV), std::abs(kaon2.dxyPV));
     return diagnostics;
+}
+
+int MultiLepPAT::commonMuonVertexId(const std::vector<unsigned int>& muIndices) const
+{
+    if (muVertexId == nullptr || muIndices.empty()) {
+        return -1;
+    }
+
+    int commonVtxId = -1;
+    for (const unsigned int muIdx : muIndices) {
+        if (muIdx >= muVertexId->size()) {
+            return -1;
+        }
+        const int currentVtxId = muVertexId->at(muIdx);
+        if (currentVtxId < 0) {
+            return -1;
+        }
+        if (commonVtxId < 0) {
+            commonVtxId = currentVtxId;
+        } else if (currentVtxId != commonVtxId) {
+            return -1;
+        }
+    }
+
+    return commonVtxId;
+}
+
+void MultiLepPAT::storeDiOniaDiagnostics(const DiOniaCandidate& candidate)
+{
+    DiOnia_fitValid->push_back(candidate.fitValid ? 1 : 0);
+    DiOnia_fitPass->push_back(candidate.fitPass ? 1 : 0);
+    DiOnia_commonRecVtxPass->push_back(candidate.commonRecVtxPass ? 1 : 0);
+    DiOnia_commonRecVtxIdx->push_back(candidate.commonRecVtxIdx);
+    DiOnia_passAny->push_back(candidate.passAny ? 1 : 0);
+    DiOnia_Chi2->push_back(candidate.chi2);
+    DiOnia_ndof->push_back(candidate.ndof);
+    DiOnia_VtxProb->push_back(candidate.vtxProb);
 }
 
 void MultiLepPAT::storePriDiagnostics(const PriCandidateDiagnostics& diagnostics)
@@ -2104,6 +2262,9 @@ void MultiLepPAT::clearEventData()
     Pri_fitValid->clear(); Pri_fitPass->clear(); Pri_assocPVPass->clear();
     Pri_assocPVIdx->clear(); Pri_trackPVPass->clear(); Pri_passAny->clear();
     Pri_maxAbsDzPV->clear(); Pri_maxAbsDxyPV->clear();
+    DiOnia_fitValid->clear(); DiOnia_fitPass->clear(); DiOnia_commonRecVtxPass->clear();
+    DiOnia_commonRecVtxIdx->clear(); DiOnia_passAny->clear();
+    DiOnia_Chi2->clear(); DiOnia_ndof->clear(); DiOnia_VtxProb->clear();
 
     Jpsi_1_mass->clear(); Jpsi_1_massErr->clear(); Jpsi_1_massDiff->clear();
     Jpsi_1_ctau->clear(); Jpsi_1_ctauErr->clear();
@@ -2163,7 +2324,7 @@ void MultiLepPAT::clearEventData()
     handleToNtupleIndex_.clear();
     muPairCand_Onia1_.clear();
     muPairCand_Onia2_.clear();
-    muQuad_Onia_.clear();
+    diOniaCands_.clear();
     KPairCand_Meson_.clear();
     nonMuonTrack_.clear();
 }
@@ -2426,7 +2587,7 @@ double MultiLepPAT::deltaR(double eta1, double phi1, double eta2, double phi2) {
 }
 
 void MultiLepPAT::printKinematics(const RefCountedKinematicParticle& particle,
-                                    const std::string& name) {
+                                    const std::string& name) const {
     const auto& state = particle->currentState();
     std::cout << name << " kinematics:" << std::endl;
     std::cout << "  px=" << state.globalMomentum().x()
@@ -2437,12 +2598,252 @@ void MultiLepPAT::printKinematics(const RefCountedKinematicParticle& particle,
               << " phi=" << state.globalMomentum().phi() << std::endl;
 }
 
+void MultiLepPAT::printRecoMuonDebug(unsigned int muIdx, const reco::Vertex& primaryV) const
+{
+    if (!thePATMuonHandle_.isValid() || muIdx >= thePATMuonHandle_->size()) {
+        std::cout << "    [muon idx=" << muIdx << "] unavailable in current muon handle" << std::endl;
+        return;
+    }
+
+    const auto& mu = thePATMuonHandle_->at(muIdx);
+    const reco::Track* trk = bestMuonTrackForGenMatch(mu);
+
+    std::cout << "    [muon idx=" << muIdx << "]"
+              << " q=" << mu.charge()
+              << " pt=" << mu.pt()
+              << " eta=" << mu.eta()
+              << " phi=" << mu.phi()
+              << " px=" << mu.px()
+              << " py=" << mu.py()
+              << " pz=" << mu.pz()
+              << " isGlobal=" << mu.isGlobalMuon()
+              << " isTracker=" << mu.isTrackerMuon()
+              << " isSoftPV=" << mu.isSoftMuon(primaryV)
+              << std::endl;
+
+    if (trk != nullptr) {
+        std::cout << "      track"
+                  << " dxyPV=" << trk->dxy(primaryV.position())
+                  << " dzPV=" << trk->dz(primaryV.position())
+                  << " dxyErr=" << trk->dxyError()
+                  << " dzErr=" << trk->dzError()
+                  << " normChi2=" << trk->normalizedChi2()
+                  << " validHits=" << trk->numberOfValidHits()
+                  << std::endl;
+    } else {
+        std::cout << "      track unavailable" << std::endl;
+    }
+
+    const MuonTrackMatchResult packedMatch =
+        matchMuonToTrack(mu, theTrackHandle_, thePrimaryVtxHandle_, primaryV);
+    std::cout << "      packedMatch"
+              << " matched=" << packedMatch.matched
+              << " packedIdx=" << packedMatch.packedHandleIdx
+              << " poolIdx=" << packedMatch.trackPoolIdx
+              << " vtxId=" << packedMatch.vertexId
+              << " fromPV=" << packedMatch.fromPV
+              << " pvAssocQ=" << packedMatch.pvAssocQuality
+              << " nCand=" << packedMatch.nCandidates
+              << " method=" << packedMatch.methodUsed
+              << " relP=" << packedMatch.vectorRelP
+              << " chi2=" << packedMatch.chi2
+              << " dzSelPV=" << packedMatch.dzSelectedPV
+              << " dzAssocPV=" << packedMatch.dzAssocPV
+              << " dxyAssocPV=" << packedMatch.dxyAssocPV
+              << std::endl;
+}
+
+void MultiLepPAT::printRecoTrackDebug(
+    unsigned int trackIdx,
+    const reco::Vertex& primaryV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles) const
+{
+    if (!theTrackHandle_.isValid() || trackIdx >= theTrackHandle_->size()) {
+        std::cout << "    [track idx=" << trackIdx << "] unavailable in current packed-candidate handle" << std::endl;
+        return;
+    }
+
+    const auto& cand = theTrackHandle_->at(trackIdx);
+    const reco::Track* trk =
+        (cand.hasTrackDetails() && cand.bestTrack() != nullptr) ? cand.bestTrack() : nullptr;
+    int assocVertexId = -1;
+    const auto assocVtxRef = cand.vertexRef();
+    if (assocVtxRef.isNonnull() && assocVtxRef.isAvailable()) {
+        assocVertexId = static_cast<int>(assocVtxRef.key());
+    }
+
+    std::cout << "    [track idx=" << trackIdx << "]"
+              << " q=" << cand.charge()
+              << " pt=" << cand.pt()
+              << " eta=" << cand.eta()
+              << " phi=" << cand.phi()
+              << " px=" << cand.px()
+              << " py=" << cand.py()
+              << " pz=" << cand.pz()
+              << " fromPV=" << cand.fromPV()
+              << " pvAssocQ=" << cand.pvAssociationQuality()
+              << " vtxId=" << assocVertexId
+              << " hasTrackDetails=" << cand.hasTrackDetails()
+              << std::endl;
+
+    if (trk != nullptr) {
+        std::cout << "      bestTrack"
+                  << " dxyPV=" << trk->dxy(primaryV.position())
+                  << " dzPV=" << trk->dz(primaryV.position())
+                  << " normChi2=" << trk->normalizedChi2()
+                  << " validHits=" << trk->numberOfValidHits()
+                  << " highPurity=" << trk->quality(reco::Track::highPurity)
+                  << std::endl;
+    } else {
+        std::cout << "      bestTrack unavailable" << std::endl;
+    }
+
+    const PhiKaonDiagnostics diagnostics = buildPhiKaonDiagnostics(cand, primaryV, genParticles);
+    std::cout << "      kaonDiag"
+              << " hasAssocPV=" << diagnostics.hasAssocPV
+              << " vtxId=" << diagnostics.vertexId
+              << " passDzPV=" << diagnostics.passDzPV
+              << " passDxyPV=" << diagnostics.passDxyPV
+              << " passTrackPV=" << diagnostics.passTrackPV
+              << " dzPV=" << diagnostics.dzPV
+              << " dxyPV=" << diagnostics.dxyPV
+              << " dzAssocPV=" << diagnostics.dzAssocPV
+              << " dxyAssocPV=" << diagnostics.dxyAssocPV
+              << std::endl;
+
+    if (doMC && genParticles.isValid()) {
+        std::cout << "      genMatch"
+                  << " idx=" << diagnostics.genMatchIdx
+                  << " src=" << diagnostics.genMatchSource
+                  << " chi2=" << diagnostics.genMatchChi2
+                  << std::endl;
+    } else {
+        std::cout << "      genMatch skipped (runOnMC=False or no valid genParticles handle)" << std::endl;
+    }
+}
+
+void MultiLepPAT::printCompositeCandidateDebug(
+    const std::string& channelLabel,
+    const std::vector<DebugResonanceRef>& resonances,
+    const reco::Vertex& primaryV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles) const
+{
+    std::cout << "\n========== DEBUG CANDIDATE " << channelLabel << " ==========" << std::endl;
+    std::cout << "  selectedPV"
+              << " x=" << primaryV.x()
+              << " y=" << primaryV.y()
+              << " z=" << primaryV.z()
+              << " ndof=" << primaryV.ndof()
+              << " chi2=" << primaryV.chi2()
+              << " rho=" << std::hypot(primaryV.x(), primaryV.y())
+              << std::endl;
+
+    for (const auto& resonance : resonances) {
+        std::cout << "  [" << resonance.label << "]" << std::endl;
+        if (resonance.fitPart == nullptr || resonance.fitVtx == nullptr ||
+            !(*resonance.fitPart) || !(*resonance.fitVtx)) {
+            std::cout << "    fitted resonance or decay vertex unavailable" << std::endl;
+            continue;
+        }
+
+        const RefCountedKinematicParticle& fitPart = *resonance.fitPart;
+        const RefCountedKinematicVertex& fitVtx = *resonance.fitVtx;
+        double vtxProb = -1.0;
+        try {
+            vtxProb = ChiSquaredProbability(
+                static_cast<double>(fitVtx->chiSquared()),
+                static_cast<double>(fitVtx->degreesOfFreedom()));
+        } catch (...) {
+            vtxProb = -1.0;
+        }
+
+        printKinematics(fitPart, "    fitted " + resonance.label);
+        std::cout << "    mass=" << fitPart->currentState().mass()
+                  << " massErr=" << resonance.massErr
+                  << " vx=" << fitVtx->position().x()
+                  << " vy=" << fitVtx->position().y()
+                  << " vz=" << fitVtx->position().z()
+                  << " chi2=" << fitVtx->chiSquared()
+                  << " ndof=" << fitVtx->degreesOfFreedom()
+                  << " prob=" << vtxProb
+                  << std::endl;
+
+        for (const auto& daughter : resonance.daughters) {
+            std::cout << "    daughter " << daughter.label
+                      << " idx=" << daughter.idx
+                      << " type=" << (daughter.isMuon ? "muon" : "track")
+                      << std::endl;
+            if (daughter.isMuon) {
+                printRecoMuonDebug(daughter.idx, primaryV);
+            } else {
+                printRecoTrackDebug(daughter.idx, primaryV, genParticles);
+            }
+        }
+    }
+
+    std::cout << "========== END DEBUG CANDIDATE ==========\n" << std::endl;
+}
+
 /*****************************************************************************
  * beginRun / beginJob / endJob
  *****************************************************************************/
 void MultiLepPAT::beginJob()
 {
     edm::Service<TFileService> fs;
+    X_Config_Tree_ = fs->make<TTree>("X_config", "MultiLepPAT configuration");
+    X_Config_Tree_->Branch("AnalysisMode", &analysisModeName_);
+    X_Config_Tree_->Branch("DoMonteCarloTree", &doMC, "DoMonteCarloTree/O");
+    X_Config_Tree_->Branch("RequireAcceptedCandidatesForMonteCarloTree",
+                           &requireAcceptedCandidatesForMonteCarloTree_,
+                           "RequireAcceptedCandidatesForMonteCarloTree/O");
+    X_Config_Tree_->Branch("DoJPsiMassConstraint", &doJPsiMassCost, "DoJPsiMassConstraint/O");
+    X_Config_Tree_->Branch("Debug_Output", &Debug_, "Debug_Output/O");
+    X_Config_Tree_->Branch("HLTriggerResults", &configHLTriggerResultsTag_);
+    X_Config_Tree_->Branch("inputGEN", &configInputGENTag_);
+    X_Config_Tree_->Branch("MuonLabel", &configMuonLabelTag_);
+    X_Config_Tree_->Branch("TrackLabel", &configTrackLabelTag_);
+    X_Config_Tree_->Branch("MuonSelection", &muonSelectionStr_);
+    X_Config_Tree_->Branch("TrackSelection", &trackSelectionStr_);
+    X_Config_Tree_->Branch("PVNdofMin", &pvNdofMin_, "PVNdofMin/I");
+    X_Config_Tree_->Branch("PVMaxAbsZ", &pvMaxAbsZ_, "PVMaxAbsZ/D");
+    X_Config_Tree_->Branch("PVMaxRho", &pvMaxRho_, "PVMaxRho/D");
+    X_Config_Tree_->Branch("JpsiMassMin", &JpsiMassMin_, "JpsiMassMin/D");
+    X_Config_Tree_->Branch("JpsiMassMax", &JpsiMassMax_, "JpsiMassMax/D");
+    X_Config_Tree_->Branch("UpsMassMin", &UpsMassMin_, "UpsMassMin/D");
+    X_Config_Tree_->Branch("UpsMassMax", &UpsMassMax_, "UpsMassMax/D");
+    X_Config_Tree_->Branch("PhiMassMin", &PhiMassMin_, "PhiMassMin/D");
+    X_Config_Tree_->Branch("PhiMassMax", &PhiMassMax_, "PhiMassMax/D");
+    X_Config_Tree_->Branch("TrackPtMin", &trackPtMin_, "TrackPtMin/D");
+    X_Config_Tree_->Branch("TrackDRMax", &trackDRMax_, "TrackDRMax/D");
+    X_Config_Tree_->Branch("LegacyOniaDecayVtxProbCut", &legacyOniaDecayVtxProbCut_, "LegacyOniaDecayVtxProbCut/D");
+    X_Config_Tree_->Branch("JpsiDecayVtxProbCut", &JpsiDecayVtxProbCut_, "JpsiDecayVtxProbCut/D");
+    X_Config_Tree_->Branch("UpsDecayVtxProbCut", &UpsDecayVtxProbCut_, "UpsDecayVtxProbCut/D");
+    X_Config_Tree_->Branch("PhiDecayVtxProbCut", &PhiDecayVtxProbCut_, "PhiDecayVtxProbCut/D");
+    X_Config_Tree_->Branch("DiOniaVtxProbCut", &DiOniaVtxProbCut_, "DiOniaVtxProbCut/D");
+    X_Config_Tree_->Branch("PriVtxProbCut", &PriVtxProbCut_, "PriVtxProbCut/D");
+    X_Config_Tree_->Branch("DoJpsiDecayVtxFit", &DoJpsiDecayVtxFit_, "DoJpsiDecayVtxFit/O");
+    X_Config_Tree_->Branch("DoUpsDecayVtxFit", &DoUpsDecayVtxFit_, "DoUpsDecayVtxFit/O");
+    X_Config_Tree_->Branch("DoPhiDecayVtxFit", &DoPhiDecayVtxFit_, "DoPhiDecayVtxFit/O");
+    X_Config_Tree_->Branch("DoDiOniaVtxFit", &DoDiOniaVtxFit_, "DoDiOniaVtxFit/O");
+    X_Config_Tree_->Branch("DoPriVtxFit", &DoPriVtxFit_, "DoPriVtxFit/O");
+    X_Config_Tree_->Branch("PriRequireCommonAssocPV", &priRequireCommonAssocPV_, "PriRequireCommonAssocPV/O");
+    X_Config_Tree_->Branch("PriRequireTrackPVCompatibility", &priRequireTrackPVCompatibility_, "PriRequireTrackPVCompatibility/O");
+    X_Config_Tree_->Branch("PriTrackDzPVMax", &priTrackDzPVMax_, "PriTrackDzPVMax/D");
+    X_Config_Tree_->Branch("PriTrackDxyPVMax", &priTrackDxyPVMax_, "PriTrackDxyPVMax/D");
+    X_Config_Tree_->Branch("CheckFinalMass", &checkFinalMass_, "CheckFinalMass/O");
+    X_Config_Tree_->Branch("PVSelectionMode", &pvSelectionMode_);
+    X_Config_Tree_->Branch("MinTrackFromPV", &minTrackFromPV_, "MinTrackFromPV/I");
+    X_Config_Tree_->Branch("MinMuonCount", &minMuonCount_, "MinMuonCount/i");
+    X_Config_Tree_->Branch("MuTrkMatchMethod", &muTrkMatchMethod_);
+    X_Config_Tree_->Branch("MuTrkMatchDebug", &muTrkMatchDebug_, "MuTrkMatchDebug/O");
+    X_Config_Tree_->Branch("MuonPackedMatchVectorRelPMax", &muonPackedMatchVectorRelPMax_, "MuonPackedMatchVectorRelPMax/D");
+    X_Config_Tree_->Branch("MuonPackedMatchChi2Max", &muonPackedMatchChi2Max_, "MuonPackedMatchChi2Max/D");
+    X_Config_Tree_->Branch("MuonPackedMatchDzPvChi2Max", &muonPackedMatchDzPvChi2Max_, "MuonPackedMatchDzPvChi2Max/D");
+    X_Config_Tree_->Branch("MuonPackedMatchDzAssocChi2Max", &muonPackedMatchDzAssocChi2Max_, "MuonPackedMatchDzAssocChi2Max/D");
+    X_Config_Tree_->Branch("RecoGenMuonMatchChi2Max", &recoGenMuonMatchChi2Max_, "RecoGenMuonMatchChi2Max/D");
+    X_Config_Tree_->Branch("RecoGenKaonMatchChi2Max", &recoGenKaonMatchChi2Max_, "RecoGenKaonMatchChi2Max/D");
+    X_Config_Tree_->Fill();
+
     X_One_Tree_ = fs->make<TTree>("X_data", "Quarkonia Reconstruction Data");
 
     X_One_Tree_->Branch("TrigRes", &trigRes);
@@ -2638,6 +3039,14 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Pri_passAny", &Pri_passAny);
     X_One_Tree_->Branch("Pri_maxAbsDzPV", &Pri_maxAbsDzPV);
     X_One_Tree_->Branch("Pri_maxAbsDxyPV", &Pri_maxAbsDxyPV);
+    X_One_Tree_->Branch("DiOnia_fitValid", &DiOnia_fitValid);
+    X_One_Tree_->Branch("DiOnia_fitPass", &DiOnia_fitPass);
+    X_One_Tree_->Branch("DiOnia_commonRecVtxPass", &DiOnia_commonRecVtxPass);
+    X_One_Tree_->Branch("DiOnia_commonRecVtxIdx", &DiOnia_commonRecVtxIdx);
+    X_One_Tree_->Branch("DiOnia_passAny", &DiOnia_passAny);
+    X_One_Tree_->Branch("DiOnia_Chi2", &DiOnia_Chi2);
+    X_One_Tree_->Branch("DiOnia_ndof", &DiOnia_ndof);
+    X_One_Tree_->Branch("DiOnia_VtxProb", &DiOnia_VtxProb);
 
     // Kaon branches
     X_One_Tree_->Branch("Phi_K_1_px", &Phi_K_1_px); X_One_Tree_->Branch("Phi_K_1_py", &Phi_K_1_py);
@@ -2831,8 +3240,6 @@ MultiLepPAT::matchMuonToTrack(const pat::Muon& muon,
 
 void MultiLepPAT::endJob()
 {
-    X_One_Tree_->GetDirectory()->cd();
-    X_One_Tree_->Write();
 }
 
 // define this as a plug-in
