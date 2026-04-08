@@ -121,6 +121,19 @@ ivars.register('doPriVtxFit',
     mytype=VarParsing.VarParsing.varType.bool,
     info='Enable final tri-particle common-vertex kinematic fits (default: True)'
 )
+# ------ Multi-threading options ------
+ivars.register('numThreads',
+    default=1,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.int,
+    info='Number of threads to use (default: 1). Note: Multi-threading must also be enabled in the JobType configuration when running with CRAB.'
+)
+ivars.register('numStreams',
+    default=0,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.int,
+    info='Number of streams to use (default: 0, which means automatic). Note: Multi-threading must also be enabled in the JobType configuration when running with CRAB.'
+)
 
 # --- Default values ---
 
@@ -193,6 +206,12 @@ if not ivars.runOnMC and ivars.era not in globalTagDict['data']:
 # --- Begin process configuration ---
 
 process = cms.Process("mkcands")
+
+# ------ Multi-threading configuration ------
+process.options = cms.untracked.PSet(
+    numberOfThreads = cms.untracked.uint32(ivars.numThreads),
+    numberOfStreams = cms.untracked.uint32(ivars.numStreams),
+)
 
 # --- Message logger ---
 process.load("FWCore.MessageService.MessageLogger_cfi")
@@ -287,7 +306,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     UpsDecayVtxProbCut  = cms.untracked.double(5e-4),
     PhiDecayVtxProbCut  = cms.untracked.double(5e-4),
     DiOniaVtxProbCut    = cms.untracked.double(5e-3),
-    PriVtxProbCut       = cms.untracked.double(0.0),
+    PriVtxProbCut       = cms.untracked.double(-1.0),
     DoJpsiDecayVtxFit   = cms.untracked.bool(ivars.doJpsiDecayVtxFit),
     DoUpsDecayVtxFit    = cms.untracked.bool(ivars.doUpsDecayVtxFit),
     DoPhiDecayVtxFit    = cms.untracked.bool(ivars.doPhiDecayVtxFit),
