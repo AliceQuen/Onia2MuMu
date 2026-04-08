@@ -44,7 +44,9 @@
 #define _MultiLepPAT_h
 
 // system include files
+#include <cstdint>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -153,6 +155,13 @@ public:
         DzPv = 5
     };
 
+    enum DebugBits : unsigned int {
+        kDebugEventSummary = 1u << 0,
+        kDebugSingleOnia   = 1u << 1,
+        kDebugDiOnia       = 1u << 2,
+        kDebugFinalCand    = 1u << 3
+    };
+
     // Result structure for muon-track matching
     struct MuonTrackMatchResult {
         bool matched;
@@ -220,6 +229,27 @@ public:
         float chi2;
         float ndof;
         float vtxProb;
+    };
+
+    struct EventDebugSummary {
+        double mcGenMs;
+        double hltMs;
+        double l1Ms;
+        double pvRecoMs;
+        double fillMuonBlockMs;
+        double mcMatchMs;
+        double pairMuonsMs;
+        double pairTracksMs;
+        double combineCandidatesMs;
+        double totalMs;
+        size_t nRecoMuons;
+        size_t nPackedTracks;
+        size_t nTrackPool;
+        size_t nOnia1Pairs;
+        size_t nOnia2Pairs;
+        size_t nDiOnia;
+        size_t nPhiPairs;
+        size_t nFinalCandidates;
     };
 
     struct DebugDaughterRef {
@@ -331,11 +361,34 @@ private:
                              double arg_massDiff_2, double arg_massErr_2,
                              double arg_massDiff_3, double arg_massErr_3);
     
+    bool debugEnabled(unsigned int bit) const;
+    std::string debugEventTag() const;
     void printKinematics(const RefCountedKinematicParticle& particle, const std::string& name) const;
+    void printEventSummaryDebug(const EventDebugSummary& summary) const;
     void printRecoMuonDebug(unsigned int muIdx, const reco::Vertex& primaryV) const;
     void printRecoTrackDebug(unsigned int trackIdx,
                              const reco::Vertex& primaryV,
                              const edm::Handle<reco::GenParticleCollection>& genParticles) const;
+    void printSingleOniaCandidateDebug(
+        const std::string& label,
+        const std::vector<unsigned int>& muIndices,
+        double prefitMass,
+        const reco::Candidate::LorentzVector& prefitP4,
+        const RefCountedKinematicParticle& fitPart,
+        const RefCountedKinematicVertex& fitVtx,
+        double massErr,
+        const reco::Vertex& primaryV) const;
+    void printDiOniaCandidateDebug(
+        const std::string& onia1Label,
+        const std::string& onia2Label,
+        const DiOniaCandidate& candidate,
+        const RefCountedKinematicParticle& fit1,
+        const RefCountedKinematicVertex& vtx1,
+        double massErr1,
+        const RefCountedKinematicParticle& fit2,
+        const RefCountedKinematicVertex& vtx2,
+        double massErr2,
+        const reco::Vertex& primaryV) const;
     void printCompositeCandidateDebug(
         const std::string& channelLabel,
         const std::vector<DebugResonanceRef>& resonances,
@@ -405,6 +458,7 @@ private:
     bool    requireAcceptedCandidatesForMonteCarloTree_;
     bool    doJPsiMassCost;
     bool    Debug_;
+    unsigned int debugMask_;
     
     // -- Analysis mode: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi" --
     std::string analysisModeName_;
@@ -513,6 +567,9 @@ private:
     edm::Handle<VertexCollection> thePrimaryVtxHandle_;
     edm::Handle<edm::View<pat::Muon>> thePATMuonHandle_;
     edm::Handle<edm::View<pat::PackedCandidate>> theTrackHandle_;
+    unsigned int currentRun_;
+    unsigned int currentLumi_;
+    unsigned long long currentEvent_;
     std::vector<edm::View<pat::PackedCandidate>::const_iterator> nonMuonTrack_;
     std::unordered_map<unsigned int, int> handleToNtupleIndex_;
     

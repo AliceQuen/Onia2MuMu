@@ -67,6 +67,12 @@ ivars.register('debugOutput',
     mytype=VarParsing.VarParsing.varType.bool,
     info='Enable verbose candidate-level stdout debug (default: False)'
 )
+ivars.register('debugMask',
+    default=0,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.int,
+    info='Bitmask for staged stdout debug. Used together with debugOutput.'
+)
 ivars.register('reportEvery',
     default=1,
     mult=VarParsing.VarParsing.multiplicity.singleton,
@@ -318,6 +324,7 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     RequireAcceptedCandidatesForMonteCarloTree = cms.untracked.bool(ivars.requireAcceptedCandidatesForMonteCarloTree),
     DoJPsiMassConstraint = cms.untracked.bool(True),
     Debug_Output = cms.untracked.bool(ivars.debugOutput),
+    DebugMask    = cms.untracked.uint32(max(ivars.debugMask, 0)),
 
     # ====== Muon matching ======
     MuonPackedMatchVectorRelPMax = cms.untracked.double(0.01),

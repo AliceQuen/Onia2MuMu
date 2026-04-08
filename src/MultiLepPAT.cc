@@ -27,6 +27,7 @@
 #include <memory>
 #include <regex>
 #include <algorithm>
+#include <chrono>
 #include <vector>
 #include <utility>
 #include <iostream>
@@ -241,6 +242,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
           "RequireAcceptedCandidatesForMonteCarloTree", false)),
       doJPsiMassCost(iConfig.getUntrackedParameter<bool>("DoJPsiMassConstraint", false)),
       Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
+      debugMask_(iConfig.getUntrackedParameter<unsigned int>("DebugMask", 0)),
       // Analysis mode: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi"
       analysisModeName_(iConfig.getUntrackedParameter<std::string>("AnalysisMode", "JpsiJpsiPhi")),
       // StringCutObjectSelector for muon and track
@@ -325,6 +327,9 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       FiltersForJpsi_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForJpsi")),
       TriggersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("TriggersForUpsilon")),
       FiltersForUpsilon_(iConfig.getUntrackedParameter<std::vector<std::string>>("FiltersForUpsilon")),
+      currentRun_(0),
+      currentLumi_(0),
+      currentEvent_(0),
       X_One_Tree_(nullptr),
       X_Config_Tree_(nullptr),
       configHLTriggerResultsTag_(),
@@ -512,22 +517,40 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     using namespace edm;
     using namespace reco;
     using namespace std;
+    using Clock = std::chrono::steady_clock;
 
     runNum  = iEvent.id().run();
     evtNum  = iEvent.id().event();
     lumiNum = iEvent.id().luminosityBlock();
+    currentRun_ = runNum;
+    currentLumi_ = lumiNum;
+    currentEvent_ = evtNum;
+
+    EventDebugSummary debugSummary{};
+    const auto totalStart = Clock::now();
+    const auto elapsedMs = [](const Clock::time_point& start) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    };
 
     const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
 
     // Step 1: MC gen-level info
     if (doMC) {
+        const auto stepStart = Clock::now();
         processMCGenInfo(iEvent);
+        debugSummary.mcGenMs = elapsedMs(stepStart);
     }
     
     // Step 2: HLT trigger info
+    {
+        const auto stepStart = Clock::now();
     processHLTInfo(iEvent);
+        debugSummary.hltMs = elapsedMs(stepStart);
+    }
 
     // Step 3: L1 trigger
+    {
+    const auto stepStart = Clock::now();
     edm::Handle<L1GlobalTriggerReadoutRecord> gtRecord;
     iEvent.getByToken(gtRecordToken_, gtRecord);
     if (gtRecord.isValid()) {
@@ -536,9 +559,15 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             L1TT->push_back(ttWord.at(l1i));
         }
     }
+    debugSummary.l1Ms = elapsedMs(stepStart);
+    }
 
     // Step 4: Primary vertex reconstruction
+    {
+    const auto stepStart = Clock::now();
     reconstructPrimaryVertex(iEvent);
+    debugSummary.pvRecoMs = elapsedMs(stepStart);
+    }
 
     // Step 5: Get muon and track handles
     iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle_);
@@ -555,15 +584,22 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             nonMuonTrack_.push_back(iTrack);
         }
     }
+    debugSummary.nRecoMuons = thePATMuonHandle_.isValid() ? thePATMuonHandle_->size() : 0u;
+    debugSummary.nPackedTracks = theTrackHandle_.isValid() ? theTrackHandle_->size() : 0u;
+    debugSummary.nTrackPool = nonMuonTrack_.size();
 
     // Step 6: Fill the muon block for all available muons.
     if (thePATMuonHandle_.isValid()) {
+        const auto stepStart = Clock::now();
         fillMuonBlock(iEvent, iSetup, thePrimaryV_);
+        debugSummary.fillMuonBlockMs = elapsedMs(stepStart);
     }
 
     // Step 7: MC matching of tracks
     if (doMC && thePATMuonHandle_.isValid() && theTrackHandle_.isValid()) {
+        const auto stepStart = Clock::now();
         doMCGenMatching(thePATMuonHandle_, theTrackHandle_);
+        debugSummary.mcMatchMs = elapsedMs(stepStart);
     }
 
     const auto shouldFillCurrentEvent = [&]() {
@@ -574,40 +610,59 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         return doMC && !requireAcceptedCandidatesForMonteCarloTree_;
     };
 
-    // Step 8: Pair muons
-    if (!thePATMuonHandle_.isValid() || thePATMuonHandle_->size() < minMuonCount_) {
+    const auto finalizeCurrentEvent = [&]() {
+        debugSummary.nTrackPool = nonMuonTrack_.size();
+        debugSummary.nOnia1Pairs = muPairCand_Onia1_.size();
+        debugSummary.nOnia2Pairs = muPairCand_Onia2_.size();
+        debugSummary.nDiOnia = diOniaCands_.size();
+        debugSummary.nPhiPairs = KPairCand_Meson_.size();
+        debugSummary.nFinalCandidates = Pri_VtxProb->size();
+        debugSummary.totalMs = elapsedMs(totalStart);
+
+        if (debugEnabled(kDebugEventSummary)) {
+            printEventSummaryDebug(debugSummary);
+        }
+
         if (shouldFillCurrentEvent()) {
             X_One_Tree_->Fill();
         }
+
         clearEventData();
+    };
+
+    // Step 8: Pair muons
+    if (!thePATMuonHandle_.isValid() || thePATMuonHandle_->size() < minMuonCount_) {
+        finalizeCurrentEvent();
         return;
     }
 
+    {
+    const auto stepStart = Clock::now();
     pairMuons(thePATMuonHandle_, bFieldHandle);
+    debugSummary.pairMuonsMs = elapsedMs(stepStart);
+    }
 
     // Step 9: Pair tracks into meson candidates
     bool needsTrackPairs = (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
                             analysisChannel_ == AnalysisChannel::JpsiUpsPhi);
     if (needsTrackPairs && !theTrackHandle_.isValid()) {
-        if (shouldFillCurrentEvent()) {
-            X_One_Tree_->Fill();
-        }
-        clearEventData();
+        finalizeCurrentEvent();
         return;
     }
     if (needsTrackPairs) {
+        const auto stepStart = Clock::now();
         pairTracks(nonMuonTrack_, bFieldHandle);
+        debugSummary.pairTracksMs = elapsedMs(stepStart);
     }
 
     // Step 10: Combine candidates and fill branches
+    {
+    const auto stepStart = Clock::now();
     combineCandidates(theBeamSpotV_, genParticles);
-
-    if (shouldFillCurrentEvent()) {
-        X_One_Tree_->Fill();
+    debugSummary.combineCandidatesMs = elapsedMs(stepStart);
     }
 
-    // Clear everything
-    clearEventData();
+    finalizeCurrentEvent();
 }
 
 /*****************************************************************************
@@ -1156,6 +1211,25 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
     const auto onia2DecayFitEnabled = [&]() -> bool {
         return (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? DoJpsiDecayVtxFit_ : DoUpsDecayVtxFit_;
     };
+    const auto emitSingleOniaDebug = [&](const std::string& label,
+                                         const std::vector<unsigned int>& muIndices,
+                                         double prefitMass,
+                                         const reco::Candidate::LorentzVector& prefitP4,
+                                         RefCountedKinematicTree& fitTree) {
+        if (!debugEnabled(kDebugSingleOnia)) {
+            return;
+        }
+
+        RefCountedKinematicParticle fitPart;
+        RefCountedKinematicVertex fitVtx;
+        double massErr = -9.0;
+        if (!extractFitRes(fitTree, fitPart, fitVtx, massErr) || massErr < 0.0) {
+            return;
+        }
+
+        printSingleOniaCandidateDebug(
+            label, muIndices, prefitMass, prefitP4, fitPart, fitVtx, massErr, thePrimaryV_);
+    };
 
     for (auto iMuon1 = muonHandle->begin(); iMuon1 != muonHandle->end(); ++iMuon1) {
         TrackRef muTrack1 = iMuon1->track();
@@ -1201,17 +1275,21 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
             transMuonPair.push_back(muPairFactory.particle(transTrk2, muMass, chi2, ndof, muMassSigma));
             transMuPairId.push_back(iMuon2 - muonHandle->begin());
 
+            RefCountedKinematicTree onia1FitTree, onia2FitTree;
             bool onia1FitPass = false;
             bool onia2FitPass = false;
 
             if (isOnia1 && DoJpsiDecayVtxFit_) {
-                onia1FitPass = particlesToVtx(transMuonPair, JpsiDecayVtxProbCut_);
+                onia1FitPass = particlesToVtx(onia1FitTree, transMuonPair, "Jpsi", JpsiDecayVtxProbCut_);
             }
             if (isOnia2 && onia2DecayFitEnabled()) {
                 if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) {
                     onia2FitPass = onia1FitPass;
+                    onia2FitTree = onia1FitTree;
                 } else {
-                    onia2FitPass = particlesToVtx(transMuonPair, onia2DecayCut());
+                    const std::string onia2Label =
+                        (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? "Jpsi" : "Ups";
+                    onia2FitPass = particlesToVtx(onia2FitTree, transMuonPair, onia2Label, onia2DecayCut());
                 }
             }
 
@@ -1220,14 +1298,19 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
                 // JpsiJpsiPhi: Onia1==Onia2==J/psi, store all in Onia1_ (upper-triangle quartets)
                 if (onia1FitPass) {
                     muPairCand_Onia1_.push_back(std::make_pair(transMuonPair, transMuPairId));
+                    emitSingleOniaDebug("Jpsi", transMuPairId, muPairMass, pairP4, onia1FitTree);
                 }
             } else {
                 // JpsiJpsiUps or JpsiUpsPhi: separate Jpsi→Onia1, Ups→Onia2
                 if (isOnia1 && onia1FitPass) {
                     muPairCand_Onia1_.push_back(std::make_pair(transMuonPair, transMuPairId));
+                    emitSingleOniaDebug("Jpsi", transMuPairId, muPairMass, pairP4, onia1FitTree);
                 }
                 if (isOnia2 && onia2FitPass) {
                     muPairCand_Onia2_.push_back(std::make_pair(transMuonPair, transMuPairId));
+                    emitSingleOniaDebug(
+                        (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? "Jpsi" : "Ups",
+                        transMuPairId, muPairMass, pairP4, onia2FitTree);
                 }
             }
 
@@ -1308,6 +1391,10 @@ void MultiLepPAT::pairMuons(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
 
         candidate.passAny = candidate.commonRecVtxPass || candidate.fitPass;
         if (candidate.passAny) {
+            if (debugEnabled(kDebugDiOnia)) {
+                printDiOniaCandidateDebug(
+                    onia1Label, onia2Label, candidate, fit1, vtx1, massErr1, fit2, vtx2, massErr2, thePrimaryV_);
+            }
             diOniaCands_.push_back(candidate);
         }
     };
@@ -1499,7 +1586,7 @@ void MultiLepPAT::combineCandidates(
                 interOnia.push_back(fit2);
                 interOnia.push_back(fitMeson);
 
-                if (Debug_) {
+                if (debugEnabled(kDebugFinalCand)) {
                     const std::string channelLabel =
                         (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi) ? "JpsiJpsiPhi" : "JpsiUpsPhi";
                     const std::string onia2Label =
@@ -1728,7 +1815,7 @@ void MultiLepPAT::combineCandidates(
                 interOnia.push_back(fit2);
                 interOnia.push_back(fitUps);
 
-                if (Debug_) {
+                if (debugEnabled(kDebugFinalCand)) {
                     printCompositeCandidateDebug(
                         "JpsiJpsiUps",
                         {
@@ -2586,6 +2673,18 @@ double MultiLepPAT::deltaR(double eta1, double phi1, double eta2, double phi2) {
     return sqrt(deta * deta + dphi * dphi);
 }
 
+bool MultiLepPAT::debugEnabled(unsigned int bit) const
+{
+    return Debug_ && debugMask_ != 0u && ((debugMask_ & bit) != 0u);
+}
+
+std::string MultiLepPAT::debugEventTag() const
+{
+    std::ostringstream oss;
+    oss << currentRun_ << ":" << currentLumi_ << ":" << currentEvent_;
+    return oss.str();
+}
+
 void MultiLepPAT::printKinematics(const RefCountedKinematicParticle& particle,
                                     const std::string& name) const {
     const auto& state = particle->currentState();
@@ -2596,6 +2695,126 @@ void MultiLepPAT::printKinematics(const RefCountedKinematicParticle& particle,
               << " pt=" << state.globalMomentum().perp()
               << " eta=" << state.globalMomentum().eta()
               << " phi=" << state.globalMomentum().phi() << std::endl;
+}
+
+void MultiLepPAT::printEventSummaryDebug(const EventDebugSummary& summary) const
+{
+    std::cout << "\n[DEBUG][EventSummary]"
+              << " evt=" << debugEventTag()
+              << " nRecoMu=" << summary.nRecoMuons
+              << " nPackedTracks=" << summary.nPackedTracks
+              << " nTrackPool=" << summary.nTrackPool
+              << " nOnia1=" << summary.nOnia1Pairs
+              << " nOnia2=" << summary.nOnia2Pairs
+              << " nDiOnia=" << summary.nDiOnia
+              << " nPhi=" << summary.nPhiPairs
+              << " nFinal=" << summary.nFinalCandidates
+              << std::endl;
+    std::cout << "  timingMs"
+              << " mcGen=" << summary.mcGenMs
+              << " hlt=" << summary.hltMs
+              << " l1=" << summary.l1Ms
+              << " pvReco=" << summary.pvRecoMs
+              << " fillMuon=" << summary.fillMuonBlockMs
+              << " mcMatch=" << summary.mcMatchMs
+              << " pairMuons=" << summary.pairMuonsMs
+              << " pairTracks=" << summary.pairTracksMs
+              << " combine=" << summary.combineCandidatesMs
+              << " total=" << summary.totalMs
+              << std::endl;
+}
+
+void MultiLepPAT::printSingleOniaCandidateDebug(
+    const std::string& label,
+    const std::vector<unsigned int>& muIndices,
+    double prefitMass,
+    const reco::Candidate::LorentzVector& prefitP4,
+    const RefCountedKinematicParticle& fitPart,
+    const RefCountedKinematicVertex& fitVtx,
+    double massErr,
+    const reco::Vertex& primaryV) const
+{
+    double vtxProb = -1.0;
+    try {
+        vtxProb = ChiSquaredProbability(
+            static_cast<double>(fitVtx->chiSquared()),
+            static_cast<double>(fitVtx->degreesOfFreedom()));
+    } catch (...) {
+        vtxProb = -1.0;
+    }
+
+    std::cout << "\n[DEBUG][OniaPair]"
+              << " evt=" << debugEventTag()
+              << " label=" << label
+              << " muIdx=(" << muIndices.at(0) << "," << muIndices.at(1) << ")"
+              << " prefitMass=" << prefitMass
+              << " prefitPt=" << prefitP4.pt()
+              << " prefitEta=" << prefitP4.eta()
+              << " prefitPhi=" << prefitP4.phi()
+              << std::endl;
+    printKinematics(fitPart, "  fitted " + label);
+    std::cout << "  decayVtx"
+              << " x=" << fitVtx->position().x()
+              << " y=" << fitVtx->position().y()
+              << " z=" << fitVtx->position().z()
+              << " chi2=" << fitVtx->chiSquared()
+              << " ndof=" << fitVtx->degreesOfFreedom()
+              << " prob=" << vtxProb
+              << " mass=" << fitPart->currentState().mass()
+              << " massErr=" << massErr
+              << std::endl;
+    printRecoMuonDebug(muIndices.at(0), primaryV);
+    printRecoMuonDebug(muIndices.at(1), primaryV);
+}
+
+void MultiLepPAT::printDiOniaCandidateDebug(
+    const std::string& onia1Label,
+    const std::string& onia2Label,
+    const DiOniaCandidate& candidate,
+    const RefCountedKinematicParticle& fit1,
+    const RefCountedKinematicVertex& vtx1,
+    double massErr1,
+    const RefCountedKinematicParticle& fit2,
+    const RefCountedKinematicVertex& vtx2,
+    double massErr2,
+    const reco::Vertex& primaryV) const
+{
+    std::cout << "\n[DEBUG][DiOnia]"
+              << " evt=" << debugEventTag()
+              << " labels=(" << onia1Label << "," << onia2Label << ")"
+              << " muIdx=("
+              << candidate.onia1.second.at(0) << "," << candidate.onia1.second.at(1) << ","
+              << candidate.onia2.second.at(0) << "," << candidate.onia2.second.at(1) << ")"
+              << " commonRecVtxPass=" << candidate.commonRecVtxPass
+              << " commonRecVtxIdx=" << candidate.commonRecVtxIdx
+              << " fitValid=" << candidate.fitValid
+              << " fitPass=" << candidate.fitPass
+              << " passAny=" << candidate.passAny
+              << " chi2=" << candidate.chi2
+              << " ndof=" << candidate.ndof
+              << " prob=" << candidate.vtxProb
+              << std::endl;
+    printKinematics(fit1, "  fitted " + onia1Label);
+    std::cout << "  " << onia1Label << " decayVtx"
+              << " x=" << vtx1->position().x()
+              << " y=" << vtx1->position().y()
+              << " z=" << vtx1->position().z()
+              << " mass=" << fit1->currentState().mass()
+              << " massErr=" << massErr1
+              << std::endl;
+    printKinematics(fit2, "  fitted " + onia2Label);
+    std::cout << "  " << onia2Label << " decayVtx"
+              << " x=" << vtx2->position().x()
+              << " y=" << vtx2->position().y()
+              << " z=" << vtx2->position().z()
+              << " mass=" << fit2->currentState().mass()
+              << " massErr=" << massErr2
+              << std::endl;
+    std::cout << "  selectedPV"
+              << " x=" << primaryV.x()
+              << " y=" << primaryV.y()
+              << " z=" << primaryV.z()
+              << std::endl;
 }
 
 void MultiLepPAT::printRecoMuonDebug(unsigned int muIdx, const reco::Vertex& primaryV) const
@@ -2728,7 +2947,9 @@ void MultiLepPAT::printCompositeCandidateDebug(
     const reco::Vertex& primaryV,
     const edm::Handle<reco::GenParticleCollection>& genParticles) const
 {
-    std::cout << "\n========== DEBUG CANDIDATE " << channelLabel << " ==========" << std::endl;
+    std::cout << "\n========== DEBUG CANDIDATE " << channelLabel
+              << " evt=" << debugEventTag()
+              << " ==========" << std::endl;
     std::cout << "  selectedPV"
               << " x=" << primaryV.x()
               << " y=" << primaryV.y()
@@ -2798,6 +3019,7 @@ void MultiLepPAT::beginJob()
                            "RequireAcceptedCandidatesForMonteCarloTree/O");
     X_Config_Tree_->Branch("DoJPsiMassConstraint", &doJPsiMassCost, "DoJPsiMassConstraint/O");
     X_Config_Tree_->Branch("Debug_Output", &Debug_, "Debug_Output/O");
+    X_Config_Tree_->Branch("DebugMask", &debugMask_, "DebugMask/i");
     X_Config_Tree_->Branch("HLTriggerResults", &configHLTriggerResultsTag_);
     X_Config_Tree_->Branch("inputGEN", &configInputGENTag_);
     X_Config_Tree_->Branch("MuonLabel", &configMuonLabelTag_);
