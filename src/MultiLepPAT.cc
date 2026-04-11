@@ -25,7 +25,6 @@
 #include "../interface/MultiLepPAT.h"
 #include "../interface/VertexReProducer.h"
 #include <memory>
-#include <regex>
 #include <algorithm>
 #include <chrono>
 #include <vector>
@@ -771,8 +770,7 @@ void MultiLepPAT::processHLTInfo(const edm::Event &iEvent)
         trigNames->push_back(trigName);
 
         for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++) {
-            std::regex pattern(".*" + TriggersForJpsi_[JpsiTrig] + ".*");
-            if (std::regex_search(trigName, pattern)) {
+            if (trigName.find(TriggersForJpsi_[JpsiTrig]) != std::string::npos) {
                 JpsiMatchTrig[JpsiTrig] = hltflag;
                 if (hltflag) {
                     bool isDuplicate = false;
@@ -792,8 +790,7 @@ void MultiLepPAT::processHLTInfo(const edm::Event &iEvent)
 
         // Upsilon trigger matching
         for (unsigned int UpsTrig = 0; UpsTrig < nUpstrigger; UpsTrig++) {
-            std::regex pattern(".*" + TriggersForUpsilon_[UpsTrig] + ".*");
-            if (std::regex_search(trigName, pattern)) {
+            if (trigName.find(TriggersForUpsilon_[UpsTrig]) != std::string::npos) {
                 UpsilonMatchTrig[UpsTrig] = hltflag;
                 if (hltflag) {
                     bool isDuplicate = false;
