@@ -19,6 +19,8 @@ Make rootTuple for JPsiPsi2S reconstruction
 #ifndef _MultiLepPAT_h
 #define _MultiLepPAT_h
 
+#define DEBUG 2
+
 // system include files
 #include <memory>
 #include "DataFormats/PatCandidates/interface/Muon.h"
@@ -40,6 +42,7 @@ Make rootTuple for JPsiPsi2S reconstruction
 #include "DataFormats/Math/interface/LorentzVector.h"
 #include "DataFormats/Math/interface/Point3D.h"
 #include "DataFormats/Math/interface/Vector3D.h"
+#include "Math/VectorUtil.h"
 
 
 #include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
@@ -93,6 +96,8 @@ Make rootTuple for JPsiPsi2S reconstruction
 
 #include <vector>
 #include <utility>
+#include <map>
+#include <string>
 
 #include "CLHEP/Matrix/Vector.h"
 #include "CLHEP/Matrix/Matrix.h"
@@ -120,10 +125,12 @@ private:
   virtual void beginRun(Run const & iRun, EventSetup const& iSetup);
   virtual void analyze(const Event&, const EventSetup&);
   virtual void endJob() ;
+  
+  // Reset function to initialize/reset all variables for each event
+  void resetVariables();
 
  
 //add token here
-  edm::EDGetTokenT<L1GlobalTriggerReadoutRecord> gtRecordToken_;
   edm::EDGetTokenT<BeamSpot> gtbeamspotToken_;
   edm::EDGetTokenT<VertexCollection> gtprimaryVtxToken_;
   edm::EDGetTokenT<edm::View<pat::Muon> > gtpatmuonToken_; // MINIAOD
@@ -136,63 +143,80 @@ private:
   vector<string>      FiltersForJpsi_;
 
   int JpsiMatchTrig[50];
-
-//  vector<string>      TriggersForMatching_;
-//  vector<string>      FiltersForMatching_;
-//  int  MatchingTriggerResult[50];
- // bool Debug_;
-  //double Chi_Track_;
+  vector<bool>        muonFilterMatches;
 
   TTree* X_One_Tree_;
 
   unsigned int        runNum, evtNum, lumiNum;
   unsigned int        nGoodPrimVtx;
+
+
+  float X6900_mass, X6900_VtxProb, X6900_massErr;
+  float X6900_pt, X6900_pz, X6900_absEta;
+  float X6900_px, X6900_py;
+
+  float Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr;
+  float Psi2S_pt, Psi2S_pz, Psi2S_absEta;
+  float Psi2S_px, Psi2S_py;
+
+  float Jpsi1_mass, Jpsi1_VtxProb, Jpsi1_massErr;
+  float Jpsi1_pt, Jpsi1_pz, Jpsi1_absEta;
+  float Jpsi1_px, Jpsi1_py;
+
+  float Jpsi2_mass, Jpsi2_VtxProb, Jpsi2_massErr;
+  float Jpsi2_pt, Jpsi2_pz, Jpsi2_absEta;
+  float Jpsi2_px, Jpsi2_py;
+
+  float mu1_pt, mu1_pz, mu1_absEta;
+  float mu1_px, mu1_py;
+  float mu1_trackIso;
+  float mu1_d0BS, mu1_d0EBS, mu1_d3dBS, mu1_d3dEBS;
+  float mu1_d0PV, mu1_d0EPV, mu1_dzPV, mu1_dzEPV;
+  float mu1_charge;
+
+  float mu2_pt, mu2_pz, mu2_absEta;
+  float mu2_px, mu2_py;
+  float mu2_trackIso;
+  float mu2_d0BS, mu2_d0EBS, mu2_d3dBS, mu2_d3dEBS;
+  float mu2_d0PV, mu2_d0EPV, mu2_dzPV, mu2_dzEPV;
+  float mu2_charge;
+
+  float mu3_pt, mu3_pz, mu3_absEta;
+  float mu3_px, mu3_py;
+  float mu3_trackIso;
+  float mu3_d0BS, mu3_d0EBS, mu3_d3dBS, mu3_d3dEBS;
+  float mu3_d0PV, mu3_d0EPV, mu3_dzPV, mu3_dzEPV;
+  float mu3_charge;
+
+  float mu4_pt, mu4_pz, mu4_absEta;
+  float mu4_px, mu4_py;
+  float mu4_trackIso;
+  float mu4_d0BS, mu4_d0EBS, mu4_d3dBS, mu4_d3dEBS;
+  float mu4_d0PV, mu4_d0EPV, mu4_dzPV, mu4_dzEPV;
+  float mu4_charge;
+
+  int nLooseMuons, nTightMuons, nSoftMuons, nMediumMuons;
   
-  vector<unsigned int>* TrigRes;
-  vector<std::string>* TrigNames;
-  vector<unsigned int>* L1TrigRes;
-  vector<std::string>* MatchJpsiTrigNames;
+  bool mu1_hasFilterMatch, mu2_hasFilterMatch, mu3_hasFilterMatch, mu4_hasFilterMatch;
 
-  float               priVtxX, priVtxY, priVtxZ, priVtxXErr, priVtxYErr, priVtxZErr, priVtxChiNorm, priVtxChi, priVtxCL;
-  vector<float>       *priVtxXCorrY, *priVtxXCorrZ, *priVtxYCorrZ;
+  float pi1_pt, pi1_pz, pi1_absEta;
+  float pi1_px, pi1_py;
+  float pi2_pt, pi2_pz, pi2_absEta;
+  float pi2_px, pi2_py;
 
-  unsigned int         nMu;
-  vector<float>       *muPx, *muPy, *muPz; 
-  vector<float>       *muD0BS, *muD0EBS, *muD3dBS, *muD3dEBS; 
-  vector<float>       *muD0PV, *muD0EPV, *muDzPV, *muDzEPV;
-  vector<float>	      *muCharge, *muTrackIso;
-  vector<int>         *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
-  vector<int> *muJpsiFilterRes;
-
- //xining
-  vector<float> 
-    *X_mu1Id, *X_mu2Id, *X_mu3Id, *X_mu4Id,
-    *X_mass, *X_VtxProb, *X_Chi2, *X_ndof, *X_px, *X_py, *X_pz, *X_massErr, 
-    *X_JPiPi_mass, *X_JPiPi_VtxProb, *X_JPiPi_Chi2, *X_JPiPi_ndof, *X_JPiPi_px, *X_JPiPi_py, *X_JPiPi_pz, *X_JPiPi_massErr, 
-    *X_Jpsi1_mass, *X_Jpsi1_VtxProb, *X_Jpsi1_Chi2, *X_Jpsi1_ndof, *X_Jpsi1_px, *X_Jpsi1_py, *X_Jpsi1_pz, *X_Jpsi1_massErr, 
-    *X_Jpsi2_mass, *X_Jpsi2_VtxProb, *X_Jpsi2_Chi2, *X_Jpsi2_ndof, *X_Jpsi2_px, *X_Jpsi2_py,  *X_Jpsi2_pz,*X_Jpsi2_massErr, 
-    *X_JPiPi_Pi1Id, *X_JPiPi_Pi2Id,
-    *X_JPiPi_Pi1px, *X_JPiPi_Pi1py, *X_JPiPi_Pi1pz,
-    *X_JPiPi_Pi2px, *X_JPiPi_Pi2py, *X_JPiPi_Pi2pz; 
-
-//added for mass constrain on 1208, cs stands for some kind of mass constraint
-// Variables for Jpsi and Pion
- vector <float> *cs_X_Jpsi1_mass, *cs_X_Jpsi1_VtxProb, *cs_X_Jpsi1_Chi2, *cs_X_Jpsi1_ndof, *cs_X_Jpsi1_px, *cs_X_Jpsi1_py, *cs_X_Jpsi1_pz, *cs_X_Jpsi1_massErr,
- *cs_X_Jpsi2_mass, *cs_X_Jpsi2_VtxProb, *cs_X_Jpsi2_Chi2, *cs_X_Jpsi2_ndof, *cs_X_Jpsi2_px,  *cs_X_Jpsi2_py,  *cs_X_Jpsi2_pz, *cs_X_Jpsi2_massErr;
-// Notice that Jpsi and Pion information is actually the same as before, 
-// because JPiPi MC fit doesn't change them by default.  
-// So Jpsi information retrived from Jpsi MC fit but not JPiPi MC fit. 
-// And Pion information is actually the same as that in 4mu2pi X fit so there are no variables for them
-// If you do what to change them, please check JPiPi MC fit and information stored carefully.
-
-// Variables for JPiPi fitted with MassConstraint Jpsi1
- vector<float> *cs_X_JPiPi_mass, *cs_X_JPiPi_VtxProb, *cs_X_JPiPi_Chi2, *cs_X_JPiPi_ndof, *cs_X_JPiPi_px ,*cs_X_JPiPi_py, *cs_X_JPiPi_pz, *cs_X_JPiPi_massErr;
-
-// Variables for X and JPiPi; MassConstraint to Psi2S and X3782 
- vector<float> *cs_X_mass_Psi2S, *cs_X_VtxProb_Psi2S, *cs_X_Chi2_Psi2S, *cs_X_ndof_Psi2S, *cs_X_px_Psi2S, *cs_X_py_Psi2S, *cs_X_pz_Psi2S, *cs_X_massErr_Psi2S,
- *cs_X_JPiPi_mass_Psi2S, *cs_X_JPiPi_VtxProb_Psi2S, *cs_X_JPiPi_Chi2_Psi2S, *cs_X_JPiPi_ndof_Psi2S, *cs_X_JPiPi_px_Psi2S, *cs_X_JPiPi_py_Psi2S, *cs_X_JPiPi_pz_Psi2S, *cs_X_JPiPi_massErr_Psi2S;
-
- vector<float> *cs_X_mass_X3872, *cs_X_VtxProb_X3872, *cs_X_Chi2_X3872, *cs_X_ndof_X3872, *cs_X_px_X3872, *cs_X_py_X3872, *cs_X_pz_X3872, *cs_X_massErr_X3872,
- *cs_X_JPiPi_mass_X3872, *cs_X_JPiPi_VtxProb_X3872, *cs_X_JPiPi_Chi2_X3872, *cs_X_JPiPi_ndof_X3872, *cs_X_JPiPi_px_X3872, *cs_X_JPiPi_py_X3872, *cs_X_JPiPi_pz_X3872, *cs_X_JPiPi_massErr_X3872;
+  float dR_mu1_mu2, dR_mu3_mu4, dR_pi1_pi2;
+  float dR_Jpsi1_X6900, dR_Jpsi2_X6900;
+  float dR_X6900_pi1, dR_X6900_pi2;
+  float dR_X6900_mu1, dR_X6900_mu2, dR_X6900_mu3, dR_X6900_mu4;
+  float dR_Psi2S_X6900, dR_Psi2S_Jpsi1, dR_Psi2S_Jpsi2;
+  float dR_Psi2S_pi1, dR_Psi2S_pi2;
+  #if DEBUG == 2
+  private:
+  std::map<int, unsigned long long> continue_counts_;
+  std::map<int, unsigned long long> return_counts_;
+  unsigned long long total_continue_ = 0;
+  unsigned long long total_return_ = 0;
+  #endif
 };
+
 #endif
