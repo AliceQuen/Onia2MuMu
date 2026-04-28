@@ -100,6 +100,11 @@
 #define PI_MASS 0.13957039
 #define PI_MASSERR (PI_MASS * 1e-6)
 
+// Particle mass nominal values for constraints
+#define JPSI_MASS_NOMINAL 3.0969
+#define X3872_MASS_NOMINAL 3.872
+#define PSI2S_MASS_NOMINAL 3.686097
+
 typedef math::Error<3>::type CovarianceMatrix;
 typedef ROOT::Math::SVector<double, 3> SVector3;
 typedef ROOT::Math::SMatrix<double, 3, 3, ROOT::Math::MatRepSym<double, 3>>
@@ -120,11 +125,19 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
 
-      X6900_mass(0), X6900_VtxProb(0), X6900_massErr(0),
-      X6900_pt(0), X6900_pz(0), X6900_absEta(0),
-      X6900_px(0), X6900_py(0),
+      X_PJ_mass(0), X_PJ_VtxProb(0), X_PJ_massErr(0),
+      X_PJ_pt(0), X_PJ_pz(0), X_PJ_absEta(0),
+      X_PJ_px(0), X_PJ_py(0),
 
-      Psi2S_mass_raw(0), Psi2S_mass(0), Psi2S_VtxProb(0), Psi2S_massErr(0),
+      X_XJ_mass(0), X_XJ_VtxProb(0), X_XJ_massErr(0),
+      X_XJ_pt(0), X_XJ_pz(0), X_XJ_absEta(0),
+      X_XJ_px(0), X_XJ_py(0),
+
+      X_PP_mass(0), X_PP_VtxProb(0), X_PP_massErr(0),
+      X_PP_pt(0), X_PP_pz(0), X_PP_absEta(0),
+      X_PP_px(0), X_PP_py(0),
+
+      Psi2S_mass(0), Psi2S_VtxProb(0), Psi2S_massErr(0),
       Psi2S_pt(0), Psi2S_pz(0), Psi2S_absEta(0),
       Psi2S_px(0), Psi2S_py(0),
 
@@ -168,10 +181,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       pi2_px(0), pi2_py(0),
 
       dR_mu1_mu2(0), dR_mu3_mu4(0), dR_pi1_pi2(0),
-      dR_Jpsi1_X6900(0), dR_Jpsi2_X6900(0),
-      dR_X6900_pi1(0), dR_X6900_pi2(0),
-      dR_X6900_mu1(0), dR_X6900_mu2(0), dR_X6900_mu3(0), dR_X6900_mu4(0),
-      dR_Psi2S_X6900(0), dR_Psi2S_Jpsi1(0), dR_Psi2S_Jpsi2(0),
+      dR_Psi2S_Jpsi1(0), dR_Psi2S_Jpsi2(0),
       dR_Psi2S_pi1(0), dR_Psi2S_pi2(0) {
   // Sort triggers by length ascending - shorter patterns checked first
   // This allows early exit on average since shorter patterns are more likely to match
@@ -935,7 +945,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               float chi = 0.;
               float ndf = 0.;
 
-              // first fit to have a psi2s
+              // ========== 四粒子带J/psi质量约束拟合 ==========
+              // mumupipi系统：将muon1和muon2的不变质量约束到J/psi标称质量
               vector<RefCountedKinematicParticle> JPiPiParticles;
               JPiPiParticles.push_back(JPiPiFactory.particle(
                   trackTT1, pion_mass, chi, ndf, pion_sigma));
@@ -946,33 +957,41 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               JPiPiParticles.push_back(pmumuFactory.particle(
                   muon2TT, muon_mass, chi, ndf, muon_sigma));
 
-              KinematicParticleVertexFitter JPiPi_fitter;
+              // 创建J/psi质量约束：约束muon1和muon2（索引2和3）的不变质量到3.0969 GeV
+              KinematicConstraint* jpsiMassConstraint = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
+              vector<KinematicConstraint*> JPiPiConstraints;
+              JPiPiConstraints.push_back(jpsiMassConstraint);
+
+              // 使用带约束的顶点拟合器
+              KinematicConstrainedVertexFitter JPiPi_fitter;
               RefCountedKinematicTree JPiPiVertexFitTree;
               Error_t = false;
               try {
-                JPiPiVertexFitTree = JPiPi_fitter.fit(JPiPiParticles);
+                JPiPiVertexFitTree = JPiPi_fitter.fit(JPiPiParticles, JPiPiConstraints);
               } catch (...) {
                 Error_t = true;
               }
               if (Error_t || !(JPiPiVertexFitTree->isValid())) {
                 #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S vertex fit failed (line " << __LINE__ << ")" << std::endl;
+                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S constrained vertex fit failed (line " << __LINE__ << ")" << std::endl;
                 #endif
+                delete jpsiMassConstraint;
                 continue;
               }
               JPiPiVertexFitTree->movePointerToTheTop();
-              RefCountedKinematicParticle JPiPi_vFit_noMC =
+              RefCountedKinematicParticle JPiPi_vFit_constrained =
                   JPiPiVertexFitTree->currentParticle();
-              RefCountedKinematicVertex JPiPi_vFit_vertex_noMC =
+              RefCountedKinematicVertex JPiPi_vFit_vertex_constrained =
                   JPiPiVertexFitTree->currentDecayVertex();
 
               double JPiPi_vtxprob = ChiSquaredProbability(
-                  (double)(JPiPi_vFit_vertex_noMC->chiSquared()),
-                  (double)(JPiPi_vFit_vertex_noMC->degreesOfFreedom()));
-              if (JPiPi_vFit_noMC->currentState().mass() > 4.5) {
+                  (double)(JPiPi_vFit_vertex_constrained->chiSquared()),
+                  (double)(JPiPi_vFit_vertex_constrained->degreesOfFreedom()));
+              if (JPiPi_vFit_constrained->currentState().mass() > 4.5) {
                 #if DEBUG == 1
                 std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S mass exceeds 4.5 (line " << __LINE__ << ")" << std::endl;
                 #endif
+                delete jpsiMassConstraint;
                 continue;
               }
               
@@ -982,21 +1001,57 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
                 #if DEBUG == 1
                 std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S vertex probability below cut (line " << __LINE__ << ")" << std::endl;
                 #endif
+                delete jpsiMassConstraint;
                 continue;
               }
               
               // 2. pt > 4
-              double px = JPiPi_vFit_noMC->currentState().kinematicParameters().momentum().x();
-              double py = JPiPi_vFit_noMC->currentState().kinematicParameters().momentum().y();
+              double px = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().x();
+              double py = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().y();
               double psi2s_pt = sqrt(px*px + py*py);
               if (psi2s_pt <= psi2s_pt_cut) {
                 #if DEBUG == 1
                 std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S pT below cut (line " << __LINE__ << ")" << std::endl;
                 #endif
+                delete jpsiMassConstraint;
                 continue;
               }
 
-              // fit the 6 track together to a vertex
+              // 清理约束对象内存
+              delete jpsiMassConstraint;
+
+              // ========== 保存Psi2S拟合结果 ==========
+              // 从J/psi质量约束的四粒子拟合中提取Psi2S相关变量
+              Psi2S_mass = JPiPi_vFit_constrained->currentState().mass();
+              Psi2S_VtxProb = JPiPi_vtxprob;
+              Psi2S_px = JPiPi_vFit_constrained->currentState()
+                                         .kinematicParameters()
+                                         .momentum()
+                                         .x();
+              Psi2S_py = JPiPi_vFit_constrained->currentState()
+                                         .kinematicParameters()
+                                         .momentum()
+                                         .y();
+              Psi2S_pz = JPiPi_vFit_constrained->currentState()
+                                         .kinematicParameters()
+                                         .momentum()
+                                         .z();
+              if (JPiPi_vFit_constrained->currentState()
+                      .kinematicParametersError()
+                      .matrix()(6, 6) > 0) {
+                Psi2S_massErr = sqrt(JPiPi_vFit_constrained->currentState()
+                                                    .kinematicParametersError()
+                                                    .matrix()(6, 6));
+              } else {
+                Psi2S_massErr = -9;
+              }
+
+              ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass);
+              Psi2S_pt = Psi2S_vec.Pt();
+              Psi2S_absEta = fabs(Psi2S_vec.Eta());
+
+              // ========== 六粒子三种假设质量约束拟合 ==========
+              // 构建6粒子列表：pi1(0), pi2(1), mu1(2), mu2(3), mu3(4), mu4(5)
               vector<RefCountedKinematicParticle> X_Particles;
               X_Particles.push_back(JPiPiFactory.particle(
                   trackTT1, pion_mass, chi, ndf, pion_sigma));
@@ -1011,91 +1066,151 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               X_Particles.push_back(pmumuFactory.particle(
                   muon4TT, muon_mass, chi, ndf, muon_sigma));
 
-              KinematicParticleVertexFitter X_fitter;
-              RefCountedKinematicTree X_VertexFitTree;
-              Error_t = false;
-              try {
-                X_VertexFitTree = X_fitter.fit(X_Particles);
-              } catch (...) {
-                Error_t = true;
-              }
-              if (Error_t || !(X_VertexFitTree->isValid())) {
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: X(6900) vertex fit failed (line " << __LINE__ << ")" << std::endl;
-                #endif
-                continue;
-              }
-              X_VertexFitTree->movePointerToTheTop();
-              RefCountedKinematicParticle X_vFit_noMC =
-                  X_VertexFitTree->currentParticle();
-              RefCountedKinematicVertex X_vFit_vertex_noMC =
-                  X_VertexFitTree->currentDecayVertex();
-              KinematicParameters X_kPara =
-                  X_vFit_noMC->currentState().kinematicParameters();
+              // ========== 假设PJ: mumupipi(Jpsi) + mumup(Jpsi) ==========
+              // 约束: (mu1,mu2)→J/psi 和 (mu3,mu4)→J/psi
+              {
+                vector<KinematicConstraint*> PJConstraints;
+                KinematicConstraint* JpsiConstraint1 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
+                KinematicConstraint* JpsiConstraint2 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 4, 5);
+                PJConstraints.push_back(JpsiConstraint1);
+                PJConstraints.push_back(JpsiConstraint2);
 
-              double X_vtxprob = ChiSquaredProbability(
-                  (double)(X_vFit_vertex_noMC->chiSquared()),
-                  (double)(X_vFit_vertex_noMC->degreesOfFreedom()));
+                KinematicConstrainedVertexFitter PJ_fitter;
+                RefCountedKinematicTree PJ_VertexFitTree;
+                bool PJ_Error = false;
+                try {
+                  PJ_VertexFitTree = PJ_fitter.fit(X_Particles, PJConstraints);
+                } catch (...) {
+                  PJ_Error = true;
+                }
+                if (PJ_Error || !(PJ_VertexFitTree->isValid())) {
+                  #if DEBUG == 1
+                  std::cout << "[DEBUG] Hypothesis PJ fit failed (line " << __LINE__ << ")" << std::endl;
+                  #endif
+                } else {
+                  PJ_VertexFitTree->movePointerToTheTop();
+                  RefCountedKinematicParticle PJ_vFit = PJ_VertexFitTree->currentParticle();
+                  RefCountedKinematicVertex PJ_vFit_vertex = PJ_VertexFitTree->currentDecayVertex();
+                  KinematicParameters PJ_kPara = PJ_vFit->currentState().kinematicParameters();
 
-              X_VertexFitTree->movePointerToTheFirstChild();
-              RefCountedKinematicParticle X_pi1 =
-                  X_VertexFitTree->currentParticle();
-              X_VertexFitTree->movePointerToTheNextChild();
-              RefCountedKinematicParticle X_pi2 =
-                  X_VertexFitTree->currentParticle();
-
-              KinematicParameters X_pi1_KP =
-                  X_pi1->currentState().kinematicParameters();
-              KinematicParameters X_pi2_KP =
-                  X_pi2->currentState().kinematicParameters();
-              
-              // Start calculation variables to be stored
-              X6900_mass = X_vFit_noMC->currentState().mass();
-              X6900_VtxProb = X_vtxprob;
-              X6900_px = X_kPara.momentum().x();
-              X6900_py = X_kPara.momentum().y();
-              X6900_pz = X_kPara.momentum().z();
-              if (X_vFit_noMC->currentState()
-                      .kinematicParametersError()
-                      .matrix()(6, 6) > 0) {
-                X6900_massErr = sqrt(X_vFit_noMC->currentState()
-                                              .kinematicParametersError()
-                                              .matrix()(6, 6));
-              } else {
-                X6900_massErr = -9;
+                  X_PJ_mass = PJ_vFit->currentState().mass();
+                  X_PJ_VtxProb = ChiSquaredProbability(
+                      (double)(PJ_vFit_vertex->chiSquared()),
+                      (double)(PJ_vFit_vertex->degreesOfFreedom()));
+                  X_PJ_px = PJ_kPara.momentum().x();
+                  X_PJ_py = PJ_kPara.momentum().y();
+                  X_PJ_pz = PJ_kPara.momentum().z();
+                  if (PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                    X_PJ_massErr = sqrt(PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
+                  } else {
+                    X_PJ_massErr = -9;
+                  }
+                  ROOT::Math::PxPyPzMVector PJ_vec(X_PJ_px, X_PJ_py, X_PJ_pz, X_PJ_mass);
+                  X_PJ_pt = PJ_vec.Pt();
+                  X_PJ_absEta = fabs(PJ_vec.Eta());
+                }
+                delete JpsiConstraint1;
+                delete JpsiConstraint2;
               }
 
-              ROOT::Math::PxPyPzMVector X6900_vec(X6900_px, X6900_py, X6900_pz, X6900_mass);
-              X6900_pt = X6900_vec.Pt();
-              X6900_absEta = fabs(X6900_vec.Eta());
+              // ========== 假设XJ: mumupipi(X3872) + mumup(Jpsi) ==========
+              // 约束: (mu1,mu2,pi1,pi2)→X(3872) 和 (mu3,mu4)→J/psi
+              {
+                vector<KinematicConstraint*> XJConstraints;
+                vector<int> X3872_particleList;
+                X3872_particleList.push_back(0); // pi1
+                X3872_particleList.push_back(1); // pi2
+                X3872_particleList.push_back(2); // mu1
+                X3872_particleList.push_back(3); // mu2
+                KinematicConstraint* X3872Constraint = new MassKinematicConstraint(X3872_MASS_NOMINAL, X3872_particleList);
+                KinematicConstraint* JpsiConstraint2 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 4, 5);
+                XJConstraints.push_back(X3872Constraint);
+                XJConstraints.push_back(JpsiConstraint2);
 
-              Psi2S_mass_raw = JPiPi_vFit_noMC->currentState().mass();
-              Psi2S_VtxProb = JPiPi_vtxprob;
-              Psi2S_px = JPiPi_vFit_noMC->currentState()
-                                        .kinematicParameters()
-                                        .momentum()
-                                        .x();
-              Psi2S_py = JPiPi_vFit_noMC->currentState()
-                                        .kinematicParameters()
-                                        .momentum()
-                                        .y();
-              Psi2S_pz = JPiPi_vFit_noMC->currentState()
-                                        .kinematicParameters()
-                                        .momentum()
-                                        .z();
-              if (JPiPi_vFit_noMC->currentState()
-                      .kinematicParametersError()
-                      .matrix()(6, 6) > 0) {
-                Psi2S_massErr = sqrt(JPiPi_vFit_noMC->currentState()
-                                                    .kinematicParametersError()
-                                                    .matrix()(6, 6));
-              } else {
-                Psi2S_massErr = -9;
+                KinematicConstrainedVertexFitter XJ_fitter;
+                RefCountedKinematicTree XJ_VertexFitTree;
+                bool XJ_Error = false;
+                try {
+                  XJ_VertexFitTree = XJ_fitter.fit(X_Particles, XJConstraints);
+                } catch (...) {
+                  XJ_Error = true;
+                }
+                if (XJ_Error || !(XJ_VertexFitTree->isValid())) {
+                  #if DEBUG == 1
+                  std::cout << "[DEBUG] Hypothesis XJ fit failed (line " << __LINE__ << ")" << std::endl;
+                  #endif
+                } else {
+                  XJ_VertexFitTree->movePointerToTheTop();
+                  RefCountedKinematicParticle XJ_vFit = XJ_VertexFitTree->currentParticle();
+                  RefCountedKinematicVertex XJ_vFit_vertex = XJ_VertexFitTree->currentDecayVertex();
+                  KinematicParameters XJ_kPara = XJ_vFit->currentState().kinematicParameters();
+
+                  X_XJ_mass = XJ_vFit->currentState().mass();
+                  X_XJ_VtxProb = ChiSquaredProbability(
+                      (double)(XJ_vFit_vertex->chiSquared()),
+                      (double)(XJ_vFit_vertex->degreesOfFreedom()));
+                  X_XJ_px = XJ_kPara.momentum().x();
+                  X_XJ_py = XJ_kPara.momentum().y();
+                  X_XJ_pz = XJ_kPara.momentum().z();
+                  if (XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                    X_XJ_massErr = sqrt(XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
+                  } else {
+                    X_XJ_massErr = -9;
+                  }
+                  ROOT::Math::PxPyPzMVector XJ_vec(X_XJ_px, X_XJ_py, X_XJ_pz, X_XJ_mass);
+                  X_XJ_pt = XJ_vec.Pt();
+                  X_XJ_absEta = fabs(XJ_vec.Eta());
+                }
+                delete X3872Constraint;
+                delete JpsiConstraint2;
               }
 
-              ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass_raw);
-              Psi2S_pt = Psi2S_vec.Pt();
-              Psi2S_absEta = fabs(Psi2S_vec.Eta());
+              // ========== 假设PP: mumupipi(Jpsi) + mumup(Psi2S) ==========
+              // 约束: (mu1,mu2)→J/psi 和 (mu3,mu4)→Psi(2S)
+              {
+                vector<KinematicConstraint*> PPConstraints;
+                KinematicConstraint* JpsiConstraint1 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
+                KinematicConstraint* Psi2SConstraint2 = new MassKinematicConstraint(PSI2S_MASS_NOMINAL, 4, 5);
+                PPConstraints.push_back(JpsiConstraint1);
+                PPConstraints.push_back(Psi2SConstraint2);
+
+                KinematicConstrainedVertexFitter PP_fitter;
+                RefCountedKinematicTree PP_VertexFitTree;
+                bool PP_Error = false;
+                try {
+                  PP_VertexFitTree = PP_fitter.fit(X_Particles, PPConstraints);
+                } catch (...) {
+                  PP_Error = true;
+                }
+                if (PP_Error || !(PP_VertexFitTree->isValid())) {
+                  #if DEBUG == 1
+                  std::cout << "[DEBUG] Hypothesis PP fit failed (line " << __LINE__ << ")" << std::endl;
+                  #endif
+                } else {
+                  PP_VertexFitTree->movePointerToTheTop();
+                  RefCountedKinematicParticle PP_vFit = PP_VertexFitTree->currentParticle();
+                  RefCountedKinematicVertex PP_vFit_vertex = PP_VertexFitTree->currentDecayVertex();
+                  KinematicParameters PP_kPara = PP_vFit->currentState().kinematicParameters();
+
+                  X_PP_mass = PP_vFit->currentState().mass();
+                  X_PP_VtxProb = ChiSquaredProbability(
+                      (double)(PP_vFit_vertex->chiSquared()),
+                      (double)(PP_vFit_vertex->degreesOfFreedom()));
+                  X_PP_px = PP_kPara.momentum().x();
+                  X_PP_py = PP_kPara.momentum().y();
+                  X_PP_pz = PP_kPara.momentum().z();
+                  if (PP_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                    X_PP_massErr = sqrt(PP_vFit->currentState().kinematicParametersError().matrix()(6, 6));
+                  } else {
+                    X_PP_massErr = -9;
+                  }
+                  ROOT::Math::PxPyPzMVector PP_vec(X_PP_px, X_PP_py, X_PP_pz, X_PP_mass);
+                  X_PP_pt = PP_vec.Pt();
+                  X_PP_absEta = fabs(PP_vec.Eta());
+                }
+                delete JpsiConstraint1;
+                delete Psi2SConstraint2;
+              }
 
               Jpsi1_mass = Jpsi1_vFit_noMC->currentState().mass();
               Jpsi1_VtxProb = Jpsi1_vtxprob;
@@ -1306,20 +1421,45 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("nGoodPrimVtx", &nGoodPrimVtx, "nGoodPrimVtx/i");
 
 
-  X_One_Tree_->Branch("X6900_mass", &X6900_mass, "X6900_mass/F");
-  X_One_Tree_->Branch("X6900_VtxProb", &X6900_VtxProb, "X6900_VtxProb/F");
-  X_One_Tree_->Branch("X6900_massErr", &X6900_massErr, "X6900_massErr/F");
-  X_One_Tree_->Branch("X6900_pt", &X6900_pt, "X6900_pt/F");
-  X_One_Tree_->Branch("X6900_pz", &X6900_pz, "X6900_pz/F");
-  X_One_Tree_->Branch("X6900_absEta", &X6900_absEta, "X6900_absEta/F");
+  // Hypothesis PJ: mumupipi (J/psi constrained) + mumu (J/psi constrained)
+  X_One_Tree_->Branch("X_PJ_mass", &X_PJ_mass, "X_PJ_mass/F");
+  X_One_Tree_->Branch("X_PJ_VtxProb", &X_PJ_VtxProb, "X_PJ_VtxProb/F");
+  X_One_Tree_->Branch("X_PJ_massErr", &X_PJ_massErr, "X_PJ_massErr/F");
+  X_One_Tree_->Branch("X_PJ_pt", &X_PJ_pt, "X_PJ_pt/F");
+  X_One_Tree_->Branch("X_PJ_pz", &X_PJ_pz, "X_PJ_pz/F");
+  X_One_Tree_->Branch("X_PJ_absEta", &X_PJ_absEta, "X_PJ_absEta/F");
+  X_One_Tree_->Branch("X_PJ_px", &X_PJ_px, "X_PJ_px/F");
+  X_One_Tree_->Branch("X_PJ_py", &X_PJ_py, "X_PJ_py/F");
 
-  X_One_Tree_->Branch("Psi2S_mass_raw", &Psi2S_mass_raw, "Psi2S_mass_raw/F");
+  // Hypothesis XJ: mumupipi (X(3872) constrained) + mumu (J/psi constrained)
+  X_One_Tree_->Branch("X_XJ_mass", &X_XJ_mass, "X_XJ_mass/F");
+  X_One_Tree_->Branch("X_XJ_VtxProb", &X_XJ_VtxProb, "X_XJ_VtxProb/F");
+  X_One_Tree_->Branch("X_XJ_massErr", &X_XJ_massErr, "X_XJ_massErr/F");
+  X_One_Tree_->Branch("X_XJ_pt", &X_XJ_pt, "X_XJ_pt/F");
+  X_One_Tree_->Branch("X_XJ_pz", &X_XJ_pz, "X_XJ_pz/F");
+  X_One_Tree_->Branch("X_XJ_absEta", &X_XJ_absEta, "X_XJ_absEta/F");
+  X_One_Tree_->Branch("X_XJ_px", &X_XJ_px, "X_XJ_px/F");
+  X_One_Tree_->Branch("X_XJ_py", &X_XJ_py, "X_XJ_py/F");
+
+  // Hypothesis PP: mumupipi (J/psi constrained) + mumu (psi(2S) constrained)
+  X_One_Tree_->Branch("X_PP_mass", &X_PP_mass, "X_PP_mass/F");
+  X_One_Tree_->Branch("X_PP_VtxProb", &X_PP_VtxProb, "X_PP_VtxProb/F");
+  X_One_Tree_->Branch("X_PP_massErr", &X_PP_massErr, "X_PP_massErr/F");
+  X_One_Tree_->Branch("X_PP_pt", &X_PP_pt, "X_PP_pt/F");
+  X_One_Tree_->Branch("X_PP_pz", &X_PP_pz, "X_PP_pz/F");
+  X_One_Tree_->Branch("X_PP_absEta", &X_PP_absEta, "X_PP_absEta/F");
+  X_One_Tree_->Branch("X_PP_px", &X_PP_px, "X_PP_px/F");
+  X_One_Tree_->Branch("X_PP_py", &X_PP_py, "X_PP_py/F");
+
+  // Psi(2S) with J/psi mass constraint: mumupipi system
   X_One_Tree_->Branch("Psi2S_mass", &Psi2S_mass, "Psi2S_mass/F");
   X_One_Tree_->Branch("Psi2S_VtxProb", &Psi2S_VtxProb, "Psi2S_VtxProb/F");
   X_One_Tree_->Branch("Psi2S_massErr", &Psi2S_massErr, "Psi2S_massErr/F");
   X_One_Tree_->Branch("Psi2S_pt", &Psi2S_pt, "Psi2S_pt/F");
   X_One_Tree_->Branch("Psi2S_pz", &Psi2S_pz, "Psi2S_pz/F");
   X_One_Tree_->Branch("Psi2S_absEta", &Psi2S_absEta, "Psi2S_absEta/F");
+  X_One_Tree_->Branch("Psi2S_px", &Psi2S_px, "Psi2S_px/F");
+  X_One_Tree_->Branch("Psi2S_py", &Psi2S_py, "Psi2S_py/F");
 
   X_One_Tree_->Branch("Jpsi1_mass", &Jpsi1_mass, "Jpsi1_mass/F");
   X_One_Tree_->Branch("Jpsi1_VtxProb", &Jpsi1_VtxProb, "Jpsi1_VtxProb/F");
@@ -1391,15 +1531,6 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("dR_mu1_mu2", &dR_mu1_mu2, "dR_mu1_mu2/F");
   X_One_Tree_->Branch("dR_mu3_mu4", &dR_mu3_mu4, "dR_mu3_mu4/F");
   X_One_Tree_->Branch("dR_pi1_pi2", &dR_pi1_pi2, "dR_pi1_pi2/F");
-  X_One_Tree_->Branch("dR_Jpsi1_X6900", &dR_Jpsi1_X6900, "dR_Jpsi1_X6900/F");
-  X_One_Tree_->Branch("dR_Jpsi2_X6900", &dR_Jpsi2_X6900, "dR_Jpsi2_X6900/F");
-  X_One_Tree_->Branch("dR_X6900_pi1", &dR_X6900_pi1, "dR_X6900_pi1/F");
-  X_One_Tree_->Branch("dR_X6900_pi2", &dR_X6900_pi2, "dR_X6900_pi2/F");
-  X_One_Tree_->Branch("dR_X6900_mu1", &dR_X6900_mu1, "dR_X6900_mu1/F");
-  X_One_Tree_->Branch("dR_X6900_mu2", &dR_X6900_mu2, "dR_X6900_mu2/F");
-  X_One_Tree_->Branch("dR_X6900_mu3", &dR_X6900_mu3, "dR_X6900_mu3/F");
-  X_One_Tree_->Branch("dR_X6900_mu4", &dR_X6900_mu4, "dR_X6900_mu4/F");
-  X_One_Tree_->Branch("dR_Psi2S_X6900", &dR_Psi2S_X6900, "dR_Psi2S_X6900/F");
   X_One_Tree_->Branch("dR_Psi2S_Jpsi1", &dR_Psi2S_Jpsi1, "dR_Psi2S_Jpsi1/F");
   X_One_Tree_->Branch("dR_Psi2S_Jpsi2", &dR_Psi2S_Jpsi2, "dR_Psi2S_Jpsi2/F");
   X_One_Tree_->Branch("dR_Psi2S_pi1", &dR_Psi2S_pi1, "dR_Psi2S_pi1/F");
@@ -1419,18 +1550,38 @@ void MultiLepPAT::resetVariables() {
   lumiNum = 0;
   nGoodPrimVtx = 0;
   
-  // Reset X(6900) candidate variables
-  X6900_mass = -999.0;
-  X6900_VtxProb = -999.0;
-  X6900_massErr = -999.0;
-  X6900_pt = -999.0;
-  X6900_pz = -999.0;
-  X6900_absEta = -999.0;
-  X6900_px = -999.0;
-  X6900_py = -999.0;
+  // Reset 3 hypothesis X candidate variables
+  // Hypothesis PJ: mumupipi (J/psi constrained) + mumu (J/psi constrained)
+  X_PJ_mass = -999.0;
+  X_PJ_VtxProb = -999.0;
+  X_PJ_massErr = -999.0;
+  X_PJ_pt = -999.0;
+  X_PJ_pz = -999.0;
+  X_PJ_absEta = -999.0;
+  X_PJ_px = -999.0;
+  X_PJ_py = -999.0;
+
+  // Hypothesis XJ: mumupipi (X(3872) constrained) + mumu (J/psi constrained)
+  X_XJ_mass = -999.0;
+  X_XJ_VtxProb = -999.0;
+  X_XJ_massErr = -999.0;
+  X_XJ_pt = -999.0;
+  X_XJ_pz = -999.0;
+  X_XJ_absEta = -999.0;
+  X_XJ_px = -999.0;
+  X_XJ_py = -999.0;
+
+  // Hypothesis PP: mumupipi (J/psi constrained) + mumu (psi(2S) constrained)
+  X_PP_mass = -999.0;
+  X_PP_VtxProb = -999.0;
+  X_PP_massErr = -999.0;
+  X_PP_pt = -999.0;
+  X_PP_pz = -999.0;
+  X_PP_absEta = -999.0;
+  X_PP_px = -999.0;
+  X_PP_py = -999.0;
   
-  // Reset Psi(2S) candidate variables
-  Psi2S_mass_raw = -999.0;
+  // Reset Psi(2S) candidate variables with J/psi mass constraint
   Psi2S_mass = -999.0;
   Psi2S_VtxProb = -999.0;
   Psi2S_massErr = -999.0;
@@ -1556,15 +1707,6 @@ void MultiLepPAT::resetVariables() {
   dR_mu1_mu2 = -999.0;
   dR_mu3_mu4 = -999.0;
   dR_pi1_pi2 = -999.0;
-  dR_Jpsi1_X6900 = -999.0;
-  dR_Jpsi2_X6900 = -999.0;
-  dR_X6900_pi1 = -999.0;
-  dR_X6900_pi2 = -999.0;
-  dR_X6900_mu1 = -999.0;
-  dR_X6900_mu2 = -999.0;
-  dR_X6900_mu3 = -999.0;
-  dR_X6900_mu4 = -999.0;
-  dR_Psi2S_X6900 = -999.0;
   dR_Psi2S_Jpsi1 = -999.0;
   dR_Psi2S_Jpsi2 = -999.0;
   dR_Psi2S_pi1 = -999.0;

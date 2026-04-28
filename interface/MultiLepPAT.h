@@ -1,21 +1,3 @@
-// -*- C++ -*-
-//
-// Package:    MultiLepPAT
-// Class:      MultiLepPAT
-// 
-/**\class MultiLepPAT MultiLepPAT.cc myAnalyzers/MultiLepPAT/src/MultiLepPAT.cc
-
- Description: <one line class summary>
-Make rootTuple for JPsiPsi2S reconstruction
-
- Implementation:
-     <Notes on implementation>
-*/
-//
-// Original Author: QIN Junkai 
-//
-//
-
 #ifndef _MultiLepPAT_h
 #define _MultiLepPAT_h
 
@@ -44,6 +26,7 @@ Make rootTuple for JPsiPsi2S reconstruction
 #include "DataFormats/Math/interface/Vector3D.h"
 #include "Math/VectorUtil.h"
 
+#include "Geometry/CommonDetUnit/interface/GeomDet.h"
 
 #include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
@@ -65,8 +48,7 @@ Make rootTuple for JPsiPsi2S reconstruction
 #include "DataFormats/Candidate/interface/CompositeCandidate.h"
 #include "DataFormats/Candidate/interface/VertexCompositeCandidate.h"
 #include "DataFormats/V0Candidate/interface/V0Candidate.h"
-#include "DataFormats/RecoCandidate/interface/RecoChargedCandidate.h"
-//#include "RecoVertex/V0Producer/interface/V0Producer.h"
+#include "RecoVertex/V0Producer/interface/V0Producer.h"
 #include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
@@ -111,7 +93,6 @@ Make rootTuple for JPsiPsi2S reconstruction
 
 using std::vector;
 using namespace edm;
-using namespace reco;
 using namespace std;
 
 class MultiLepPAT : public edm::one::EDAnalyzer<edm::one::SharedResources> {
@@ -119,29 +100,27 @@ public:
   explicit MultiLepPAT(const ParameterSet&);
   ~MultiLepPAT();
 
-  
 private:
   virtual void beginJob() ;
   virtual void beginRun(Run const & iRun, EventSetup const& iSetup);
   virtual void analyze(const Event&, const EventSetup&);
   virtual void endJob() ;
-  
+
   // Reset function to initialize/reset all variables for each event
   void resetVariables();
 
- 
-//add token here
+  //add token here
   edm::EDGetTokenT<BeamSpot> gtbeamspotToken_;
   edm::EDGetTokenT<VertexCollection> gtprimaryVtxToken_;
   edm::EDGetTokenT<edm::View<pat::Muon> > gtpatmuonToken_; // MINIAOD
   edm::EDGetTokenT<edm::TriggerResults> gttriggerToken_;
   edm::EDGetTokenT<edm::View<pat::PackedCandidate> > trackToken_; // MINIAOD
 
-//  InputTag inputGEN_;
+  //  InputTag inputGEN_;
   edm::ESGetToken<MagneticField, IdealMagneticFieldRecord>  magneticFieldToken_;
   vector<string>      TriggersForJpsi_;
   vector<string>      FiltersForJpsi_;
-  
+
   // Sorted by length ascending for faster matching - shorter patterns checked first
   vector<string>      TriggersForJpsi_sorted_;
   size_t              min_trigger_len_;
@@ -154,12 +133,23 @@ private:
   unsigned int        runNum, evtNum, lumiNum;
   unsigned int        nGoodPrimVtx;
 
+  // Hypothesis PJ: mumupipi (J/psi constrained) + mumu (J/psi constrained)
+  float X_PJ_mass, X_PJ_VtxProb, X_PJ_massErr;
+  float X_PJ_pt, X_PJ_pz, X_PJ_absEta;
+  float X_PJ_px, X_PJ_py;
 
-  float X6900_mass, X6900_VtxProb, X6900_massErr;
-  float X6900_pt, X6900_pz, X6900_absEta;
-  float X6900_px, X6900_py;
+  // Hypothesis XJ: mumupipi (X(3872) constrained) + mumu (J/psi constrained)
+  float X_XJ_mass, X_XJ_VtxProb, X_XJ_massErr;
+  float X_XJ_pt, X_XJ_pz, X_XJ_absEta;
+  float X_XJ_px, X_XJ_py;
 
-  float Psi2S_mass_raw, Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr;
+  // Hypothesis PP: mumupipi (J/psi constrained) + mumu (psi(2S) constrained)
+  float X_PP_mass, X_PP_VtxProb, X_PP_massErr;
+  float X_PP_pt, X_PP_pz, X_PP_absEta;
+  float X_PP_px, X_PP_py;
+
+  // Psi(2S) with J/psi mass constraint: mumupipi system
+  float Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr;
   float Psi2S_pt, Psi2S_pz, Psi2S_absEta;
   float Psi2S_px, Psi2S_py;
 
@@ -200,7 +190,7 @@ private:
   float mu4_charge;
 
   int nLooseMuons, nTightMuons, nSoftMuons, nMediumMuons;
-  
+
   bool mu1_hasFilterMatch, mu2_hasFilterMatch, mu3_hasFilterMatch, mu4_hasFilterMatch;
 
   float pi1_pt, pi1_pz, pi1_absEta;
@@ -209,18 +199,16 @@ private:
   float pi2_px, pi2_py;
 
   float dR_mu1_mu2, dR_mu3_mu4, dR_pi1_pi2;
-  float dR_Jpsi1_X6900, dR_Jpsi2_X6900;
-  float dR_X6900_pi1, dR_X6900_pi2;
-  float dR_X6900_mu1, dR_X6900_mu2, dR_X6900_mu3, dR_X6900_mu4;
-  float dR_Psi2S_X6900, dR_Psi2S_Jpsi1, dR_Psi2S_Jpsi2;
+  float dR_Psi2S_Jpsi1, dR_Psi2S_Jpsi2;
   float dR_Psi2S_pi1, dR_Psi2S_pi2;
-  #if DEBUG == 2
+
+#if DEBUG == 2
   private:
   std::map<int, unsigned long long> continue_counts_;
   std::map<int, unsigned long long> return_counts_;
   unsigned long long total_continue_ = 0;
   unsigned long long total_return_ = 0;
-  #endif
+#endif
 };
 
 #endif
