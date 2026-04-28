@@ -19,7 +19,7 @@ Make rootTuple for JPsiPsi2S reconstruction
 #ifndef _MultiLepPAT_h
 #define _MultiLepPAT_h
 
-#define DEBUG 2
+#define DEBUG 0
 
 // system include files
 #include <memory>
@@ -141,6 +141,10 @@ private:
   edm::ESGetToken<MagneticField, IdealMagneticFieldRecord>  magneticFieldToken_;
   vector<string>      TriggersForJpsi_;
   vector<string>      FiltersForJpsi_;
+  
+  // Sorted by length ascending for faster matching - shorter patterns checked first
+  vector<string>      TriggersForJpsi_sorted_;
+  size_t              min_trigger_len_;
 
   int JpsiMatchTrig[50];
   vector<bool>        muonFilterMatches;
@@ -155,7 +159,7 @@ private:
   float X6900_pt, X6900_pz, X6900_absEta;
   float X6900_px, X6900_py;
 
-  float Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr;
+  float Psi2S_mass_raw, Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr;
   float Psi2S_pt, Psi2S_pz, Psi2S_absEta;
   float Psi2S_px, Psi2S_py;
 

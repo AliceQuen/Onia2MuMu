@@ -8,3 +8,4 @@ __pycache__
 *.swo
 plyground/*
 *.md
+.clangd

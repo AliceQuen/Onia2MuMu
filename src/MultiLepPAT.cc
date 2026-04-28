@@ -1,11 +1,7 @@
 // system include files
 
 #include "TLorentzVector.h"
-#include <memory>
-#include <regex>
 #include <limits>
-#include <algorithm>
-#include <vector>
 #if DEBUG == 1
 #include <chrono>
 #endif
@@ -76,12 +72,8 @@
 #include "TTree.h"
 #include "TVector3.h"
 
-#include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
-#include <utility>
-#include <vector>
 
 #include "DataFormats/MuonReco/interface/MuonSelectors.h"
 
@@ -112,7 +104,6 @@ typedef math::Error<3>::type CovarianceMatrix;
 typedef ROOT::Math::SVector<double, 3> SVector3;
 typedef ROOT::Math::SMatrix<double, 3, 3, ROOT::Math::MatRepSym<double, 3>>
     SMatrixSym3D;
-using std::vector;
 using namespace edm;
 using namespace reco;
 using namespace std;
@@ -133,7 +124,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       X6900_pt(0), X6900_pz(0), X6900_absEta(0),
       X6900_px(0), X6900_py(0),
 
-      Psi2S_mass(0), Psi2S_VtxProb(0), Psi2S_massErr(0),
+      Psi2S_mass_raw(0), Psi2S_mass(0), Psi2S_VtxProb(0), Psi2S_massErr(0),
       Psi2S_pt(0), Psi2S_pz(0), Psi2S_absEta(0),
       Psi2S_px(0), Psi2S_py(0),
 
@@ -182,6 +173,18 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       dR_X6900_mu1(0), dR_X6900_mu2(0), dR_X6900_mu3(0), dR_X6900_mu4(0),
       dR_Psi2S_X6900(0), dR_Psi2S_Jpsi1(0), dR_Psi2S_Jpsi2(0),
       dR_Psi2S_pi1(0), dR_Psi2S_pi2(0) {
+  // Sort triggers by length ascending - shorter patterns checked first
+  // This allows early exit on average since shorter patterns are more likely to match
+  TriggersForJpsi_sorted_ = TriggersForJpsi_;
+  std::sort(TriggersForJpsi_sorted_.begin(), TriggersForJpsi_sorted_.end(),
+            [](const std::string& a, const std::string& b) { return a.size() < b.size(); });
+  
+  // Find minimum trigger length for early pruning
+  min_trigger_len_ = std::numeric_limits<size_t>::max();
+  for (const auto& t : TriggersForJpsi_sorted_) {
+    if (t.size() < min_trigger_len_) min_trigger_len_ = t.size();
+  }
+  
   // get token here for four-muon;
   gtbeamspotToken_ = consumes<BeamSpot>(edm::InputTag("offlineBeamSpot"));
   gtprimaryVtxToken_ = consumes<VertexCollection>(
@@ -204,13 +207,6 @@ MultiLepPAT::~MultiLepPAT() {
 void MultiLepPAT::analyze(const edm::Event &iEvent,
                           const edm::EventSetup &iSetup) {
 
-  // Reset all variables at the beginning of each event
-  resetVariables();
-
-  // get event content information
-
-  const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
-
   edm::Handle<edm::View<pat::Muon>> thePATMuonHandle; //  MINIAOD
   iEvent.getByToken(gtpatmuonToken_, thePATMuonHandle);
   // Skip events with less than 4 muons
@@ -224,6 +220,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
     #endif
     return;
   }
+  // Reset all variables at the beginning of each event
+  resetVariables();
+
+  const MagneticField &bFieldHandle = iSetup.getData(magneticFieldToken_);
 
   // Get run infomation
   runNum = iEvent.id().run();
@@ -236,8 +236,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 #endif
   edm::Handle<edm::TriggerResults> hltresults;
   bool Error_t = false;
-  unsigned int nJpsitrigger = TriggersForJpsi_.size();
-  
   bool HLT_match = false;
   try {
     iEvent.getByToken(gttriggerToken_, hltresults);
@@ -281,11 +279,19 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
     for (int itrig = 0; itrig < ntrigs; itrig++) {
       string trigName = triggerNames_.triggerName(itrig);
       int hltflag = (*hltresults)[itrig].accept();
-      // Loop over all required Jpsi Triggers
-      for (unsigned int JpsiTrig = 0; JpsiTrig < nJpsitrigger; JpsiTrig++) {
-        std::regex pattern(".*" + TriggersForJpsi_[JpsiTrig] + ".*");
-        if (std::regex_search(trigName, pattern) && hltflag)
+      if (!hltflag) continue; // Skip early if trigger not accepted
+      
+      // Early pruning: if trigger name is shorter than shortest pattern, can't match
+      if (trigName.size() < min_trigger_len_) continue;
+      
+      // Simple substring matching - HLT names are in format: name_v*.[0-9]
+      // Patterns sorted by length ascending: shorter patterns checked first
+      // Shorter patterns are more likely to match, giving early exit on average
+      for (const string& pattern : TriggersForJpsi_sorted_) {
+        if (trigName.find(pattern) != string::npos) {
           HLT_match = true;
+          break;
+        }
       }
       if (HLT_match)
         break;
@@ -340,7 +346,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
       if (beamSpotHandle.isValid()) {
         beamSpot = *beamSpotHandle;
       } else {
-        cout << "No beam spot available from EventSetup" << endl;
         #if DEBUG == 2
         return_counts_[__LINE__]++;
         total_return_++;
@@ -377,7 +382,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   
   const double jpsi_vtxprob_cut = 0.01;
   const double jpsi_mass_window = 0.15;
-  const double jpsi_nominal_mass = 3.1;
+  const double jpsi_nominal_mass = 3.0969;
+  const double psi2s_nominal_mass = 3.686097;
   
   const double psi2s_vtxprob_cut = 0.005;
   const double psi2s_pt_cut = 4.0;
@@ -391,7 +397,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   // 1. pt > 0.5 && absEta < 2.4
   // 2. sigma_pt / pt < 0.1
   // 3. Nhits >= 11
-  // 4. chi^2 / ndf > 0.18
+  // 4. chi^2 / ndf < 0.18
   nonMuonPionTrack.clear();
   for (edm::View<pat::PackedCandidate>::const_iterator iTrackc =
            theTrackHandle->begin(); // MINIAOD
@@ -401,25 +407,27 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
     if (!track) {
       continue;
     }
-    // 1. pt > 0.5 && absEta < 2.4
+    // 1. Is high purity muon
+    if (!(track->quality(reco::TrackBase::qualityByName("highPurity")))){
+      continue;
+    }
+    // 2. pt > 0.5 && absEta < 2.4
     if (!(iTrackc->pt() > track_pt_cut && fabs(iTrackc->eta()) < track_absEta_cut)) {
       continue;
     }
-    // 2. sigma_pt / pt < 0.1
+    // 3. sigma_pt / pt < 0.1
     double sigma_pt_over_pt = track->ptError() / track->pt();
     if (!(sigma_pt_over_pt < track_sigma_pt_over_pt_cut)) {
       continue;
     }
-    // 3. Nhits >= 11
-    if (!(track->numberOfValidHits() >= track_nhits_cut)){
+    // 4. Nhits >= 11
+    unsigned int Nhits = track->numberOfValidHits();
+    if (Nhits < track_nhits_cut){
       continue;
     }
-    // 4. chi^2 / ndf > 0.18
-    if (track->ndof() > 0) {
-      double chi2_over_ndf = track->chi2() / track->ndof();
-      if (!(chi2_over_ndf > track_chi2_over_ndf_cut)) {
-        continue;
-      }
+    // 5. chi^2 / ndf < 0.18
+   if (track->normalizedChi2() / Nhits >= track_chi2_over_ndf_cut){
+      continue;
     }
     // All selection criteria passed
     nonMuonPionTrack.push_back(iTrackc);
@@ -541,7 +549,19 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   #endif
 
   // Check if we have enough muons after pre-selection
-  if (validMuons.size() < 4) {
+  // Because muons are always few, we check for the charge as well
+  // This maybe replaced by combine candidates first
+  unsigned int plus = 0;
+  unsigned int minu = 0;
+  for (const auto &iMuon :validMuons)
+  {
+    if (iMuon->charge() > 0) {
+      plus++;
+    } else {
+      minu++;
+    }
+  }
+  if (plus < 2 || minu < 2 || plus + minu < 4) {
     #if DEBUG == 2
     return_counts_[__LINE__]++;
     total_return_++;
@@ -569,18 +589,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
          iMuon2ID != validMuons.end(); ++iMuon2ID) {
       edm::View<pat::Muon>::const_iterator iMuon2 = *(iMuon2ID);
       TrackRef muTrack2 = iMuon2->track();
-
-      if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() &&
-            (iMuon1->p4() + iMuon2->p4()).mass() < 4.)) {
-        #if DEBUG == 2
-        continue_counts_[__LINE__]++;
-        total_continue_++;
-        #endif
-        #if DEBUG == 1
-        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
-        #endif
-        continue;
-      }
       if ((iMuon1->charge() + iMuon2->charge()) != 0) {
 #if DEBUG == 2
         continue_counts_[__LINE__]++;
@@ -588,6 +596,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 #endif
         #if DEBUG == 1
         std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 charge sum not zero (line " << __LINE__ << ")" << std::endl;
+        #endif
+        continue;
+      }
+      if (!(1. < (iMuon1->p4() + iMuon2->p4()).mass() &&
+            (iMuon1->p4() + iMuon2->p4()).mass() < 4.5)) {
+        #if DEBUG == 2
+        continue_counts_[__LINE__]++;
+        total_continue_++;
+        #endif
+        #if DEBUG == 1
+        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
         #endif
         continue;
       }
@@ -700,18 +719,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
             continue;
           }
           TrackRef muTrack4 = iMuon4->track();
-
-          if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() &&
-                (iMuon3->p4() + iMuon4->p4()).mass() < 4.5)) {
-#if DEBUG == 2
-            continue_counts_[__LINE__]++;
-            total_continue_++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
-            #endif
-            continue;
-          }
           if ((iMuon3->charge() + iMuon4->charge()) != 0) {
 #if DEBUG == 2
             continue_counts_[__LINE__]++;
@@ -719,6 +726,17 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 #endif
             #if DEBUG == 1
             std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 charge sum not zero (line " << __LINE__ << ")" << std::endl;
+            #endif
+            continue;
+          }
+          if (!(1. < (iMuon3->p4() + iMuon4->p4()).mass() &&
+                (iMuon3->p4() + iMuon4->p4()).mass() < 4.)) {
+#if DEBUG == 2
+            continue_counts_[__LINE__]++;
+            total_continue_++;
+#endif
+            #if DEBUG == 1
+            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
             #endif
             continue;
           }
@@ -781,7 +799,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           //    - |mass - Jpsi_mass (3.1)| < 0.15
           //    - |mass - Psi2S_mass (3.686)| < 0.15 (for Jpsi2 being Psi2S)
           double jpsi2_mass = Jpsi2_vFit_noMC->currentState().mass();
-          const double psi2s_nominal_mass = 3.686;
           bool passJpsi2Mass = (fabs(jpsi2_mass - jpsi_nominal_mass) <= jpsi_mass_window) || 
                                (fabs(jpsi2_mass - psi2s_nominal_mass) <= jpsi_mass_window);
           if (!passJpsi2Mass) {
@@ -1052,7 +1069,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               X6900_pt = X6900_vec.Pt();
               X6900_absEta = fabs(X6900_vec.Eta());
 
-              Psi2S_mass = JPiPi_vFit_noMC->currentState().mass();
+              Psi2S_mass_raw = JPiPi_vFit_noMC->currentState().mass();
               Psi2S_VtxProb = JPiPi_vtxprob;
               Psi2S_px = JPiPi_vFit_noMC->currentState()
                                         .kinematicParameters()
@@ -1076,7 +1093,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
                 Psi2S_massErr = -9;
               }
 
-              ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass);
+              ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass_raw);
               Psi2S_pt = Psi2S_vec.Pt();
               Psi2S_absEta = fabs(Psi2S_vec.Eta());
 
@@ -1228,6 +1245,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               pi2_pt = pi2_vec.Pt();
               pi2_absEta = fabs(pi2_vec.Eta());
 
+              Psi2S_mass = (Jpsi1_vec + pi1_vec + pi2_vec).M() - Jpsi1_vec.M() + jpsi_nominal_mass;
+
               ROOT::Math::PxPyPzMVector mu1_vec(mu1_px, mu1_py, mu1_pz, MU_MASS);
               ROOT::Math::PxPyPzMVector mu2_vec(mu2_px, mu2_py, mu2_pz, MU_MASS);
               ROOT::Math::PxPyPzMVector mu3_vec(mu3_px, mu3_py, mu3_pz, MU_MASS);
@@ -1294,6 +1313,7 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("X6900_pz", &X6900_pz, "X6900_pz/F");
   X_One_Tree_->Branch("X6900_absEta", &X6900_absEta, "X6900_absEta/F");
 
+  X_One_Tree_->Branch("Psi2S_mass_raw", &Psi2S_mass_raw, "Psi2S_mass_raw/F");
   X_One_Tree_->Branch("Psi2S_mass", &Psi2S_mass, "Psi2S_mass/F");
   X_One_Tree_->Branch("Psi2S_VtxProb", &Psi2S_VtxProb, "Psi2S_VtxProb/F");
   X_One_Tree_->Branch("Psi2S_massErr", &Psi2S_massErr, "Psi2S_massErr/F");
@@ -1410,6 +1430,7 @@ void MultiLepPAT::resetVariables() {
   X6900_py = -999.0;
   
   // Reset Psi(2S) candidate variables
+  Psi2S_mass_raw = -999.0;
   Psi2S_mass = -999.0;
   Psi2S_VtxProb = -999.0;
   Psi2S_massErr = -999.0;
