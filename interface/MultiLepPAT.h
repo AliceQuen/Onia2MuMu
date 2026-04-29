@@ -97,26 +97,38 @@ using namespace std;
 struct JpsiCandidate {
   edm::View<pat::Muon>::const_iterator muPlus;
   edm::View<pat::Muon>::const_iterator muMinus;
-  double mass;
-  double vtxProb;
-  TLorentzVector p4;
+  
+  // 普通顶点拟合结果
+  double mass;              // 拟合质量 (GeV)
+  double vtxProb;           // 顶点概率
+  double massErr;           // 质量误差 (GeV)
+  TLorentzVector p4;        // 四动量
   RefCountedKinematicParticle kinematicParticle;
   RefCountedKinematicVertex vertex;
-  TransientTrack muonTT1;
-  TransientTrack muonTT2;
-};
-
-struct JpsiCandidate {
-  edm::View<pat::Muon>::const_iterator muPlus;
-  edm::View<pat::Muon>::const_iterator muMinus;
-  double mass;
-  double vtxProb;
-  double massErr;
-  TLorentzVector p4;
-  RefCountedKinematicParticle kinematicParticle;
-  RefCountedKinematicVertex vertex;
-  TransientTrack muonTT1;
-  TransientTrack muonTT2;
+  
+  // Jpsi质量约束拟合结果
+  bool hasJpsiConstraintFit;      // 是否有Jpsi质量约束拟合
+  double jpsiConstraintMass;      // Jpsi约束后的质量
+  double jpsiConstraintVtxProb;   // Jpsi约束后的顶点概率
+  double jpsiConstraintMassErr;   // Jpsi约束后的质量误差
+  RefCountedKinematicParticle jpsiConstraintParticle;
+  RefCountedKinematicVertex jpsiConstraintVertex;
+  
+  // Psi2S质量约束拟合结果
+  bool hasPsi2SConstraintFit;     // 是否有Psi2S质量约束拟合
+  double psi2sConstraintMass;     // Psi2S约束后的质量
+  double psi2sConstraintVtxProb;  // Psi2S约束后的顶点概率
+  double psi2sConstraintMassErr;  // Psi2S约束后的质量误差
+  RefCountedKinematicParticle psi2sConstraintParticle;
+  RefCountedKinematicVertex psi2sConstraintVertex;
+  
+  // 标记适用的假设类型
+  bool isJpsiCandidate;           // 是否为Jpsi候选（质量在Jpsi窗口）
+  bool isPsi2SCandidate;          // 是否为Psi2S候选（质量在Psi2S窗口）
+  
+  // 其他原有字段
+  reco::TransientTrack muonTT1;
+  reco::TransientTrack muonTT2;
   bool filterMatchPlus;
   bool filterMatchMinus;
 };
@@ -136,8 +148,8 @@ private:
   void resetVariables();
 
   //add token here
-  edm::EDGetTokenT<BeamSpot> gtbeamspotToken_;
-  edm::EDGetTokenT<VertexCollection> gtprimaryVtxToken_;
+  edm::EDGetTokenT<reco::BeamSpot> gtbeamspotToken_;
+  edm::EDGetTokenT<reco::VertexCollection> gtprimaryVtxToken_;
   edm::EDGetTokenT<edm::View<pat::Muon> > gtpatmuonToken_; // MINIAOD
   edm::EDGetTokenT<edm::TriggerResults> gttriggerToken_;
   edm::EDGetTokenT<edm::View<pat::PackedCandidate> > trackToken_; // MINIAOD

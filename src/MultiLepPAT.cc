@@ -50,6 +50,9 @@
 #include "RecoVertex/AdaptiveVertexFit/interface/AdaptiveVertexFitter.h"
 #include "RecoVertex/KinematicFit/interface/KinematicConstrainedVertexFitter.h"
 #include "RecoVertex/KinematicFit/interface/TwoTrackMassKinematicConstraint.h"
+#include "RecoVertex/KinematicFit/interface/CombinedKinematicConstraint.h"
+#include "RecoVertex/KinematicFit/interface/KinematicParticleFitter.h"
+#include "RecoVertex/KinematicFit/interface/MassKinematicConstraint.h"
 #include "RecoVertex/KinematicFitPrimitives/interface/MultiTrackKinematicConstraint.h"
 #include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
 
@@ -196,8 +199,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
   }
   
   // get token here for four-muon;
-  gtbeamspotToken_ = consumes<BeamSpot>(edm::InputTag("offlineBeamSpot"));
-  gtprimaryVtxToken_ = consumes<VertexCollection>(
+  gtbeamspotToken_ = consumes<reco::BeamSpot>(edm::InputTag("offlineBeamSpot"));
+  gtprimaryVtxToken_ = consumes<reco::VertexCollection>(
       edm::InputTag("offlineSlimmedPrimaryVertices")); // MINIAOD
   gtpatmuonToken_ =
       consumes<edm::View<pat::Muon>>(edm::InputTag("slimmedMuons")); // MINIAOD
@@ -394,6 +397,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   const double jpsi_mass_window = 0.15;
   const double jpsi_nominal_mass = 3.0969;
   const double psi2s_nominal_mass = 3.686097;
+  const double psi2s_mass_window = 0.15;  // Psi2S质量窗口 (GeV)
   
   const double psi2s_vtxprob_cut = 0.005;
   const double psi2s_pt_cut = 4.0;
@@ -595,756 +599,755 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 #if DEBUG == 1
   auto start_fit = std::chrono::high_resolution_clock::now();
 #endif
-  // ========== 第一个J/psi候选构建：使用预分组的muon列表 ==========
-  // 遍历所有正负μ子组合（已保证电荷相反，无需额外检查）
-  // 优化效果：组合数从 N*(N-1)/2 减少到 N_plus * N_minus，减少约50%
-  for (const auto& muPlusIter1 : muPlus) {
-    TrackRef muTrack1 = muPlusIter1->track();
+// ========== 阶段1: Jpsi候选预缓存 ==========
+  // 通过muon双重循环构建所有Jpsi候选并缓存，避免重复拟合
+  std::vector<JpsiCandidate> jpsiCandidates;
+  jpsiCandidates.reserve(muPlus.size() * muMinus.size());
+  
+  // 记录每个muon的触发匹配状态
+  std::map<edm::View<pat::Muon>::const_iterator, bool> muonFilterMatchMap;
+  
+  for (const auto& muPlusIter : muPlus) {
+    TrackRef muTrack1 = muPlusIter->track();
     
-    for (const auto& muMinusIter1 : muMinus) {
-      TrackRef muTrack2 = muMinusIter1->track();
+    for (const auto& muMinusIter : muMinus) {
+      TrackRef muTrack2 = muMinusIter->track();
       
       // 质量预筛选（1-4.5 GeV）
-      double invMass = (muPlusIter1->p4() + muMinusIter1->p4()).mass();
+      double invMass = (muPlusIter->p4() + muMinusIter->p4()).mass();
       if (!(1.0 < invMass && invMass < 4.5)) {
         #if DEBUG == 2
         continue_counts_[__LINE__]++;
         #endif
-        #if DEBUG == 1
-        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
-        #endif
         continue;
       }
-      TransientTrack muon1TT(muTrack1, &(bFieldHandle)); // MINIAOD
-      TransientTrack muon2TT(muTrack2, &(bFieldHandle)); // MINIAOD
+      
+      TransientTrack muonTT1(muTrack1, &(bFieldHandle));
+      TransientTrack muonTT2(muTrack2, &(bFieldHandle));
+      
       KinematicParticleFactoryFromTransientTrack pmumuFactory;
-      // The mass of a muon and the insignificant mass sigma
-      // to avoid singularities in the covariance matrix.
-      ParticleMass muon_mass = MU_MASS; // pdg mass
+      ParticleMass muon_mass = MU_MASS;
       float muon_sigma = MU_MASSERR;
-      // initial chi2 and ndf before kinematic fits.
       float chi = 0.;
       float ndf = 0.;
+      
       vector<RefCountedKinematicParticle> muonParticles;
-      muonParticles.push_back(
-          pmumuFactory.particle(muon1TT, muon_mass, chi, ndf, muon_sigma));
-      muonParticles.push_back(
-          pmumuFactory.particle(muon2TT, muon_mass, chi, ndf, muon_sigma));
-      KinematicParticleVertexFitter mu12_fitter;
-      RefCountedKinematicTree Jpsi1VertexFitTree;
+      muonParticles.push_back(pmumuFactory.particle(muonTT1, muon_mass, chi, ndf, muon_sigma));
+      muonParticles.push_back(pmumuFactory.particle(muonTT2, muon_mass, chi, ndf, muon_sigma));
+      
+      KinematicParticleVertexFitter fitter;
+      RefCountedKinematicTree vertexFitTree;
       Error_t = false;
       try {
-        Jpsi1VertexFitTree = mu12_fitter.fit(muonParticles);
+        vertexFitTree = fitter.fit(muonParticles);
       } catch (...) {
         Error_t = true;
       }
-      if (Error_t || !Jpsi1VertexFitTree->isValid()) {
-#if DEBUG == 2
-        continue_counts_[__LINE__]++;
-        total_continue_++;
-#endif
-        #if DEBUG == 1
-        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 vertex fit failed (line " << __LINE__ << ")" << std::endl;
-        #endif
-        continue;
-      }
-      Jpsi1VertexFitTree->movePointerToTheTop();
-      RefCountedKinematicParticle Jpsi1_vFit_noMC =
-          Jpsi1VertexFitTree->currentParticle();
-      RefCountedKinematicVertex Jpsi1_vFit_vertex_noMC =
-          Jpsi1VertexFitTree->currentDecayVertex();
-      KinematicParameters mymumupara =
-          Jpsi1_vFit_noMC->currentState().kinematicParameters();
-      double Jpsi1_vtxprob = ChiSquaredProbability(
-          (double)(Jpsi1_vFit_vertex_noMC->chiSquared()),
-          (double)(Jpsi1_vFit_vertex_noMC->degreesOfFreedom()));
       
-      // Jpsi pre-selection according to pre-cuts.md
-      // 1. opposite muon charges (already checked earlier)
-      // 2. VtxProb > 1%
-      if (Jpsi1_vtxprob < jpsi_vtxprob_cut) {
-#if DEBUG == 2
+      if (Error_t || !vertexFitTree->isValid()) {
+        #if DEBUG == 2
         continue_counts_[__LINE__]++;
         total_continue_++;
-#endif
-        #if DEBUG == 1
-        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 vertex probability below cut (line " << __LINE__ << ")" << std::endl;
         #endif
         continue;
       }
-      // 3. |mass - Jpsi_mass| < 0.15
-      double jpsi1_mass = Jpsi1_vFit_noMC->currentState().mass();
-      if (fabs(jpsi1_mass - jpsi_nominal_mass) > jpsi_mass_window) {
-#if DEBUG == 2
+      
+      vertexFitTree->movePointerToTheTop();
+      RefCountedKinematicParticle jpsiParticle = vertexFitTree->currentParticle();
+      RefCountedKinematicVertex jpsiVertex = vertexFitTree->currentDecayVertex();
+      
+      double vtxProb = ChiSquaredProbability(
+          (double)(jpsiVertex->chiSquared()),
+          (double)(jpsiVertex->degreesOfFreedom()));
+      
+      // 顶点概率筛选（>1%）
+      if (vtxProb < jpsi_vtxprob_cut) {
+        #if DEBUG == 2
         continue_counts_[__LINE__]++;
         total_continue_++;
-#endif
-        #if DEBUG == 1
-        std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi1 mass outside window (line " << __LINE__ << ")" << std::endl;
+        #endif
+        continue;
+      }
+      
+      // 质量窗口筛选（同时检查Jpsi和Psi2S质量范围）
+      double jpsiMass = jpsiParticle->currentState().mass();
+      
+      // 判断质量窗口
+      bool isJpsiCandidate = (fabs(jpsiMass - jpsi_nominal_mass) <= jpsi_mass_window);
+      bool isPsi2SCandidate = (fabs(jpsiMass - psi2s_nominal_mass) <= psi2s_mass_window);
+      
+      // 必须在Jpsi或Psi2S质量窗口内才保留
+      if (!isJpsiCandidate && !isPsi2SCandidate) {
+        #if DEBUG == 2
+        continue_counts_[__LINE__]++;
+        total_continue_++;
+        #endif
+        continue;
+      }
+      
+      // 获取触发匹配状态
+      bool matchPlus = false, matchMinus = false;
+      for (unsigned int JpsiFilt = 0; JpsiFilt < FiltersForJpsi_.size(); JpsiFilt++) {
+        if (hltresults.isValid()) {
+          for (auto i = muPlusIter->triggerObjectMatches().begin();
+               i != muPlusIter->triggerObjectMatches().end(); i++) {
+            pat::TriggerObjectStandAlone tempTriggerObject(*i);
+            tempTriggerObject.unpackFilterLabels(iEvent, *hltresults);
+            if (tempTriggerObject.hasFilterLabel(FiltersForJpsi_[JpsiFilt])) {
+              matchPlus = true;
+              break;
+            }
+          }
+          if (matchPlus) break;
+        }
+      }
+      
+      for (unsigned int JpsiFilt = 0; JpsiFilt < FiltersForJpsi_.size(); JpsiFilt++) {
+        if (hltresults.isValid()) {
+          for (auto i = muMinusIter->triggerObjectMatches().begin();
+               i != muMinusIter->triggerObjectMatches().end(); i++) {
+            pat::TriggerObjectStandAlone tempTriggerObject(*i);
+            tempTriggerObject.unpackFilterLabels(iEvent, *hltresults);
+            if (tempTriggerObject.hasFilterLabel(FiltersForJpsi_[JpsiFilt])) {
+              matchMinus = true;
+              break;
+            }
+          }
+          if (matchMinus) break;
+        }
+      }
+      
+      // 缓存Jpsi候选
+      JpsiCandidate candidate;
+      candidate.muPlus = muPlusIter;
+      candidate.muMinus = muMinusIter;
+      candidate.mass = jpsiMass;
+      candidate.vtxProb = vtxProb;
+      candidate.massErr = (jpsiParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0) 
+                         ? sqrt(jpsiParticle->currentState().kinematicParametersError().matrix()(6, 6)) 
+                         : -9;
+      candidate.p4.SetPtEtaPhiM(muPlusIter->track()->pt(), muPlusIter->track()->eta(),
+                                muPlusIter->track()->phi(), MU_MASS);
+      candidate.p4 += TLorentzVector(muMinusIter->track()->pt(), muMinusIter->track()->eta(),
+                                     muMinusIter->track()->phi(), MU_MASS);
+      candidate.kinematicParticle = jpsiParticle;
+      candidate.vertex = jpsiVertex;
+      candidate.muonTT1 = muonTT1;
+      candidate.muonTT2 = muonTT2;
+      candidate.filterMatchPlus = matchPlus;
+      candidate.filterMatchMinus = matchMinus;
+      candidate.isJpsiCandidate = isJpsiCandidate;
+      candidate.isPsi2SCandidate = isPsi2SCandidate;
+      
+      // 初始化约束拟合标志为false
+      candidate.hasJpsiConstraintFit = false;
+      candidate.hasPsi2SConstraintFit = false;
+      
+      // Jpsi质量约束拟合
+      if (isJpsiCandidate) {
+        try {
+          // 创建质量约束
+          KinematicConstraint* jpsiCs = new MassKinematicConstraint(
+              ParticleMass(jpsi_nominal_mass), 
+              0.001  // 质量误差
+          );
+          
+          // 应用质量约束
+          KinematicParticleFitter fitterCs;
+          RefCountedKinematicTree csTree = fitterCs.fit(jpsiCs, vertexFitTree);
+          
+          if (csTree->isValid()) {
+            csTree->movePointerToTheTop();
+            RefCountedKinematicParticle csParticle = csTree->currentParticle();
+            
+            candidate.hasJpsiConstraintFit = true;
+            candidate.jpsiConstraintMass = csParticle->currentState().mass();
+            candidate.jpsiConstraintVtxProb = ChiSquaredProbability(
+                (double)(csTree->currentDecayVertex()->chiSquared()),
+                (double)(csTree->currentDecayVertex()->degreesOfFreedom())
+            );
+            candidate.jpsiConstraintMassErr = (csParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0)
+                ? sqrt(csParticle->currentState().kinematicParametersError().matrix()(6, 6))
+                : -9;
+            candidate.jpsiConstraintParticle = csParticle;
+            candidate.jpsiConstraintVertex = csTree->currentDecayVertex();
+          }
+          
+          delete jpsiCs;
+        } catch (...) {
+          // 拟合异常，保持默认值
+        }
+      }
+      
+      // Psi2S质量约束拟合
+      if (isPsi2SCandidate) {
+        try {
+          // 创建Psi2S质量约束
+          KinematicConstraint* psi2sCs = new MassKinematicConstraint(
+              ParticleMass(psi2s_nominal_mass),
+              0.001  // 质量误差
+          );
+          
+          // 应用质量约束
+          KinematicParticleFitter fitterCs;
+          RefCountedKinematicTree csTree = fitterCs.fit(psi2sCs, vertexFitTree);
+          
+          if (csTree->isValid()) {
+            csTree->movePointerToTheTop();
+            RefCountedKinematicParticle csParticle = csTree->currentParticle();
+            
+            candidate.hasPsi2SConstraintFit = true;
+            candidate.psi2sConstraintMass = csParticle->currentState().mass();
+            candidate.psi2sConstraintVtxProb = ChiSquaredProbability(
+                (double)(csTree->currentDecayVertex()->chiSquared()),
+                (double)(csTree->currentDecayVertex()->degreesOfFreedom())
+            );
+            candidate.psi2sConstraintMassErr = (csParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0)
+                ? sqrt(csParticle->currentState().kinematicParametersError().matrix()(6, 6))
+                : -9;
+            candidate.psi2sConstraintParticle = csParticle;
+            candidate.psi2sConstraintVertex = csTree->currentDecayVertex();
+          }
+          
+          delete psi2sCs;
+        } catch (...) {
+          // 拟合异常，保持默认值
+        }
+      }
+      
+      jpsiCandidates.push_back(candidate);
+    }
+  }
+  
+  #if DEBUG == 1
+  std::cout << "[DEBUG] Number of Jpsi candidates: " << jpsiCandidates.size() << std::endl;
+  #endif
+  
+  // 检查是否有足够的Jpsi候选
+  if (jpsiCandidates.size() < 2) {
+    #if DEBUG == 1
+    std::cout << "[DEBUG] Not enough Jpsi candidates, skipping event" << std::endl;
+    #endif
+    return;
+  }
+
+  // ========== 阶段2: Jpsi候选两两组合 ==========
+  // 从缓存中选择两个不同的Jpsi进行组合
+  for (size_t i = 0; i < jpsiCandidates.size(); ++i) {
+    const JpsiCandidate& jpsi1 = jpsiCandidates[i];
+    
+    for (size_t j = i + 1; j < jpsiCandidates.size(); ++j) {
+      const JpsiCandidate& jpsi2 = jpsiCandidates[j];
+      
+      // 检查是否使用了相同的muon
+      if (jpsi1.muPlus == jpsi2.muPlus || jpsi1.muPlus == jpsi2.muMinus ||
+          jpsi1.muMinus == jpsi2.muPlus || jpsi1.muMinus == jpsi2.muMinus) {
+        #if DEBUG == 2
+        continue_counts_[__LINE__]++;
+        #endif
+        continue;
+      }
+      
+      // 触发匹配检查：jpsi1的两个muon匹配 或 jpsi2的两个muon匹配
+      bool passTrigger = (jpsi1.filterMatchPlus && jpsi1.filterMatchMinus) ||
+                         (jpsi2.filterMatchPlus && jpsi2.filterMatchMinus);
+      if (!passTrigger) {
+        #if DEBUG == 2
+        continue_counts_[__LINE__]++;
+        #endif
+        continue;
+      }
+      
+      // 严格质量窗口筛选：至少有一个Jpsi候选在Jpsi质量窗口内
+      // 确保后续四粒子拟合和六粒子拟合能够进行
+      if (!jpsi1.isJpsiCandidate && !jpsi2.isJpsiCandidate) {
+        #if DEBUG == 2
+        continue_counts_[__LINE__]++;
+        total_continue_++;
         #endif
         continue;
       }
 
-      TLorentzVector P4_mu1;
-      P4_mu1.SetPtEtaPhiM(muPlusIter1->track()->pt(), muPlusIter1->track()->eta(),
-                          muPlusIter1->track()->phi(), MU_MASS);
-      TLorentzVector P4_mu2;
-      P4_mu2.SetPtEtaPhiM(muMinusIter1->track()->pt(), muMinusIter1->track()->eta(),
-                          muMinusIter1->track()->phi(), MU_MASS);
-
-      // ========== 第二个J/psi候选构建：使用预分组的muon列表 ==========
-      // 跳过已用于第一个J/psi的muon，直接遍历正负组合
-      for (const auto& muPlusIter2 : muPlus) {
-        // 跳过已使用的muon
-        if (muPlusIter2 == muPlusIter1 || muPlusIter2 == muMinusIter1) {
-#if DEBUG == 2
+      // ========== 阶段3: 与Track组合 ==========
+      for (const auto& trackPlusIter : trackPlus) {
+        if (!trackPlusIter->hasTrackDetails() || trackPlusIter->charge() == 0) {
+          #if DEBUG == 2
           continue_counts_[__LINE__]++;
-#endif
+          #endif
           continue;
         }
-        TrackRef muTrack3 = muPlusIter2->track();
+        const reco::Track* track1 = trackPlusIter->bestTrack();
+        if (!track1) {
+          #if DEBUG == 2
+          continue_counts_[__LINE__]++;
+          #endif
+          continue;
+        }
 
-        for (const auto& muMinusIter2 : muMinus) {
-          // 跳过已使用的muon
-          if (muMinusIter2 == muPlusIter1 || muMinusIter2 == muMinusIter1) {
-#if DEBUG == 2
+        for (const auto& trackMinusIter : trackMinus) {
+          if (!trackMinusIter->hasTrackDetails() || trackMinusIter->charge() == 0) {
+            #if DEBUG == 2
             continue_counts_[__LINE__]++;
-#endif
+            #endif
             continue;
           }
-          TrackRef muTrack4 = muMinusIter2->track();
-          
-          // 质量预筛选（1-4.5 GeV）
-          double invMass2 = (muPlusIter2->p4() + muMinusIter2->p4()).mass();
-          if (!(1.0 < invMass2 && invMass2 < 4.5)) {
-#if DEBUG == 2
+          const reco::Track* track2 = trackMinusIter->bestTrack();
+          if (!track2) {
+            #if DEBUG == 2
             continue_counts_[__LINE__]++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 invariant mass out of range (line " << __LINE__ << ")" << std::endl;
             #endif
             continue;
           }
 
-          TransientTrack muon3TT(muTrack3, &(bFieldHandle)); // MINIAOD
-          TransientTrack muon4TT(muTrack4, &(bFieldHandle)); // MINIAOD
-          KinematicParticleFactoryFromTransientTrack pmumuFactory34;
-          ParticleMass muon_mass = MU_MASS; // pdg mass
-          float muon_sigma = MU_MASSERR;
+          TLorentzVector P4_Track1, P4_Track2, P4_Jpsipipi;
+          P4_Track1.SetPtEtaPhiM(trackPlusIter->pt(), trackPlusIter->eta(),
+                                 trackPlusIter->phi(), PI_MASS);
+          P4_Track2.SetPtEtaPhiM(trackMinusIter->pt(), trackMinusIter->eta(),
+                                 trackMinusIter->phi(), PI_MASS);
+          P4_Jpsipipi = jpsi1.p4 + P4_Track1 + P4_Track2;
+
+          if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut) {
+            #if DEBUG == 2
+            continue_counts_[__LINE__]++;
+            total_continue_++;
+            #endif
+            continue;
+          }
+          if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut) {
+            #if DEBUG == 2
+            continue_counts_[__LINE__]++;
+            total_continue_++;
+            #endif
+            continue;
+          }
+
+          TransientTrack trackTT1(*track1, &(bFieldHandle));
+          TransientTrack trackTT2(*track2, &(bFieldHandle));
+          KinematicParticleFactoryFromTransientTrack JPiPiFactory;
+          ParticleMass pion_mass = PI_MASS;
+          float pion_sigma = PI_MASSERR;
           float chi = 0.;
           float ndf = 0.;
-          vector<RefCountedKinematicParticle> muonParticles34;
-          muonParticles34.push_back(pmumuFactory34.particle(
-              muon3TT, muon_mass, chi, ndf, muon_sigma));
-          muonParticles34.push_back(pmumuFactory34.particle(
-              muon4TT, muon_mass, chi, ndf, muon_sigma));
-          KinematicParticleVertexFitter mu34_fitter;
-          RefCountedKinematicTree Jpsi2VertexFitTree;
+
+          // ========== 四粒子拟合（使用约束后的Jpsi候选） ==========
+          // 检查jpsi1是否有Jpsi质量约束拟合结果
+          if (!jpsi1.hasJpsiConstraintFit) {
+            #if DEBUG == 2
+            continue_counts_[__LINE__]++;
+            total_continue_++;
+            #endif
+            continue;
+          }
+          
+          vector<RefCountedKinematicParticle> JPiPiParticles;
+          JPiPiParticles.push_back(JPiPiFactory.particle(
+              trackTT1, pion_mass, chi, ndf, pion_sigma));
+          JPiPiParticles.push_back(JPiPiFactory.particle(
+              trackTT2, pion_mass, chi, ndf, pion_sigma));
+          // 使用约束后的Jpsi候选作为输入粒子
+          JPiPiParticles.push_back(jpsi1.jpsiConstraintParticle);
+
+          // 使用普通顶点拟合（KinematicParticleVertexFitter）
+          KinematicParticleVertexFitter JPiPi_fitter;
+          RefCountedKinematicTree JPiPiVertexFitTree;
           Error_t = false;
           try {
-            Jpsi2VertexFitTree = mu34_fitter.fit(muonParticles34);
+            JPiPiVertexFitTree = JPiPi_fitter.fit(JPiPiParticles);
           } catch (...) {
             Error_t = true;
           }
-          if (Error_t || !Jpsi2VertexFitTree->isValid()) {
-#if DEBUG == 2
-            continue_counts_[__LINE__]++;
-            total_continue_++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 vertex fit failed (line " << __LINE__ << ")" << std::endl;
-            #endif
-            continue;
-          }
-          Jpsi2VertexFitTree->movePointerToTheTop();
-          RefCountedKinematicParticle Jpsi2_vFit_noMC =
-              Jpsi2VertexFitTree->currentParticle();
-          RefCountedKinematicVertex Jpsi2_vFit_vertex_noMC =
-              Jpsi2VertexFitTree->currentDecayVertex();
-          KinematicParameters mymumupara2 =
-              Jpsi2_vFit_noMC->currentState().kinematicParameters();
-          double Jpsi2_vtxprob = ChiSquaredProbability(
-              (double)(Jpsi2_vFit_vertex_noMC->chiSquared()),
-              (double)(Jpsi2_vFit_vertex_noMC->degreesOfFreedom()));
-          
-          // Jpsi pre-selection according to pre-cuts.md
-          // 1. opposite muon charges (already checked earlier)
-          // 2. VtxProb > 1%
-          if (Jpsi2_vtxprob < jpsi_vtxprob_cut) {
-#if DEBUG == 2
-            continue_counts_[__LINE__]++;
-            total_continue_++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 vertex probability below cut (line " << __LINE__ << ")" << std::endl;
-            #endif
-            continue;
-          }
-          // 3. Allow two mass windows:
-          //    - |mass - Jpsi_mass (3.1)| < 0.15
-          //    - |mass - Psi2S_mass (3.686)| < 0.15 (for Jpsi2 being Psi2S)
-          double jpsi2_mass = Jpsi2_vFit_noMC->currentState().mass();
-          bool passJpsi2Mass = (fabs(jpsi2_mass - jpsi_nominal_mass) <= jpsi_mass_window) || 
-                               (fabs(jpsi2_mass - psi2s_nominal_mass) <= jpsi_mass_window);
-          if (!passJpsi2Mass) {
-#if DEBUG == 2
-            continue_counts_[__LINE__]++;
-            total_continue_++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Jpsi2 mass outside window (line " << __LINE__ << ")" << std::endl;
-            #endif
+          if (Error_t || !(JPiPiVertexFitTree->isValid())) {
             continue;
           }
           
-          // Trigger pre-selection according to pre-cuts.md
-          // mu1 mu2 filter matched OR mu3 mu4 filter matched
-          size_t mu1_idx = std::distance(validMuons.cbegin(), iMuon1ID);
-          size_t mu2_idx = std::distance(validMuons.cbegin(), iMuon2ID);
-          size_t mu3_idx = std::distance(validMuons.cbegin(), iMuon3ID);
-          size_t mu4_idx = std::distance(validMuons.cbegin(), iMuon4ID);
+          JPiPiVertexFitTree->movePointerToTheTop();
+          RefCountedKinematicParticle JPiPi_vFit_constrained =
+              JPiPiVertexFitTree->currentParticle();
+          RefCountedKinematicVertex JPiPi_vFit_vertex_constrained =
+              JPiPiVertexFitTree->currentDecayVertex();
+
+          double JPiPi_vtxprob = ChiSquaredProbability(
+              (double)(JPiPi_vFit_vertex_constrained->chiSquared()),
+              (double)(JPiPi_vFit_vertex_constrained->degreesOfFreedom()));
           
-          bool mu1_matched = (mu1_idx < muonFilterMatches.size() && muonFilterMatches[mu1_idx]);
-          bool mu2_matched = (mu2_idx < muonFilterMatches.size() && muonFilterMatches[mu2_idx]);
-          bool mu3_matched = (mu3_idx < muonFilterMatches.size() && muonFilterMatches[mu3_idx]);
-          bool mu4_matched = (mu4_idx < muonFilterMatches.size() && muonFilterMatches[mu4_idx]);
+          if (JPiPi_vFit_constrained->currentState().mass() > 4.5) {
+            continue;
+          }
           
-          bool passTrigger = ((mu1_matched && mu2_matched) || (mu3_matched && mu4_matched));
-          if (!passTrigger) {
-#if DEBUG == 2
+          if (JPiPi_vtxprob < psi2s_vtxprob_cut) {
+            continue;
+          }
+          
+          double px = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().x();
+          double py = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().y();
+          double psi2s_pt = sqrt(px*px + py*py);
+          if (psi2s_pt <= psi2s_pt_cut) {
+            continue;
+          }
+
+          // ========== 保存Psi2S拟合结果 ==========
+          Psi2S_mass = JPiPi_vFit_constrained->currentState().mass();
+          Psi2S_VtxProb = JPiPi_vtxprob;
+          Psi2S_px = JPiPi_vFit_constrained->currentState()
+                                     .kinematicParameters()
+                                     .momentum()
+                                     .x();
+          Psi2S_py = JPiPi_vFit_constrained->currentState()
+                                     .kinematicParameters()
+                                     .momentum()
+                                     .y();
+          Psi2S_pz = JPiPi_vFit_constrained->currentState()
+                                     .kinematicParameters()
+                                     .momentum()
+                                     .z();
+          if (JPiPi_vFit_constrained->currentState()
+                  .kinematicParametersError()
+                  .matrix()(6, 6) > 0) {
+            Psi2S_massErr = sqrt(JPiPi_vFit_constrained->currentState()
+                                        .kinematicParametersError()
+                                        .matrix()(6, 6));
+          } else {
+            Psi2S_massErr = -9;
+          }
+
+          ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass);
+          Psi2S_pt = Psi2S_vec.Pt();
+          Psi2S_absEta = fabs(Psi2S_vec.Eta());
+
+          // ========== 六粒子三种假设拟合 ==========
+          // 检查jpsi2是否有Jpsi质量约束拟合结果
+          if (!jpsi2.hasJpsiConstraintFit) {
+            #if DEBUG == 2
             continue_counts_[__LINE__]++;
             total_continue_++;
-#endif
-            #if DEBUG == 1
-            std::cout << "[DEBUG] Continue encountered in analyze(), location: Trigger matching requirement not satisfied (line " << __LINE__ << ")" << std::endl;
             #endif
             continue;
           }
 
-          // ========== Psi2S or X3872 (4mu 2pi) candidate ==========
-          // 使用预分组的trackPlus/trackMinus遍历径迹对
-          // 优化效果：无需电荷检查，组合数减少约50%
-          for (const auto& trackPlusIter : trackPlus) {
-            if (!trackPlusIter->hasTrackDetails() || trackPlusIter->charge() == 0) {
-#if DEBUG == 2
-              continue_counts_[__LINE__]++;
-#endif
-              continue;
+          // ========== 假设PJ: Jpsi1(约束后) + Jpsi2(约束后) ==========
+          {
+            // 使用约束后的Jpsi候选作为输入粒子
+            vector<RefCountedKinematicParticle> PJ_Particles;
+            PJ_Particles.push_back(jpsi1.jpsiConstraintParticle);
+            PJ_Particles.push_back(jpsi2.jpsiConstraintParticle);
+
+            // 使用普通顶点拟合
+            KinematicParticleVertexFitter PJ_fitter;
+            RefCountedKinematicTree PJ_VertexFitTree;
+            bool PJ_Error = false;
+            try {
+              PJ_VertexFitTree = PJ_fitter.fit(PJ_Particles);
+            } catch (...) {
+              PJ_Error = true;
             }
-            const reco::Track* track1 = trackPlusIter->bestTrack();
-            if (!track1) {
-#if DEBUG == 2
-              continue_counts_[__LINE__]++;
-#endif
-              continue;
+            if (PJ_Error || !(PJ_VertexFitTree->isValid())) {
+              // 拟合失败，保持默认值
+            } else {
+              PJ_VertexFitTree->movePointerToTheTop();
+              RefCountedKinematicParticle PJ_vFit = PJ_VertexFitTree->currentParticle();
+              RefCountedKinematicVertex PJ_vFit_vertex = PJ_VertexFitTree->currentDecayVertex();
+              KinematicParameters PJ_kPara = PJ_vFit->currentState().kinematicParameters();
+
+              X_PJ_mass = PJ_vFit->currentState().mass();
+              X_PJ_VtxProb = ChiSquaredProbability(
+                  (double)(PJ_vFit_vertex->chiSquared()),
+                  (double)(PJ_vFit_vertex->degreesOfFreedom()));
+              X_PJ_px = PJ_kPara.momentum().x();
+              X_PJ_py = PJ_kPara.momentum().y();
+              X_PJ_pz = PJ_kPara.momentum().z();
+              if (PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                X_PJ_massErr = sqrt(PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
+              } else {
+                X_PJ_massErr = -9;
+              }
+              ROOT::Math::PxPyPzMVector PJ_vec(X_PJ_px, X_PJ_py, X_PJ_pz, X_PJ_mass);
+              X_PJ_pt = PJ_vec.Pt();
+              X_PJ_absEta = fabs(PJ_vec.Eta());
             }
+          }
 
-            for (const auto& trackMinusIter : trackMinus) {
-              if (!trackMinusIter->hasTrackDetails() || trackMinusIter->charge() == 0) {
-#if DEBUG == 2
-                continue_counts_[__LINE__]++;
-#endif
-                continue;
-              }
-              const reco::Track* track2 = trackMinusIter->bestTrack();
-              if (!track2) {
-#if DEBUG == 2
-                continue_counts_[__LINE__]++;
-#endif
-                continue;
-              }
-
-              TLorentzVector P4_Track1, P4_Track2, P4_Jpsipipi;
-              P4_Track1.SetPtEtaPhiM(trackPlusIter->pt(), trackPlusIter->eta(),
-                                     trackPlusIter->phi(), PI_MASS);
-              P4_Track2.SetPtEtaPhiM(trackMinusIter->pt(), trackMinusIter->eta(),
-                                     trackMinusIter->phi(), PI_MASS);
-              P4_Jpsipipi = P4_mu1 + P4_mu2 + P4_Track1 + P4_Track2;
-
-              if (P4_Track1.DeltaR(P4_Jpsipipi) > pionDRcut) {
-                #if DEBUG == 2
-                continue_counts_[__LINE__]++;
-                total_continue_++;
-                #endif
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Pion track1 DeltaR to Jpsi-pipi exceeds cut (line " << __LINE__ << ")" << std::endl;
-                #endif
-                continue;
-              }
-              if (P4_Track2.DeltaR(P4_Jpsipipi) > pionDRcut) {
-#if DEBUG == 2
-                continue_counts_[__LINE__]++;
-                total_continue_++;
-#endif
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Pion track2 DeltaR to Jpsi-pipi exceeds cut (line " << __LINE__ << ")" << std::endl;
-                #endif
-                continue;
-              }
-
-              TransientTrack trackTT1(*track1, &(bFieldHandle));
-              TransientTrack trackTT2(*track2, &(bFieldHandle));
-              KinematicParticleFactoryFromTransientTrack JPiPiFactory;
-              // The mass of a muon and the insignificant mass sigma
-              // to avoid singularities in the covariance matrix.
-              ParticleMass pion_mass = PI_MASS; // pdg mass
-              float pion_sigma = PI_MASSERR;
-              // initial chi2 and ndf before kinematic fits.
-              float chi = 0.;
-              float ndf = 0.;
-
-              // ========== 四粒子带J/psi质量约束拟合 ==========
-              // mumupipi系统：将muon1和muon2的不变质量约束到J/psi标称质量
-              vector<RefCountedKinematicParticle> JPiPiParticles;
-              JPiPiParticles.push_back(JPiPiFactory.particle(
-                  trackTT1, pion_mass, chi, ndf, pion_sigma));
-              JPiPiParticles.push_back(JPiPiFactory.particle(
-                  trackTT2, pion_mass, chi, ndf, pion_sigma));
-              JPiPiParticles.push_back(pmumuFactory.particle(
-                  muon1TT, muon_mass, chi, ndf, muon_sigma));
-              JPiPiParticles.push_back(pmumuFactory.particle(
-                  muon2TT, muon_mass, chi, ndf, muon_sigma));
-
-              // 创建J/psi质量约束：约束muon1和muon2（索引2和3）的不变质量到3.0969 GeV
-              KinematicConstraint* jpsiMassConstraint = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
-              vector<KinematicConstraint*> JPiPiConstraints;
-              JPiPiConstraints.push_back(jpsiMassConstraint);
-
-              // 使用带约束的顶点拟合器
-              KinematicConstrainedVertexFitter JPiPi_fitter;
-              RefCountedKinematicTree JPiPiVertexFitTree;
-              Error_t = false;
+          // ========== 假设XJ: JPiPi(X3872约束后) + Jpsi2(约束后) ==========
+          {
+            // 第一步：对四粒子进行X3872质量约束拟合
+            RefCountedKinematicTree JPiPi_cs_X3872_tree;
+            bool JPiPi_X3872_Error = false;
+            
+            try {
+              KinematicConstraint* x3872Constraint = new MassKinematicConstraint(
+                  ParticleMass(X3872_MASS_NOMINAL), 0.001);
+              
+              KinematicParticleFitter jpipiFitter;
+              JPiPi_cs_X3872_tree = jpipiFitter.fit(x3872Constraint, JPiPiVertexFitTree);
+              
+              delete x3872Constraint;
+            } catch (...) {
+              JPiPi_X3872_Error = true;
+            }
+            
+            if (JPiPi_X3872_Error || !JPiPi_cs_X3872_tree->isValid()) {
+              // 拟合失败，保持默认值
+            } else {
+              JPiPi_cs_X3872_tree->movePointerToTheTop();
+              RefCountedKinematicParticle JPiPi_vFit_cs_X3872 = 
+                  JPiPi_cs_X3872_tree->currentParticle();
+              
+              // 第二步：六粒子顶点拟合（JPiPi + Jpsi2）
+              vector<RefCountedKinematicParticle> XJ_Particles;
+              XJ_Particles.push_back(JPiPi_vFit_cs_X3872);
+              XJ_Particles.push_back(jpsi2.jpsiConstraintParticle);
+              
+              KinematicParticleVertexFitter XJ_fitter;
+              RefCountedKinematicTree XJ_VertexFitTree;
+              bool XJ_Error = false;
               try {
-                JPiPiVertexFitTree = JPiPi_fitter.fit(JPiPiParticles, JPiPiConstraints);
+                XJ_VertexFitTree = XJ_fitter.fit(XJ_Particles);
               } catch (...) {
-                Error_t = true;
-              }
-              if (Error_t || !(JPiPiVertexFitTree->isValid())) {
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S constrained vertex fit failed (line " << __LINE__ << ")" << std::endl;
-                #endif
-                delete jpsiMassConstraint;
-                continue;
-              }
-              JPiPiVertexFitTree->movePointerToTheTop();
-              RefCountedKinematicParticle JPiPi_vFit_constrained =
-                  JPiPiVertexFitTree->currentParticle();
-              RefCountedKinematicVertex JPiPi_vFit_vertex_constrained =
-                  JPiPiVertexFitTree->currentDecayVertex();
-
-              double JPiPi_vtxprob = ChiSquaredProbability(
-                  (double)(JPiPi_vFit_vertex_constrained->chiSquared()),
-                  (double)(JPiPi_vFit_vertex_constrained->degreesOfFreedom()));
-              if (JPiPi_vFit_constrained->currentState().mass() > 4.5) {
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S mass exceeds 4.5 (line " << __LINE__ << ")" << std::endl;
-                #endif
-                delete jpsiMassConstraint;
-                continue;
+                XJ_Error = true;
               }
               
-              // Psi2S pre-selection according to pre-cuts.md
-              // 1. VtxProb > 0.5%
-              if (JPiPi_vtxprob < psi2s_vtxprob_cut) {
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S vertex probability below cut (line " << __LINE__ << ")" << std::endl;
-                #endif
-                delete jpsiMassConstraint;
-                continue;
-              }
-              
-              // 2. pt > 4
-              double px = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().x();
-              double py = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().y();
-              double psi2s_pt = sqrt(px*px + py*py);
-              if (psi2s_pt <= psi2s_pt_cut) {
-                #if DEBUG == 1
-                std::cout << "[DEBUG] Continue encountered in analyze(), location: Psi2S pT below cut (line " << __LINE__ << ")" << std::endl;
-                #endif
-                delete jpsiMassConstraint;
-                continue;
-              }
-
-              // 清理约束对象内存
-              delete jpsiMassConstraint;
-
-              // ========== 保存Psi2S拟合结果 ==========
-              // 从J/psi质量约束的四粒子拟合中提取Psi2S相关变量
-              Psi2S_mass = JPiPi_vFit_constrained->currentState().mass();
-              Psi2S_VtxProb = JPiPi_vtxprob;
-              Psi2S_px = JPiPi_vFit_constrained->currentState()
-                                         .kinematicParameters()
-                                         .momentum()
-                                         .x();
-              Psi2S_py = JPiPi_vFit_constrained->currentState()
-                                         .kinematicParameters()
-                                         .momentum()
-                                         .y();
-              Psi2S_pz = JPiPi_vFit_constrained->currentState()
-                                         .kinematicParameters()
-                                         .momentum()
-                                         .z();
-              if (JPiPi_vFit_constrained->currentState()
-                      .kinematicParametersError()
-                      .matrix()(6, 6) > 0) {
-                Psi2S_massErr = sqrt(JPiPi_vFit_constrained->currentState()
-                                                    .kinematicParametersError()
-                                                    .matrix()(6, 6));
+              if (XJ_Error || !(XJ_VertexFitTree->isValid())) {
+                // 拟合失败，保持默认值
               } else {
-                Psi2S_massErr = -9;
-              }
+                XJ_VertexFitTree->movePointerToTheTop();
+                RefCountedKinematicParticle XJ_vFit = XJ_VertexFitTree->currentParticle();
+                RefCountedKinematicVertex XJ_vFit_vertex = XJ_VertexFitTree->currentDecayVertex();
+                KinematicParameters XJ_kPara = XJ_vFit->currentState().kinematicParameters();
 
-              ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass);
-              Psi2S_pt = Psi2S_vec.Pt();
-              Psi2S_absEta = fabs(Psi2S_vec.Eta());
-
-              // ========== 六粒子三种假设质量约束拟合 ==========
-              // 构建6粒子列表：pi1(0), pi2(1), mu1(2), mu2(3), mu3(4), mu4(5)
-              vector<RefCountedKinematicParticle> X_Particles;
-              X_Particles.push_back(JPiPiFactory.particle(
-                  trackTT1, pion_mass, chi, ndf, pion_sigma));
-              X_Particles.push_back(JPiPiFactory.particle(
-                  trackTT2, pion_mass, chi, ndf, pion_sigma));
-              X_Particles.push_back(pmumuFactory.particle(
-                  muon1TT, muon_mass, chi, ndf, muon_sigma));
-              X_Particles.push_back(pmumuFactory.particle(
-                  muon2TT, muon_mass, chi, ndf, muon_sigma));
-              X_Particles.push_back(pmumuFactory.particle(
-                  muon3TT, muon_mass, chi, ndf, muon_sigma));
-              X_Particles.push_back(pmumuFactory.particle(
-                  muon4TT, muon_mass, chi, ndf, muon_sigma));
-
-              // ========== 假设PJ: mumupipi(Jpsi) + mumup(Jpsi) ==========
-              // 约束: (mu1,mu2)→J/psi 和 (mu3,mu4)→J/psi
-              {
-                vector<KinematicConstraint*> PJConstraints;
-                KinematicConstraint* JpsiConstraint1 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
-                KinematicConstraint* JpsiConstraint2 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 4, 5);
-                PJConstraints.push_back(JpsiConstraint1);
-                PJConstraints.push_back(JpsiConstraint2);
-
-                KinematicConstrainedVertexFitter PJ_fitter;
-                RefCountedKinematicTree PJ_VertexFitTree;
-                bool PJ_Error = false;
-                try {
-                  PJ_VertexFitTree = PJ_fitter.fit(X_Particles, PJConstraints);
-                } catch (...) {
-                  PJ_Error = true;
-                }
-                if (PJ_Error || !(PJ_VertexFitTree->isValid())) {
-                  #if DEBUG == 1
-                  std::cout << "[DEBUG] Hypothesis PJ fit failed (line " << __LINE__ << ")" << std::endl;
-                  #endif
+                X_XJ_mass = XJ_vFit->currentState().mass();
+                X_XJ_VtxProb = ChiSquaredProbability(
+                    (double)(XJ_vFit_vertex->chiSquared()),
+                    (double)(XJ_vFit_vertex->degreesOfFreedom()));
+                X_XJ_px = XJ_kPara.momentum().x();
+                X_XJ_py = XJ_kPara.momentum().y();
+                X_XJ_pz = XJ_kPara.momentum().z();
+                if (XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                  X_XJ_massErr = sqrt(XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
                 } else {
-                  PJ_VertexFitTree->movePointerToTheTop();
-                  RefCountedKinematicParticle PJ_vFit = PJ_VertexFitTree->currentParticle();
-                  RefCountedKinematicVertex PJ_vFit_vertex = PJ_VertexFitTree->currentDecayVertex();
-                  KinematicParameters PJ_kPara = PJ_vFit->currentState().kinematicParameters();
-
-                  X_PJ_mass = PJ_vFit->currentState().mass();
-                  X_PJ_VtxProb = ChiSquaredProbability(
-                      (double)(PJ_vFit_vertex->chiSquared()),
-                      (double)(PJ_vFit_vertex->degreesOfFreedom()));
-                  X_PJ_px = PJ_kPara.momentum().x();
-                  X_PJ_py = PJ_kPara.momentum().y();
-                  X_PJ_pz = PJ_kPara.momentum().z();
-                  if (PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
-                    X_PJ_massErr = sqrt(PJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
-                  } else {
-                    X_PJ_massErr = -9;
-                  }
-                  ROOT::Math::PxPyPzMVector PJ_vec(X_PJ_px, X_PJ_py, X_PJ_pz, X_PJ_mass);
-                  X_PJ_pt = PJ_vec.Pt();
-                  X_PJ_absEta = fabs(PJ_vec.Eta());
+                  X_XJ_massErr = -9;
                 }
-                delete JpsiConstraint1;
-                delete JpsiConstraint2;
+                ROOT::Math::PxPyPzMVector XJ_vec(X_XJ_px, X_XJ_py, X_XJ_pz, X_XJ_mass);
+                X_XJ_pt = XJ_vec.Pt();
+                X_XJ_absEta = fabs(XJ_vec.Eta());
               }
+            }
+          }
 
-              // ========== 假设XJ: mumupipi(X3872) + mumup(Jpsi) ==========
-              // 约束: (mu1,mu2,pi1,pi2)→X(3872) 和 (mu3,mu4)→J/psi
-              {
-                vector<KinematicConstraint*> XJConstraints;
-                vector<int> X3872_particleList;
-                X3872_particleList.push_back(0); // pi1
-                X3872_particleList.push_back(1); // pi2
-                X3872_particleList.push_back(2); // mu1
-                X3872_particleList.push_back(3); // mu2
-                KinematicConstraint* X3872Constraint = new MassKinematicConstraint(X3872_MASS_NOMINAL, X3872_particleList);
-                KinematicConstraint* JpsiConstraint2 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 4, 5);
-                XJConstraints.push_back(X3872Constraint);
-                XJConstraints.push_back(JpsiConstraint2);
-
-                KinematicConstrainedVertexFitter XJ_fitter;
-                RefCountedKinematicTree XJ_VertexFitTree;
-                bool XJ_Error = false;
-                try {
-                  XJ_VertexFitTree = XJ_fitter.fit(X_Particles, XJConstraints);
-                } catch (...) {
-                  XJ_Error = true;
-                }
-                if (XJ_Error || !(XJ_VertexFitTree->isValid())) {
-                  #if DEBUG == 1
-                  std::cout << "[DEBUG] Hypothesis XJ fit failed (line " << __LINE__ << ")" << std::endl;
-                  #endif
-                } else {
-                  XJ_VertexFitTree->movePointerToTheTop();
-                  RefCountedKinematicParticle XJ_vFit = XJ_VertexFitTree->currentParticle();
-                  RefCountedKinematicVertex XJ_vFit_vertex = XJ_VertexFitTree->currentDecayVertex();
-                  KinematicParameters XJ_kPara = XJ_vFit->currentState().kinematicParameters();
-
-                  X_XJ_mass = XJ_vFit->currentState().mass();
-                  X_XJ_VtxProb = ChiSquaredProbability(
-                      (double)(XJ_vFit_vertex->chiSquared()),
-                      (double)(XJ_vFit_vertex->degreesOfFreedom()));
-                  X_XJ_px = XJ_kPara.momentum().x();
-                  X_XJ_py = XJ_kPara.momentum().y();
-                  X_XJ_pz = XJ_kPara.momentum().z();
-                  if (XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
-                    X_XJ_massErr = sqrt(XJ_vFit->currentState().kinematicParametersError().matrix()(6, 6));
-                  } else {
-                    X_XJ_massErr = -9;
-                  }
-                  ROOT::Math::PxPyPzMVector XJ_vec(X_XJ_px, X_XJ_py, X_XJ_pz, X_XJ_mass);
-                  X_XJ_pt = XJ_vec.Pt();
-                  X_XJ_absEta = fabs(XJ_vec.Eta());
-                }
-                delete X3872Constraint;
-                delete JpsiConstraint2;
-              }
-
-              // ========== 假设PP: mumupipi(Jpsi) + mumup(Psi2S) ==========
-              // 约束: (mu1,mu2)→J/psi 和 (mu3,mu4)→Psi(2S)
-              {
-                vector<KinematicConstraint*> PPConstraints;
-                KinematicConstraint* JpsiConstraint1 = new MassKinematicConstraint(JPSI_MASS_NOMINAL, 2, 3);
-                KinematicConstraint* Psi2SConstraint2 = new MassKinematicConstraint(PSI2S_MASS_NOMINAL, 4, 5);
-                PPConstraints.push_back(JpsiConstraint1);
-                PPConstraints.push_back(Psi2SConstraint2);
-
-                KinematicConstrainedVertexFitter PP_fitter;
-                RefCountedKinematicTree PP_VertexFitTree;
-                bool PP_Error = false;
-                try {
-                  PP_VertexFitTree = PP_fitter.fit(X_Particles, PPConstraints);
-                } catch (...) {
-                  PP_Error = true;
-                }
-                if (PP_Error || !(PP_VertexFitTree->isValid())) {
-                  #if DEBUG == 1
-                  std::cout << "[DEBUG] Hypothesis PP fit failed (line " << __LINE__ << ")" << std::endl;
-                  #endif
-                } else {
-                  PP_VertexFitTree->movePointerToTheTop();
-                  RefCountedKinematicParticle PP_vFit = PP_VertexFitTree->currentParticle();
-                  RefCountedKinematicVertex PP_vFit_vertex = PP_VertexFitTree->currentDecayVertex();
-                  KinematicParameters PP_kPara = PP_vFit->currentState().kinematicParameters();
-
-                  X_PP_mass = PP_vFit->currentState().mass();
-                  X_PP_VtxProb = ChiSquaredProbability(
-                      (double)(PP_vFit_vertex->chiSquared()),
-                      (double)(PP_vFit_vertex->degreesOfFreedom()));
-                  X_PP_px = PP_kPara.momentum().x();
-                  X_PP_py = PP_kPara.momentum().y();
-                  X_PP_pz = PP_kPara.momentum().z();
-                  if (PP_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
-                    X_PP_massErr = sqrt(PP_vFit->currentState().kinematicParametersError().matrix()(6, 6));
-                  } else {
-                    X_PP_massErr = -9;
-                  }
-                  ROOT::Math::PxPyPzMVector PP_vec(X_PP_px, X_PP_py, X_PP_pz, X_PP_mass);
-                  X_PP_pt = PP_vec.Pt();
-                  X_PP_absEta = fabs(PP_vec.Eta());
-                }
-                delete JpsiConstraint1;
-                delete Psi2SConstraint2;
-              }
-
-              Jpsi1_mass = Jpsi1_vFit_noMC->currentState().mass();
-              Jpsi1_VtxProb = Jpsi1_vtxprob;
-              Jpsi1_px = mymumupara.momentum().x();
-              Jpsi1_py = mymumupara.momentum().y();
-              Jpsi1_pz = mymumupara.momentum().z();
-              if (Jpsi1_vFit_noMC->currentState()
-                      .kinematicParametersError()
-                      .matrix()(6, 6) > 0) {
-                Jpsi1_massErr = sqrt(Jpsi1_vFit_noMC->currentState()
-                                                    .kinematicParametersError()
-                                                    .matrix()(6, 6));
-              } else {
-                Jpsi1_massErr = -9;
-              }
-
-              ROOT::Math::PxPyPzMVector Jpsi1_vec(Jpsi1_px, Jpsi1_py, Jpsi1_pz, Jpsi1_mass);
-              Jpsi1_pt = Jpsi1_vec.Pt();
-              Jpsi1_absEta = fabs(Jpsi1_vec.Eta());
-
-              Jpsi2_mass = Jpsi2_vFit_noMC->currentState().mass();
-              Jpsi2_VtxProb = Jpsi2_vtxprob;
-              Jpsi2_px = mymumupara2.momentum().x();
-              Jpsi2_py = mymumupara2.momentum().y();
-              Jpsi2_pz = mymumupara2.momentum().z();
-              if (Jpsi2_vFit_noMC->currentState()
-                      .kinematicParametersError()
-                      .matrix()(6, 6) > 0) {
-                Jpsi2_massErr = sqrt(Jpsi2_vFit_noMC->currentState()
-                                                    .kinematicParametersError()
-                                                    .matrix()(6, 6));
-              } else {
-                Jpsi2_massErr = -9;
-              }
-
-              ROOT::Math::PxPyPzMVector Jpsi2_vec(Jpsi2_px, Jpsi2_py, Jpsi2_pz, Jpsi2_mass);
-              Jpsi2_pt = Jpsi2_vec.Pt();
-              Jpsi2_absEta = fabs(Jpsi2_vec.Eta());
+          // ========== 假设PP: JPiPi(Psi2S约束后) + Jpsi2(约束后) ==========
+          {
+            // 第一步：对四粒子进行Psi2S质量约束拟合
+            RefCountedKinematicTree JPiPi_cs_Psi2S_tree;
+            bool JPiPi_Psi2S_Error = false;
+            
+            try {
+              KinematicConstraint* psi2sConstraint = new MassKinematicConstraint(
+                  ParticleMass(PSI2S_MASS_NOMINAL), 0.001);
               
-              // Get filter match results for each muon
-              mu1_hasFilterMatch = (mu1_matched) ? 1 : 0;
-              mu2_hasFilterMatch = (mu2_matched) ? 1 : 0;
-              mu3_hasFilterMatch = (mu3_matched) ? 1 : 0;
-              mu4_hasFilterMatch = (mu4_matched) ? 1 : 0;
+              KinematicParticleFitter jpipiFitter;
+              JPiPi_cs_Psi2S_tree = jpipiFitter.fit(psi2sConstraint, JPiPiVertexFitTree);
               
-              mu1_px = iMuon1->px();
-              mu1_py = iMuon1->py();
-              mu1_pz = iMuon1->pz();
-              mu1_pt = iMuon1->pt();
-              mu1_absEta = fabs(iMuon1->eta());
-              mu1_trackIso = iMuon1->trackIso();
-              mu1_d0BS = iMuon1->dB(pat::Muon::BS2D);
-              mu1_d0EBS = iMuon1->edB(pat::Muon::BS2D);
-              mu1_d3dBS = iMuon1->dB(pat::Muon::BS3D);
-              mu1_d3dEBS = iMuon1->edB(pat::Muon::BS3D);
-              mu1_d0PV = iMuon1->dB(pat::Muon::PV2D);
-              mu1_d0EPV = iMuon1->edB(pat::Muon::PV2D);
-              mu1_dzPV = iMuon1->dB(pat::Muon::PVDZ);
-              mu1_dzEPV = iMuon1->edB(pat::Muon::PVDZ);
-              mu1_charge = iMuon1->charge();
+              delete psi2sConstraint;
+            } catch (...) {
+              JPiPi_Psi2S_Error = true;
+            }
+            
+            if (JPiPi_Psi2S_Error || !JPiPi_cs_Psi2S_tree->isValid()) {
+              // 拟合失败，保持默认值
+            } else {
+              JPiPi_cs_Psi2S_tree->movePointerToTheTop();
+              RefCountedKinematicParticle JPiPi_vFit_cs_Psi2S = 
+                  JPiPi_cs_Psi2S_tree->currentParticle();
+              
+              // 第二步：六粒子顶点拟合（JPiPi + Jpsi2）
+              vector<RefCountedKinematicParticle> PP_Particles;
+              PP_Particles.push_back(JPiPi_vFit_cs_Psi2S);
+              PP_Particles.push_back(jpsi2.jpsiConstraintParticle);
+              
+              KinematicParticleVertexFitter PP_fitter;
+              RefCountedKinematicTree PP_VertexFitTree;
+              bool PP_Error = false;
+              try {
+                PP_VertexFitTree = PP_fitter.fit(PP_Particles);
+              } catch (...) {
+                PP_Error = true;
+              }
+              
+              if (PP_Error || !(PP_VertexFitTree->isValid())) {
+                // 拟合失败，保持默认值
+              } else {
+                PP_VertexFitTree->movePointerToTheTop();
+                RefCountedKinematicParticle PP_vFit = PP_VertexFitTree->currentParticle();
+                RefCountedKinematicVertex PP_vFit_vertex = PP_VertexFitTree->currentDecayVertex();
+                KinematicParameters PP_kPara = PP_vFit->currentState().kinematicParameters();
 
-              mu2_px = iMuon2->px();
-              mu2_py = iMuon2->py();
-              mu2_pz = iMuon2->pz();
-              mu2_pt = iMuon2->pt();
-              mu2_absEta = fabs(iMuon2->eta());
-              mu2_trackIso = iMuon2->trackIso();
-              mu2_d0BS = iMuon2->dB(pat::Muon::BS2D);
-              mu2_d0EBS = iMuon2->edB(pat::Muon::BS2D);
-              mu2_d3dBS = iMuon2->dB(pat::Muon::BS3D);
-              mu2_d3dEBS = iMuon2->edB(pat::Muon::BS3D);
-              mu2_d0PV = iMuon2->dB(pat::Muon::PV2D);
-              mu2_d0EPV = iMuon2->edB(pat::Muon::PV2D);
-              mu2_dzPV = iMuon2->dB(pat::Muon::PVDZ);
-              mu2_dzEPV = iMuon2->edB(pat::Muon::PVDZ);
-              mu2_charge = iMuon2->charge();
+                X_PP_mass = PP_vFit->currentState().mass();
+                X_PP_VtxProb = ChiSquaredProbability(
+                    (double)(PP_vFit_vertex->chiSquared()),
+                    (double)(PP_vFit_vertex->degreesOfFreedom()));
+                X_PP_px = PP_kPara.momentum().x();
+                X_PP_py = PP_kPara.momentum().y();
+                X_PP_pz = PP_kPara.momentum().z();
+                if (PP_vFit->currentState().kinematicParametersError().matrix()(6, 6) > 0) {
+                  X_PP_massErr = sqrt(PP_vFit->currentState().kinematicParametersError().matrix()(6, 6));
+                } else {
+                  X_PP_massErr = -9;
+                }
+                ROOT::Math::PxPyPzMVector PP_vec(X_PP_px, X_PP_py, X_PP_pz, X_PP_mass);
+                X_PP_pt = PP_vec.Pt();
+                X_PP_absEta = fabs(PP_vec.Eta());
+              }
+            }
+          }
 
-              mu3_px = iMuon3->px();
-              mu3_py = iMuon3->py();
-              mu3_pz = iMuon3->pz();
-              mu3_pt = iMuon3->pt();
-              mu3_absEta = fabs(iMuon3->eta());
-              mu3_trackIso = iMuon3->trackIso();
-              mu3_d0BS = iMuon3->dB(pat::Muon::BS2D);
-              mu3_d0EBS = iMuon3->edB(pat::Muon::BS2D);
-              mu3_d3dBS = iMuon3->dB(pat::Muon::BS3D);
-              mu3_d3dEBS = iMuon3->edB(pat::Muon::BS3D);
-              mu3_d0PV = iMuon3->dB(pat::Muon::PV2D);
-              mu3_d0EPV = iMuon3->edB(pat::Muon::PV2D);
-              mu3_dzPV = iMuon3->dB(pat::Muon::PVDZ);
-              mu3_dzEPV = iMuon3->edB(pat::Muon::PVDZ);
-              mu3_charge = iMuon3->charge();
+          // ========== 保存Jpsi变量 ==========
+          Jpsi1_mass = jpsi1.mass;
+          Jpsi1_VtxProb = jpsi1.vtxProb;
+          Jpsi1_massErr = jpsi1.massErr;
+          ROOT::Math::PxPyPzMVector Jpsi1_vec(jpsi1.p4.Px(), jpsi1.p4.Py(), jpsi1.p4.Pz(), jpsi1.mass);
+          Jpsi1_pt = Jpsi1_vec.Pt();
+          Jpsi1_absEta = fabs(Jpsi1_vec.Eta());
 
-              mu4_px = iMuon4->px();
-              mu4_py = iMuon4->py();
-              mu4_pz = iMuon4->pz();
-              mu4_pt = iMuon4->pt();
-              mu4_absEta = fabs(iMuon4->eta());
-              mu4_trackIso = iMuon4->trackIso();
-              mu4_d0BS = iMuon4->dB(pat::Muon::BS2D);
-              mu4_d0EBS = iMuon4->edB(pat::Muon::BS2D);
-              mu4_d3dBS = iMuon4->dB(pat::Muon::BS3D);
-              mu4_d3dEBS = iMuon4->edB(pat::Muon::BS3D);
-              mu4_d0PV = iMuon4->dB(pat::Muon::PV2D);
-              mu4_d0EPV = iMuon4->edB(pat::Muon::PV2D);
-              mu4_dzPV = iMuon4->dB(pat::Muon::PVDZ);
-              mu4_dzEPV = iMuon4->edB(pat::Muon::PVDZ);
-              mu4_charge = iMuon4->charge();
+          Jpsi2_mass = jpsi2.mass;
+          Jpsi2_VtxProb = jpsi2.vtxProb;
+          Jpsi2_massErr = jpsi2.massErr;
+          ROOT::Math::PxPyPzMVector Jpsi2_vec(jpsi2.p4.Px(), jpsi2.p4.Py(), jpsi2.p4.Pz(), jpsi2.mass);
+          Jpsi2_pt = Jpsi2_vec.Pt();
+          Jpsi2_absEta = fabs(Jpsi2_vec.Eta());
 
-              // Count muon IDs for all 4 muons
-              nLooseMuons = 0;
-              nTightMuons = 0;
-              nSoftMuons = 0;
-              nMediumMuons = 0;
+          // ========== 保存muon变量 ==========
+          const auto& iMuon1 = *jpsi1.muPlus;
+          const auto& iMuon2 = *jpsi1.muMinus;
+          const auto& iMuon3 = *jpsi2.muPlus;
+          const auto& iMuon4 = *jpsi2.muMinus;
 
-              if (iMuon1->isLooseMuon()) nLooseMuons++;
-              if (iMuon1->isTightMuon(thePrimaryV)) nTightMuons++;
-              if (iMuon1->isSoftMuon(thePrimaryV)) nSoftMuons++;
-              if (iMuon1->isMediumMuon()) nMediumMuons++;
+          mu1_hasFilterMatch = jpsi1.filterMatchPlus ? 1 : 0;
+          mu2_hasFilterMatch = jpsi1.filterMatchMinus ? 1 : 0;
+          mu3_hasFilterMatch = jpsi2.filterMatchPlus ? 1 : 0;
+          mu4_hasFilterMatch = jpsi2.filterMatchMinus ? 1 : 0;
 
-              if (iMuon2->isLooseMuon()) nLooseMuons++;
-              if (iMuon2->isTightMuon(thePrimaryV)) nTightMuons++;
-              if (iMuon2->isSoftMuon(thePrimaryV)) nSoftMuons++;
-              if (iMuon2->isMediumMuon()) nMediumMuons++;
+          mu1_px = iMuon1.px();
+          mu1_py = iMuon1.py();
+          mu1_pz = iMuon1.pz();
+          mu1_pt = iMuon1.pt();
+          mu1_absEta = fabs(iMuon1.eta());
+          mu1_trackIso = iMuon1.trackIso();
+          mu1_d0BS = iMuon1.dB(pat::Muon::BS2D);
+          mu1_d0EBS = iMuon1.edB(pat::Muon::BS2D);
+          mu1_d3dBS = iMuon1.dB(pat::Muon::BS3D);
+          mu1_d3dEBS = iMuon1.edB(pat::Muon::BS3D);
+          mu1_d0PV = iMuon1.dB(pat::Muon::PV2D);
+          mu1_d0EPV = iMuon1.edB(pat::Muon::PV2D);
+          mu1_dzPV = iMuon1.dB(pat::Muon::PVDZ);
+          mu1_dzEPV = iMuon1.edB(pat::Muon::PVDZ);
+          mu1_charge = iMuon1.charge();
 
-              if (iMuon3->isLooseMuon()) nLooseMuons++;
-              if (iMuon3->isTightMuon(thePrimaryV)) nTightMuons++;
-              if (iMuon3->isSoftMuon(thePrimaryV)) nSoftMuons++;
-              if (iMuon3->isMediumMuon()) nMediumMuons++;
+          mu2_px = iMuon2.px();
+          mu2_py = iMuon2.py();
+          mu2_pz = iMuon2.pz();
+          mu2_pt = iMuon2.pt();
+          mu2_absEta = fabs(iMuon2.eta());
+          mu2_trackIso = iMuon2.trackIso();
+          mu2_d0BS = iMuon2.dB(pat::Muon::BS2D);
+          mu2_d0EBS = iMuon2.edB(pat::Muon::BS2D);
+          mu2_d3dBS = iMuon2.dB(pat::Muon::BS3D);
+          mu2_d3dEBS = iMuon2.edB(pat::Muon::BS3D);
+          mu2_d0PV = iMuon2.dB(pat::Muon::PV2D);
+          mu2_d0EPV = iMuon2.edB(pat::Muon::PV2D);
+          mu2_dzPV = iMuon2.dB(pat::Muon::PVDZ);
+          mu2_dzEPV = iMuon2.edB(pat::Muon::PVDZ);
+          mu2_charge = iMuon2.charge();
 
-              if (iMuon4->isLooseMuon()) nLooseMuons++;
-              if (iMuon4->isTightMuon(thePrimaryV)) nTightMuons++;
-              if (iMuon4->isSoftMuon(thePrimaryV)) nSoftMuons++;
-              if (iMuon4->isMediumMuon()) nMediumMuons++;
+          mu3_px = iMuon3.px();
+          mu3_py = iMuon3.py();
+          mu3_pz = iMuon3.pz();
+          mu3_pt = iMuon3.pt();
+          mu3_absEta = fabs(iMuon3.eta());
+          mu3_trackIso = iMuon3.trackIso();
+          mu3_d0BS = iMuon3.dB(pat::Muon::BS2D);
+          mu3_d0EBS = iMuon3.edB(pat::Muon::BS2D);
+          mu3_d3dBS = iMuon3.dB(pat::Muon::BS3D);
+          mu3_d3dEBS = iMuon3.edB(pat::Muon::BS3D);
+          mu3_d0PV = iMuon3.dB(pat::Muon::PV2D);
+          mu3_d0EPV = iMuon3.edB(pat::Muon::PV2D);
+          mu3_dzPV = iMuon3.dB(pat::Muon::PVDZ);
+          mu3_dzEPV = iMuon3.edB(pat::Muon::PVDZ);
+          mu3_charge = iMuon3.charge();
 
-              pi1_px = X_pi1_KP.momentum().x();
-              pi1_py = X_pi1_KP.momentum().y();
-              pi1_pz = X_pi1_KP.momentum().z();
-              ROOT::Math::PxPyPzMVector pi1_vec(pi1_px, pi1_py, pi1_pz, PI_MASS);
-              pi1_pt = pi1_vec.Pt();
-              pi1_absEta = fabs(pi1_vec.Eta());
+          mu4_px = iMuon4.px();
+          mu4_py = iMuon4.py();
+          mu4_pz = iMuon4.pz();
+          mu4_pt = iMuon4.pt();
+          mu4_absEta = fabs(iMuon4.eta());
+          mu4_trackIso = iMuon4.trackIso();
+          mu4_d0BS = iMuon4.dB(pat::Muon::BS2D);
+          mu4_d0EBS = iMuon4.edB(pat::Muon::BS2D);
+          mu4_d3dBS = iMuon4.dB(pat::Muon::BS3D);
+          mu4_d3dEBS = iMuon4.edB(pat::Muon::BS3D);
+          mu4_d0PV = iMuon4.dB(pat::Muon::PV2D);
+          mu4_d0EPV = iMuon4.edB(pat::Muon::PV2D);
+          mu4_dzPV = iMuon4.dB(pat::Muon::PVDZ);
+          mu4_dzEPV = iMuon4.edB(pat::Muon::PVDZ);
+          mu4_charge = iMuon4.charge();
 
-              pi2_px = X_pi2_KP.momentum().x();
-              pi2_py = X_pi2_KP.momentum().y();
-              pi2_pz = X_pi2_KP.momentum().z();
-              ROOT::Math::PxPyPzMVector pi2_vec(pi2_px, pi2_py, pi2_pz, PI_MASS);
-              pi2_pt = pi2_vec.Pt();
-              pi2_absEta = fabs(pi2_vec.Eta());
+          // Count muon IDs for all 4 muons
+          nLooseMuons = 0;
+          nTightMuons = 0;
+          nSoftMuons = 0;
+          nMediumMuons = 0;
 
-              Psi2S_mass = (Jpsi1_vec + pi1_vec + pi2_vec).M() - Jpsi1_vec.M() + jpsi_nominal_mass;
+          if (iMuon1.isLooseMuon()) nLooseMuons++;
+          if (iMuon1.isTightMuon(thePrimaryV)) nTightMuons++;
+          if (iMuon1.isSoftMuon(thePrimaryV)) nSoftMuons++;
+          if (iMuon1.isMediumMuon()) nMediumMuons++;
 
-              ROOT::Math::PxPyPzMVector mu1_vec(mu1_px, mu1_py, mu1_pz, MU_MASS);
-              ROOT::Math::PxPyPzMVector mu2_vec(mu2_px, mu2_py, mu2_pz, MU_MASS);
-              ROOT::Math::PxPyPzMVector mu3_vec(mu3_px, mu3_py, mu3_pz, MU_MASS);
-              ROOT::Math::PxPyPzMVector mu4_vec(mu4_px, mu4_py, mu4_pz, MU_MASS);
+          if (iMuon2.isLooseMuon()) nLooseMuons++;
+          if (iMuon2.isTightMuon(thePrimaryV)) nTightMuons++;
+          if (iMuon2.isSoftMuon(thePrimaryV)) nSoftMuons++;
+          if (iMuon2.isMediumMuon()) nMediumMuons++;
 
-              dR_mu1_mu2 = ROOT::Math::VectorUtil::DeltaR(mu1_vec, mu2_vec);
-              dR_mu3_mu4 = ROOT::Math::VectorUtil::DeltaR(mu3_vec, mu4_vec);
-              dR_pi1_pi2 = ROOT::Math::VectorUtil::DeltaR(pi1_vec, pi2_vec);
-              dR_Jpsi1_X6900 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, X6900_vec);
-              dR_Jpsi2_X6900 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, X6900_vec);
-              dR_X6900_pi1 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, pi1_vec);
-              dR_X6900_pi2 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, pi2_vec);
-              dR_X6900_mu1 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, mu1_vec);
-              dR_X6900_mu2 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, mu2_vec);
-              dR_X6900_mu3 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, mu3_vec);
-              dR_X6900_mu4 = ROOT::Math::VectorUtil::DeltaR(X6900_vec, mu4_vec);
-              dR_Psi2S_X6900 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, X6900_vec);
-              dR_Psi2S_Jpsi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi1_vec);
-              dR_Psi2S_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi2_vec);
-              dR_Psi2S_pi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi1_vec);
-              dR_Psi2S_pi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi2_vec);
+          if (iMuon3.isLooseMuon()) nLooseMuons++;
+          if (iMuon3.isTightMuon(thePrimaryV)) nTightMuons++;
+          if (iMuon3.isSoftMuon(thePrimaryV)) nSoftMuons++;
+          if (iMuon3.isMediumMuon()) nMediumMuons++;
 
-              X_One_Tree_->Fill();
-              #if DEBUG == 1
-              std::cout << "[DEBUG] Filled an Entry";
-              #endif
+          if (iMuon4.isLooseMuon()) nLooseMuons++;
+          if (iMuon4.isTightMuon(thePrimaryV)) nTightMuons++;
+          if (iMuon4.isSoftMuon(thePrimaryV)) nSoftMuons++;
+          if (iMuon4.isMediumMuon()) nMediumMuons++;
 
-            } // itrack2
-          } // itrack1
-        } // mu4_loop
-      } // mu3_loop
-    } // for (std::vector < pat::Muon >::const_iterator iMuon2 = iMuon1 + 1;
-  } // for (std::vector < pat::Muon >::const_iterator iMuon1 =
-    // thePATMuonHandle->begin();
+          // ========== 保存pion变量 ==========
+          pi1_px = trackTT1.impactPointState().globalMomentum().x();
+          pi1_py = trackTT1.impactPointState().globalMomentum().y();
+          pi1_pz = trackTT1.impactPointState().globalMomentum().z();
+          ROOT::Math::PxPyPzMVector pi1_vec(pi1_px, pi1_py, pi1_pz, PI_MASS);
+          pi1_pt = pi1_vec.Pt();
+          pi1_absEta = fabs(pi1_vec.Eta());
 
+          pi2_px = trackTT2.impactPointState().globalMomentum().x();
+          pi2_py = trackTT2.impactPointState().globalMomentum().y();
+          pi2_pz = trackTT2.impactPointState().globalMomentum().z();
+          ROOT::Math::PxPyPzMVector pi2_vec(pi2_px, pi2_py, pi2_pz, PI_MASS);
+          pi2_pt = pi2_vec.Pt();
+          pi2_absEta = fabs(pi2_vec.Eta());
+
+          // ========== 计算DeltaR变量 ==========
+          ROOT::Math::PxPyPzMVector mu1_vec(mu1_px, mu1_py, mu1_pz, MU_MASS);
+          ROOT::Math::PxPyPzMVector mu2_vec(mu2_px, mu2_py, mu2_pz, MU_MASS);
+          ROOT::Math::PxPyPzMVector mu3_vec(mu3_px, mu3_py, mu3_pz, MU_MASS);
+          ROOT::Math::PxPyPzMVector mu4_vec(mu4_px, mu4_py, mu4_pz, MU_MASS);
+
+          dR_mu1_mu2 = ROOT::Math::VectorUtil::DeltaR(mu1_vec, mu2_vec);
+          dR_mu3_mu4 = ROOT::Math::VectorUtil::DeltaR(mu3_vec, mu4_vec);
+          dR_pi1_pi2 = ROOT::Math::VectorUtil::DeltaR(pi1_vec, pi2_vec);
+          dR_Psi2S_Jpsi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi1_vec);
+          dR_Psi2S_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi2_vec);
+          dR_Psi2S_pi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi1_vec);
+          dR_Psi2S_pi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi2_vec);
+
+          X_One_Tree_->Fill();
+        } // end trackMinus loop
+      } // end trackPlus loop
+    } // end jpsi2 loop
+  } // end jpsi1 loop
 #if DEBUG == 1
   auto end_fit = std::chrono::high_resolution_clock::now();
   auto duration_fit = std::chrono::duration_cast<std::chrono::milliseconds>(end_fit - start_fit).count();
