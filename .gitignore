@@ -6,6 +6,6 @@
 __pycache__
 *.swp
 *.swo
-plyground/*
+playground/*
 *.md
 .clangd

@@ -48,7 +48,6 @@
 #include "DataFormats/Candidate/interface/CompositeCandidate.h"
 #include "DataFormats/Candidate/interface/VertexCompositeCandidate.h"
 #include "DataFormats/V0Candidate/interface/V0Candidate.h"
-#include "RecoVertex/V0Producer/interface/V0Producer.h"
 #include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
 
 #include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
@@ -94,6 +93,33 @@
 using std::vector;
 using namespace edm;
 using namespace std;
+
+struct JpsiCandidate {
+  edm::View<pat::Muon>::const_iterator muPlus;
+  edm::View<pat::Muon>::const_iterator muMinus;
+  double mass;
+  double vtxProb;
+  TLorentzVector p4;
+  RefCountedKinematicParticle kinematicParticle;
+  RefCountedKinematicVertex vertex;
+  TransientTrack muonTT1;
+  TransientTrack muonTT2;
+};
+
+struct JpsiCandidate {
+  edm::View<pat::Muon>::const_iterator muPlus;
+  edm::View<pat::Muon>::const_iterator muMinus;
+  double mass;
+  double vtxProb;
+  double massErr;
+  TLorentzVector p4;
+  RefCountedKinematicParticle kinematicParticle;
+  RefCountedKinematicVertex vertex;
+  TransientTrack muonTT1;
+  TransientTrack muonTT2;
+  bool filterMatchPlus;
+  bool filterMatchMinus;
+};
 
 class MultiLepPAT : public edm::one::EDAnalyzer<edm::one::SharedResources> {
 public:
