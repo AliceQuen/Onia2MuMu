@@ -123,6 +123,12 @@ CMSSW_15_0_15/
             └── BuildFile.xml
 ```
 
+The operational CRAB workflow documentation for that submodule lives in
+`test/crabData/README.md`. In the current recovery flow,
+`prepare_recovery_tasks.sh` may leave
+`recovery_cache/generated_recovery_configs.txt` partial until the execution
+wrapper later resolves unfinished lumi coverage with `crab report`.
+
 ## Building
 
 From the CMSSW release area:
