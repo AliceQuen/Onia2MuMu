@@ -7,5 +7,5 @@ __pycache__
 *.swp
 *.swo
 playground/*
-*.md
 .clangd
+.trae/*
