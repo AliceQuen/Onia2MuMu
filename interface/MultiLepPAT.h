@@ -150,18 +150,12 @@ struct JpsiCandidate {
     double vtxProb;                                 ///< 顶点概率 (χ² 概率)
     double massErr;                                 ///< 质量误差 [GeV]
     ROOT::Math::PxPyPzMVector p4;                   ///< 四动量 (px, py, pz, mass)
-    RefCountedKinematicParticle kinematicParticle;  ///< 拟合后的运动学粒子
-    RefCountedKinematicVertex vertex;                ///< 拟合后的衰变顶点
 
     // ============================================================
     //             质量约束拟合结果 (共用一套)
     // ============================================================
     bool hasConstraintFit = false;                   ///< 是否有有效的约束拟合结果
-    double constraintMass;                           ///< 约束拟合后的不变质量 [GeV]
-    double constraintVtxProb;                        ///< 约束拟合后的顶点概率
-    double constraintMassErr;                        ///< 约束拟合后的质量误差 [GeV]
     RefCountedKinematicParticle constraintParticle;  ///< 约束拟合后的运动学粒子
-    RefCountedKinematicVertex constraintVertex;      ///< 约束拟合后的衰变顶点
 
     // ============================================================
     //                    候选类型标记
@@ -172,8 +166,6 @@ struct JpsiCandidate {
     // ============================================================
     //                    其他关联信息
     // ============================================================
-    reco::TransientTrack muonTT1;                   ///< 正 μ 子的瞬态径迹 (含磁场信息)
-    reco::TransientTrack muonTT2;                   ///< 负 μ 子的瞬态径迹
     bool filterMatchPlus;                            ///< 正 μ 子触发过滤器匹配标志
     bool filterMatchMinus;                           ///< 负 μ 子触发过滤器匹配标志
 };
@@ -406,6 +398,10 @@ private:
     //              J/ψ₂ 候选变量 (第二个 J/ψ)
     // ============================================================
     float Jpsi2_mass;                       ///< 不变质量 [GeV]
+    bool Jpsi2_hasJConstraintFit;            ///< 是否有 J/ψ 约束拟合结果
+    bool Jpsi2_hasPConstraintFit;
+    
+    ///< 是否有 ψ(2S) 约束拟合结果
     float Jpsi2_VtxProb;                    ///< 顶点概率
     float Jpsi2_massErr;                    ///< 质量误差 [GeV]
     float Jpsi2_pt;                         ///< 横动量 [GeV]
@@ -425,13 +421,13 @@ private:
     float mu1_px;                           ///< X 方向动量分量 [GeV]
     float mu1_py;                           ///< Y 方向动量分量 [GeV]
     float mu1_trackIso;                     ///< 径迹隔离度
-    float mu1_d0BS;                         ///< 相对于束斑的横向冲击参数 [cm]
+    float mu1_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
     float mu1_d0EBS;                        ///< d0_BS 的误差 [cm]
-    float mu1_d3dBS;                        ///< 相对于束斑的三维冲击参数 [cm]
+    float mu1_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
     float mu1_d3dEBS;                       ///< d3d_BS 的误差 [cm]
-    float mu1_d0PV;                         ///< 相对于主顶点的横向冲击参数 [cm]
+    float mu1_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu1_d0EPV;                        ///< d0_PV 的误差 [cm]
-    float mu1_dzPV;                         ///< 相对于主顶点的纵向冲击参数 [cm]
+    float mu1_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu1_dzEPV;                        ///< dz_PV 的误差 [cm]
     float mu1_charge;                       ///< 电荷
 
@@ -442,13 +438,13 @@ private:
     float mu2_px;                           ///< X 方向动量分量 [GeV]
     float mu2_py;                           ///< Y 方向动量分量 [GeV]
     float mu2_trackIso;                     ///< 径迹隔离度
-    float mu2_d0BS;                         ///< 相对于束斑的横向冲击参数 [cm]
+    float mu2_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
     float mu2_d0EBS;                        ///< d0_BS 的误差 [cm]
-    float mu2_d3dBS;                        ///< 相对于束斑的三维冲击参数 [cm]
+    float mu2_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
     float mu2_d3dEBS;                       ///< d3d_BS 的误差 [cm]
-    float mu2_d0PV;                         ///< 相对于主顶点的横向冲击参数 [cm]
+    float mu2_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu2_d0EPV;                        ///< d0_PV 的误差 [cm]
-    float mu2_dzPV;                         ///< 相对于主顶点的纵向冲击参数 [cm]
+    float mu2_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu2_dzEPV;                        ///< dz_PV 的误差 [cm]
     float mu2_charge;                       ///< 电荷
 
@@ -459,13 +455,13 @@ private:
     float mu3_px;                           ///< X 方向动量分量 [GeV]
     float mu3_py;                           ///< Y 方向动量分量 [GeV]
     float mu3_trackIso;                     ///< 径迹隔离度
-    float mu3_d0BS;                         ///< 相对于束斑的横向冲击参数 [cm]
+    float mu3_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
     float mu3_d0EBS;                        ///< d0_BS 的误差 [cm]
-    float mu3_d3dBS;                        ///< 相对于束斑的三维冲击参数 [cm]
+    float mu3_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
     float mu3_d3dEBS;                       ///< d3d_BS 的误差 [cm]
-    float mu3_d0PV;                         ///< 相对于主顶点的横向冲击参数 [cm]
+    float mu3_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu3_d0EPV;                        ///< d0_PV 的误差 [cm]
-    float mu3_dzPV;                         ///< 相对于主顶点的纵向冲击参数 [cm]
+    float mu3_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu3_dzEPV;                        ///< dz_PV 的误差 [cm]
     float mu3_charge;                       ///< 电荷
 
@@ -476,13 +472,13 @@ private:
     float mu4_px;                           ///< X 方向动量分量 [GeV]
     float mu4_py;                           ///< Y 方向动量分量 [GeV]
     float mu4_trackIso;                     ///< 径迹隔离度
-    float mu4_d0BS;                         ///< 相对于束斑的横向冲击参数 [cm]
+    float mu4_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
     float mu4_d0EBS;                        ///< d0_BS 的误差 [cm]
-    float mu4_d3dBS;                        ///< 相对于束斑的三维冲击参数 [cm]
+    float mu4_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
     float mu4_d3dEBS;                       ///< d3d_BS 的误差 [cm]
-    float mu4_d0PV;                         ///< 相对于主顶点的横向冲击参数 [cm]
+    float mu4_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu4_d0EPV;                        ///< d0_PV 的误差 [cm]
-    float mu4_dzPV;                         ///< 相对于主顶点的纵向冲击参数 [cm]
+    float mu4_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu4_dzEPV;                        ///< dz_PV 的误差 [cm]
     float mu4_charge;                       ///< 电荷
 

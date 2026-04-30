@@ -121,9 +121,9 @@
 //                    物理常数宏定义 (GeV)
 // ============================================================
 #define MU_MASS 0.1056583745          ///< μ子质量 (PDG 2024)
-#define MU_MASSERR (MU_MASS * 1e-6)   ///< μ子质量误差（用于运动学拟合）
+constexpr double MU_MASSERR = (MU_MASS * 1e-6);   ///< μ子质量误差（用于运动学拟合）
 #define PI_MASS 0.13957039            ///< π± 子质量 (PDG 2024)
-#define PI_MASSERR (PI_MASS * 1e-6)   ///< π子质量误差
+constexpr double PI_MASSERR = (PI_MASS * 1e-6);   ///< π子质量误差
 #define JPSI_MASS_NOMINAL 3.0969      ///< J/ψ 标称质量
 #define X3872_MASS_NOMINAL 3.872      ///< X(3872) 标称质量
 #define PSI2S_MASS_NOMINAL 3.686097   ///< ψ(2S) 标称质量
@@ -155,6 +155,7 @@
 //                    顶点拟合与质量窗口参数
 // ============================================================
 #define JPSI_VTXPROB_CUT 0.01         ///< J/ψ 最小顶点概率（χ² 概率）
+#define JPSI_VTXPROB_CONSTRAINT_CUT 0.005 ///< J/ψ 质量约束拟合最小顶点概率（χ² 概率）
 #define JPSI_MASS_WINDOW 0.15         ///< J/ψ 质量窗口半宽 (GeV)
 #define JPSI_NOMINAL_MASS 3.0969      ///< J/ψ 标称质量 (GeV)
 #define PSI2S_NOMINAL_MASS 3.686097   ///< ψ(2S) 标称质量 (GeV)
@@ -256,7 +257,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Jpsi1_pt(0), Jpsi1_pz(0), Jpsi1_absEta(0),
       Jpsi1_px(0), Jpsi1_py(0),
 
-      Jpsi2_mass(0), Jpsi2_VtxProb(0), Jpsi2_massErr(0),
+      Jpsi2_mass(0), Jpsi2_hasJConstraintFit(false), Jpsi2_hasPConstraintFit(false),          
       Jpsi2_pt(0), Jpsi2_pz(0), Jpsi2_absEta(0),
       Jpsi2_px(0), Jpsi2_py(0),
 
@@ -341,6 +342,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       consumes<edm::TriggerResults>(edm::InputTag("TriggerResults::HLT"));
   trackToken_ = consumes<edm::View<pat::PackedCandidate>>(
       edm::InputTag("packedPFCandidates")); // MINIAOD
+  usesResource("TFileService");
 }
 
 ////////////////////////////////////////////////////////////////
@@ -757,10 +759,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
       candidate.p4 += ROOT::Math::PxPyPzMVector(
           muMinusIter->track()->px(), muMinusIter->track()->py(), 
           muMinusIter->track()->pz(), MU_MASS);
-      candidate.kinematicParticle = jpsiParticle;
-      candidate.vertex = jpsiVertex;
-      candidate.muonTT1 = muonTT1;
-      candidate.muonTT2 = muonTT2;
       candidate.filterMatchPlus = matchPlus;
       candidate.filterMatchMinus = matchMinus;
       candidate.isJpsiCandidate = isJpsiCandidate;
@@ -778,19 +776,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           
           if (csTree->isValid()) {
             csTree->movePointerToTheTop();
-            RefCountedKinematicParticle csParticle = csTree->currentParticle();
-            
-            candidate.hasConstraintFit = true;
-            candidate.constraintMass = csParticle->currentState().mass();
-            candidate.constraintVtxProb = ChiSquaredProbability(
+            double VtxProb = ChiSquaredProbability(
                 (double)(csTree->currentDecayVertex()->chiSquared()),
-                (double)(csTree->currentDecayVertex()->degreesOfFreedom())
-            );
-            candidate.constraintMassErr = (csParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0)
-                ? sqrt(csParticle->currentState().kinematicParametersError().matrix()(6, 6))
-                : -9;
-            candidate.constraintParticle = csParticle;
-            candidate.constraintVertex = csTree->currentDecayVertex();
+                (double)(csTree->currentDecayVertex()->degreesOfFreedom()));
+            if (VtxProb > JPSI_VTXPROB_CONSTRAINT_CUT){
+              candidate.hasConstraintFit = true;
+              RefCountedKinematicParticle csParticle = csTree->currentParticle();
+              candidate.constraintParticle = csParticle;
+            }
           }
         } catch (...) {
           // 拟合异常，保持默认值
@@ -806,19 +799,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           
           if (csTree->isValid()) {
             csTree->movePointerToTheTop();
-            RefCountedKinematicParticle csParticle = csTree->currentParticle();
-            
-            candidate.hasConstraintFit = true;
-            candidate.constraintMass = csParticle->currentState().mass();
-            candidate.constraintVtxProb = ChiSquaredProbability(
+            double VtxProb = ChiSquaredProbability(
                 (double)(csTree->currentDecayVertex()->chiSquared()),
-                (double)(csTree->currentDecayVertex()->degreesOfFreedom())
-            );
-            candidate.constraintMassErr = (csParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0)
-                ? sqrt(csParticle->currentState().kinematicParametersError().matrix()(6, 6))
-                : -9;
-            candidate.constraintParticle = csParticle;
-            candidate.constraintVertex = csTree->currentDecayVertex();
+                (double)(csTree->currentDecayVertex()->degreesOfFreedom()));
+            if (VtxProb > JPSI_VTXPROB_CONSTRAINT_CUT){
+              candidate.hasConstraintFit = true;
+              RefCountedKinematicParticle csParticle = csTree->currentParticle();
+              candidate.constraintParticle = csParticle;
+            }
           }
         } catch (...) {
           // 拟合异常，保持默认值
@@ -872,7 +860,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
         if (!track1) {
           continue;
         }
-
+        ROOT::Math::PxPyPzMVector P4_Track1(trackPlusIter->px(), trackPlusIter->py(), 
+                                               trackPlusIter->pz(), PI_MASS);
         for (const auto& trackMinusIter : trackMinus) {
           if (!trackMinusIter->hasTrackDetails() || trackMinusIter->charge() == 0) {
             continue;
@@ -882,8 +871,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
             continue;
           }
 
-          ROOT::Math::PxPyPzMVector P4_Track1(trackPlusIter->px(), trackPlusIter->py(), 
-                                               trackPlusIter->pz(), PI_MASS);
           ROOT::Math::PxPyPzMVector P4_Track2(trackMinusIter->px(), trackMinusIter->py(), 
                                                trackMinusIter->pz(), PI_MASS);
           ROOT::Math::PxPyPzMVector P4_Jpsipipi = jpsi1.p4 + P4_Track1 + P4_Track2;
@@ -943,11 +930,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           if (JPiPi_vtxprob < PSI2S_VTXPROB_CUT) {
             continue;
           }
-          
-          double px = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().x();
-          double py = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum().y();
-          double psi2s_pt = sqrt(px*px + py*py);
-          if (psi2s_pt <= PSI2S_PT_CUT) {
+          auto mom = JPiPi_vFit_constrained->currentState().kinematicParameters().momentum();
+          double px = mom.x();
+          double py = mom.y();
+          if (sqrt(px * px + py * py) <= PSI2S_PT_CUT) {
             continue;
           }
 
@@ -1179,6 +1165,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           Jpsi1_absEta = fabs(Jpsi1_vec.Eta());
 
           Jpsi2_mass = jpsi2.mass;
+          Jpsi2_hasJConstraintFit = jpsi2.hasConstraintFit && jpsi2.isJpsiCandidate;
+          Jpsi2_hasPConstraintFit = jpsi2.hasConstraintFit && jpsi2.isPsi2SCandidate;
           Jpsi2_VtxProb = jpsi2.vtxProb;
           Jpsi2_massErr = jpsi2.massErr;
           ROOT::Math::PxPyPzMVector Jpsi2_vec(jpsi2.p4.Px(), jpsi2.p4.Py(), jpsi2.p4.Pz(), jpsi2.mass);
@@ -1387,6 +1375,8 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("Jpsi1_absEta", &Jpsi1_absEta, "Jpsi1_absEta/F");
 
   X_One_Tree_->Branch("Jpsi2_mass", &Jpsi2_mass, "Jpsi2_mass/F");
+  X_One_Tree_->Branch("Jpsi2_hasJConstraintFit", &Jpsi2_hasJConstraintFit, "Jpsi2_hasJConstraintFit/O");
+  X_One_Tree_->Branch("Jpsi2_hasPConstraintFit", &Jpsi2_hasPConstraintFit, "Jpsi2_hasPConstraintFit/O");
   X_One_Tree_->Branch("Jpsi2_VtxProb", &Jpsi2_VtxProb, "Jpsi2_VtxProb/F");
   X_One_Tree_->Branch("Jpsi2_massErr", &Jpsi2_massErr, "Jpsi2_massErr/F");
   X_One_Tree_->Branch("Jpsi2_pt", &Jpsi2_pt, "Jpsi2_pt/F");
@@ -1528,6 +1518,8 @@ void MultiLepPAT::resetVariables() {
   // J/ψ2 (第二个 J/ψ)
   Jpsi2_mass = -999.0;
   Jpsi2_VtxProb = -999.0;
+  Jpsi2_hasJConstraintFit = false;
+  Jpsi2_hasJConstraintFit = false;
   Jpsi2_massErr = -999.0;
   Jpsi2_pt = -999.0;
   Jpsi2_pz = -999.0;
