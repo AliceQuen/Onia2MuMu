@@ -281,6 +281,19 @@ private:
 
     ////////////////////////////////////////////////////////////////
     ///
+    /// \brief 检查所有物理量变量是否为有限值
+    ///
+    /// \return true 所有变量都是finite（NaN和Inf返回false）
+    ///
+    /// \details 在TTree填充前调用，确保所有物理量都是有效值。
+    ///          使用std::isfinite检查每个变量，如果有任何变量
+    ///          不是finite（NaN或无穷大），则返回false。
+    ///
+    ////////////////////////////////////////////////////////////////
+    bool isAllVariablesFinite();
+
+    ////////////////////////////////////////////////////////////////
+    ///
     /// \brief 线程安全的质量约束对象初始化
     ///
     /// \details 使用 std::call_once 保证质量约束对象仅创建一次，
@@ -314,7 +327,7 @@ private:
     //                    质量约束对象
     // ============================================================
     /// 静态成员，程序启动时初始化一次，避免重复分配
-    static std::unique_ptr<KinematicConstraint> jpsiMassConstraint_;    ///< J/ψ 质量约束
+    static std::unique_ptr<KinematicConstraint> JpsiMassConstraint_;    ///< J/ψ 质量约束
     static std::unique_ptr<KinematicConstraint> psi2sMassConstraint_;   ///< ψ(2S) 质量约束
     static std::unique_ptr<KinematicConstraint> x3872MassConstraint_;   ///< X(3872) 质量约束
 
@@ -338,8 +351,10 @@ private:
     float X_PJ_mass;                        ///< 不变质量 [GeV]
     float X_PJ_VtxProb;                     ///< 顶点概率 (χ² 概率)
     float X_PJ_massErr;                     ///< 质量误差 [GeV]
+    float X_PJ_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_PJ_pt;                          ///< 横动量 [GeV]
     float X_PJ_pz;                          ///< Z 方向动量分量 [GeV]
+    float X_PJ_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
     float X_PJ_absEta;                      ///< 赝快度绝对值
     float X_PJ_px;                          ///< X 方向动量分量 [GeV]
     float X_PJ_py;                          ///< Y 方向动量分量 [GeV]
@@ -351,8 +366,10 @@ private:
     float X_XJ_mass;                        ///< 不变质量 [GeV]
     float X_XJ_VtxProb;                     ///< 顶点概率
     float X_XJ_massErr;                     ///< 质量误差 [GeV]
+    float X_XJ_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_XJ_pt;                          ///< 横动量 [GeV]
     float X_XJ_pz;                          ///< Z 方向动量分量 [GeV]
+    float X_XJ_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
     float X_XJ_absEta;                      ///< 赝快度绝对值
     float X_XJ_px;                          ///< X 方向动量分量 [GeV]
     float X_XJ_py;                          ///< Y 方向动量分量 [GeV]
@@ -364,8 +381,10 @@ private:
     float X_PP_mass;                        ///< 不变质量 [GeV]
     float X_PP_VtxProb;                     ///< 顶点概率
     float X_PP_massErr;                     ///< 质量误差 [GeV]
+    float X_PP_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_PP_pt;                          ///< 横动量 [GeV]
     float X_PP_pz;                          ///< Z 方向动量分量 [GeV]
+    float X_PP_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
     float X_PP_absEta;                      ///< 赝快度绝对值
     float X_PP_px;                          ///< X 方向动量分量 [GeV]
     float X_PP_py;                          ///< Y 方向动量分量 [GeV]
@@ -374,10 +393,13 @@ private:
     //              ψ(2S) 候选变量 (4 径迹拟合)
     // ============================================================
     float Psi2S_mass;                       ///< 不变质量 [GeV]
+    float Psi2S_mass_diff;                  ///< 不变质量和标准质量的差[GeV]
     float Psi2S_VtxProb;                    ///< 顶点概率
     float Psi2S_massErr;                    ///< 质量误差 [GeV]
+    float Psi2S_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float Psi2S_pt;                         ///< 横动量 [GeV]
     float Psi2S_pz;                         ///< Z 方向动量分量 [GeV]
+    float Psi2S_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
     float Psi2S_absEta;                     ///< 赝快度绝对值
     float Psi2S_px;                         ///< X 方向动量分量 [GeV]
     float Psi2S_py;                         ///< Y 方向动量分量 [GeV]
@@ -388,8 +410,10 @@ private:
     float Jpsi1_mass;                       ///< 不变质量 [GeV]
     float Jpsi1_VtxProb;                    ///< 顶点概率
     float Jpsi1_massErr;                    ///< 质量误差 [GeV]
+    float Jpsi1_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float Jpsi1_pt;                         ///< 横动量 [GeV]
     float Jpsi1_pz;                         ///< Z 方向动量分量 [GeV]
+    float Jpsi1_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
     float Jpsi1_absEta;                     ///< 赝快度绝对值
     float Jpsi1_px;                         ///< X 方向动量分量 [GeV]
     float Jpsi1_py;                         ///< Y 方向动量分量 [GeV]
@@ -400,12 +424,14 @@ private:
     float Jpsi2_mass;                       ///< 不变质量 [GeV]
     bool Jpsi2_hasJConstraintFit;            ///< 是否有 J/ψ 约束拟合结果
     bool Jpsi2_hasPConstraintFit;
-    
+
     ///< 是否有 ψ(2S) 约束拟合结果
     float Jpsi2_VtxProb;                    ///< 顶点概率
     float Jpsi2_massErr;                    ///< 质量误差 [GeV]
+    float Jpsi2_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float Jpsi2_pt;                         ///< 横动量 [GeV]
     float Jpsi2_pz;                         ///< Z 方向动量分量 [GeV]
+    float Jpsi2_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
     float Jpsi2_absEta;                     ///< 赝快度绝对值
     float Jpsi2_px;                         ///< X 方向动量分量 [GeV]
     float Jpsi2_py;                         ///< Y 方向动量分量 [GeV]
@@ -417,69 +443,73 @@ private:
     /// μ₁ - 第一个正 μ子 (参与 J/ψ₁)
     float mu1_pt;                           ///< 横动量 [GeV]
     float mu1_pz;                           ///< Z 方向动量分量 [GeV]
+    float mu1_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float mu1_absEta;                       ///< 赝快度绝对值
     float mu1_px;                           ///< X 方向动量分量 [GeV]
     float mu1_py;                           ///< Y 方向动量分量 [GeV]
     float mu1_trackIso;                     ///< 径迹隔离度
     float mu1_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
-    float mu1_d0EBS;                        ///< d0_BS 的误差 [cm]
-    float mu1_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
-    float mu1_d3dEBS;                       ///< d3d_BS 的误差 [cm]
-    float mu1_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
-    float mu1_d0EPV;                        ///< d0_PV 的误差 [cm]
-    float mu1_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
-    float mu1_dzEPV;                        ///< dz_PV 的误差 [cm]
+  float mu1_d0BSErr;                      ///< d0_BS 的归一化误差 [cm/cm]
+  float mu1_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
+  float mu1_d3dBSErr;                     ///< d3d_BS 的归一化误差 [cm/cm]
+  float mu1_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
+  float mu1_d0PVErr;                      ///< d0_PV 的归一化误差 [cm/cm]
+  float mu1_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
+  float mu1_dzPVErr;                      ///< dz_PV 的归一化误差 [cm/cm]
     float mu1_charge;                       ///< 电荷
 
     /// μ₂ - 第一个负 μ子 (参与 J/ψ₁)
     float mu2_pt;                           ///< 横动量 [GeV]
     float mu2_pz;                           ///< Z 方向动量分量 [GeV]
+    float mu2_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float mu2_absEta;                       ///< 赝快度绝对值
     float mu2_px;                           ///< X 方向动量分量 [GeV]
     float mu2_py;                           ///< Y 方向动量分量 [GeV]
     float mu2_trackIso;                     ///< 径迹隔离度
     float mu2_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
-    float mu2_d0EBS;                        ///< d0_BS 的误差 [cm]
+    float mu2_d0BSErr;                      ///< d0_BS 的归一化误差 [cm/cm]
     float mu2_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
-    float mu2_d3dEBS;                       ///< d3d_BS 的误差 [cm]
+    float mu2_d3dBSErr;                     ///< d3d_BS 的归一化误差 [cm/cm]
     float mu2_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
-    float mu2_d0EPV;                        ///< d0_PV 的误差 [cm]
+    float mu2_d0PVErr;                      ///< d0_PV 的归一化误差 [cm/cm]
     float mu2_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
-    float mu2_dzEPV;                        ///< dz_PV 的误差 [cm]
+    float mu2_dzPVErr;                      ///< dz_PV 的归一化误差 [cm/cm]
     float mu2_charge;                       ///< 电荷
 
     /// μ₃ - 第二个正 μ子 (参与 J/ψ₂)
     float mu3_pt;                           ///< 横动量 [GeV]
     float mu3_pz;                           ///< Z 方向动量分量 [GeV]
+    float mu3_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float mu3_absEta;                       ///< 赝快度绝对值
     float mu3_px;                           ///< X 方向动量分量 [GeV]
     float mu3_py;                           ///< Y 方向动量分量 [GeV]
     float mu3_trackIso;                     ///< 径迹隔离度
     float mu3_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
-    float mu3_d0EBS;                        ///< d0_BS 的误差 [cm]
+    float mu3_d0BSErr;                      ///< d0_BS 的归一化误差 [cm/cm]
     float mu3_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
-    float mu3_d3dEBS;                       ///< d3d_BS 的误差 [cm]
+    float mu3_d3dBSErr;                     ///< d3d_BS 的归一化误差 [cm/cm]
     float mu3_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
-    float mu3_d0EPV;                        ///< d0_PV 的误差 [cm]
+    float mu3_d0PVErr;                      ///< d0_PV 的归一化误差 [cm/cm]
     float mu3_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
-    float mu3_dzEPV;                        ///< dz_PV 的误差 [cm]
+    float mu3_dzPVErr;                      ///< dz_PV 的归一化误差 [cm/cm]
     float mu3_charge;                       ///< 电荷
 
     /// μ₄ - 第二个负 μ子 (参与 J/ψ₂)
     float mu4_pt;                           ///< 横动量 [GeV]
     float mu4_pz;                           ///< Z 方向动量分量 [GeV]
+    float mu4_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float mu4_absEta;                       ///< 赝快度绝对值
     float mu4_px;                           ///< X 方向动量分量 [GeV]
     float mu4_py;                           ///< Y 方向动量分量 [GeV]
     float mu4_trackIso;                     ///< 径迹隔离度
     float mu4_d0BS;                         ///< 相对于束斑的横向碰撞参数 [cm]
-    float mu4_d0EBS;                        ///< d0_BS 的误差 [cm]
+    float mu4_d0BSErr;                      ///< d0_BS 的归一化误差 [cm/cm]
     float mu4_d3dBS;                        ///< 相对于束斑的三维碰撞参数 [cm]
-    float mu4_d3dEBS;                       ///< d3d_BS 的误差 [cm]
+    float mu4_d3dBSErr;                     ///< d3d_BS 的归一化误差 [cm/cm]
     float mu4_d0PV;                         ///< 相对于主顶点的横向碰撞参数 [cm]
-    float mu4_d0EPV;                        ///< d0_PV 的误差 [cm]
+    float mu4_d0PVErr;                      ///< d0_PV 的归一化误差 [cm/cm]
     float mu4_dzPV;                         ///< 相对于主顶点的纵向碰撞参数 [cm]
-    float mu4_dzEPV;                        ///< dz_PV 的误差 [cm]
+    float mu4_dzPVErr;                      ///< dz_PV 的归一化误差 [cm/cm]
     float mu4_charge;                       ///< 电荷
 
     /// μ子 ID 计数变量
@@ -497,10 +527,12 @@ private:
     // ============================================================
     //                    π子变量 (2 个 π 子)
     // ============================================================
+    float pipi_mass;                        ///< ππ 不变质量 [GeV]
 
     /// π₁ - 正 π 子 (参与 ψ(2S))
     float pi1_pt;                           ///< 横动量 [GeV]
     float pi1_pz;                           ///< Z 方向动量分量 [GeV]
+    float pi1_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float pi1_absEta;                       ///< 赝快度绝对值
     float pi1_px;                           ///< X 方向动量分量 [GeV]
     float pi1_py;                           ///< Y 方向动量分量 [GeV]
@@ -508,6 +540,7 @@ private:
     /// π₂ - 负 π 子 (参与 ψ(2S))
     float pi2_pt;                           ///< 横动量 [GeV]
     float pi2_pz;                           ///< Z 方向动量分量 [GeV]
+    float pi2_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
     float pi2_absEta;                       ///< 赝快度绝对值
     float pi2_px;                           ///< X 方向动量分量 [GeV]
     float pi2_py;                           ///< Y 方向动量分量 [GeV]
@@ -522,6 +555,31 @@ private:
     float dR_Psi2S_Jpsi2;                    ///< ψ(2S) 与 J/ψ₂ 的角度距离
     float dR_Psi2S_pi1;                       ///< ψ(2S) 与 π₁ 的角度距离
     float dR_Psi2S_pi2;                       ///< ψ(2S) 与 π₂ 的角度距离
+    float dR_Psi2S_mu1;                       ///< ψ(2S) 与 μ₁ 的角度距离
+    float dR_Psi2S_mu2;                       ///< ψ(2S) 与 μ₂ 的角度距离
+    float dR_Psi2S_mu3;                       ///< ψ(2S) 与 μ₃ 的角度距离
+    float dR_Psi2S_mu4;                       ///< ψ(2S) 与 μ₄ 的角度距离
+    float dR_Jpsi1_mu1;                       ///< J/ψ₁ 与 μ₁ 的角度距离
+    float dR_Jpsi1_mu2;                       ///< J/ψ₁ 与 μ₂ 的角度距离
+    float dR_Jpsi1_mu3;                       ///< J/ψ₁ 与 μ₃ 的角度距离
+    float dR_Jpsi1_mu4;                       ///< J/ψ₁ 与 μ₄ 的角度距离
+    float dR_Jpsi1_pi1;                       ///< J/ψ₁ 与 π₁ 的角度距离
+    float dR_Jpsi1_pi2;                       ///< J/ψ₁ 与 π₂ 的角度距离
+    float dR_Jpsi1_Jpsi2;                     ///< J/ψ₁ 与 J/ψ₂ 的角度距离
+    float dR_Jpsi2_mu1;                       ///< J/ψ₂ 与 μ₁ 的角度距离
+    float dR_Jpsi2_mu2;                       ///< J/ψ₂ 与 μ₂ 的角度距离
+    float dR_Jpsi2_mu3;                       ///< J/ψ₂ 与 μ₃ 的角度距离
+    float dR_Jpsi2_mu4;                       ///< J/ψ₂ 与 μ₄ 的角度距离
+    float dR_Jpsi2_pi1;                       ///< J/ψ₂ 与 π₁ 的角度距离
+    float dR_Jpsi2_pi2;                       ///< J/ψ₂ 与 π₂ 的角度距离
+    float dR_mu1_pi1;                         ///< μ₁ 与 π₁ 的角度距离
+    float dR_mu1_pi2;                         ///< μ₁ 与 π₂ 的角度距离
+    float dR_mu2_pi1;                         ///< μ₂ 与 π₁ 的角度距离
+    float dR_mu2_pi2;                         ///< μ₂ 与 π₂ 的角度距离
+    float dR_mu3_pi1;                         ///< μ₃ 与 π₁ 的角度距离
+    float dR_mu3_pi2;                         ///< μ₃ 与 π₂ 的角度距离
+    float dR_mu4_pi1;                         ///< μ₄ 与 π₁ 的角度距离
+    float dR_mu4_pi2;                         ///< μ₄ 与 π₂ 的角度距离
 };
 
 #endif

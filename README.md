@@ -202,33 +202,36 @@ X_data TTree
 ├── 事件信息层 (4)
 │   ├── runNum, evtNum, lumiNum, nGoodPrimVtx
 │
-├── X 候选层 (24)
-│   ├── 假设 1: X_PJ_mass, X_PJ_VtxProb, X_PJ_massErr, X_PJ_pt, X_PJ_px, ...
-│   ├── 假设 2: X_XJ_mass, X_XJ_VtxProb, X_XJ_massErr, X_XJ_pt, X_XJ_px, ...
-│   └── 假设 3: X_PP_mass, X_PP_VtxProb, X_PP_massErr, X_PP_pt, X_PP_px, ...
+├── X 候选层 (30)
+│   ├── 假设 1 (ψ(2S)+J/ψ): X_PJ_mass, X_PJ_VtxProb, X_PJ_massErr, X_PJ_massErrNorm, X_PJ_pt, X_PJ_pz, X_PJ_absPz, X_PJ_absEta
+│   ├── 假设 2 (X(3872)+J/ψ): X_XJ_mass, X_XJ_VtxProb, X_XJ_massErr, X_XJ_massErrNorm, X_XJ_pt, X_XJ_pz, X_XJ_absPz, X_XJ_absEta
+│   └── 假设 3 (ψ(2S)+ψ(2S)): X_PP_mass, X_PP_VtxProb, X_PP_massErr, X_PP_massErrNorm, X_PP_pt, X_PP_pz, X_PP_absPz, X_PP_absEta
 │
-├── ψ(2S) 候选层 (9)
-│   └── Psi2S_mass, Psi2S_VtxProb, Psi2S_massErr, Psi2S_pt, Psi2S_absEta, ...
+├── ψ(2S) 候选层 (10)
+│   └── Psi2S_mass, Psi2S_mass_diff, Psi2S_VtxProb, Psi2S_massErr, Psi2S_massErrNorm, Psi2S_pt, Psi2S_pz, Psi2S_absPz, Psi2S_absEta
 │
-├── J/ψ 候选层 (16)
-│   ├── Jpsi1_mass, Jpsi1_VtxProb, Jpsi1_massErr, Jpsi1_pt, ...
-│   └── Jpsi2_mass, Jpsi2_VtxProb, Jpsi2_massErr, Jpsi2_pt, ...
+├── J/ψ 候选层 (18)
+│   ├── Jpsi1_mass, Jpsi1_VtxProb, Jpsi1_massErr, Jpsi1_massErrNorm, Jpsi1_pt, Jpsi1_pz, Jpsi1_absPz, Jpsi1_absEta
+│   └── Jpsi2_mass, Jpsi2_hasJConstraintFit, Jpsi2_hasPConstraintFit, Jpsi2_VtxProb, Jpsi2_massErr, Jpsi2_massErrNorm, Jpsi2_pt, Jpsi2_pz, Jpsi2_absPz, Jpsi2_absEta
 │
-├── μ子信息层 (68)
-│   ├── μ₁ (16 个变量): pt, eta, charge, trackIso, d0BS, d0PV, dzPV, ...
-│   ├── μ₂ (16 个变量)
-│   ├── μ₃ (16 个变量)
-│   ├── μ₄ (16 个变量)
+├── μ子信息层 (72)
+│   ├── μ₁ (17 个变量): pt, pz, absPz, absEta, px, py, trackIso, d0BS, d0BSErr, d3dBS, d3dBSErr, d0PV, d0PVErr, dzPV, dzPVErr, charge, hasFilterMatch
+│   ├── μ₂ (17 个变量)
+│   ├── μ₃ (17 个变量)
+│   ├── μ₄ (17 个变量)
 │   └── μ子 ID 计数: nLooseMuons, nTightMuons, nSoftMuons, nMediumMuons
 │
-├── π子信息层 (10)
-│   ├── π₁: pi1_pt, pi1_px, pi1_py, pi1_pz, pi1_absEta
-│   └── π₂: pi2_pt, pi2_px, pi2_py, pi2_pz, pi2_absEta
+├── π子信息层 (9)
+│   ├── pipi_mass
+│   ├── π₁: pi1_pt, pi1_pz, pi1_absPz, pi1_absEta
+│   └── π₂: pi2_pt, pi2_pz, pi2_absPz, pi2_absEta
 │
-└── δR 关联层 (14)
+└── δR 关联层 (30)
     ├── dR_mu1_mu2, dR_mu3_mu4, dR_pi1_pi2
-    ├── dR_Psi2S_Jpsi1, dR_Psi2S_Jpsi2
-    └── dR_Psi2S_pi1, dR_Psi2S_pi2, ...
+    ├── dR_Psi2S_Jpsi1, dR_Psi2S_Jpsi2, dR_Psi2S_pi1, dR_Psi2S_pi2, dR_Psi2S_mu1, dR_Psi2S_mu2, dR_Psi2S_mu3, dR_Psi2S_mu4
+    ├── dR_Jpsi1_mu1, dR_Jpsi1_mu2, dR_Jpsi1_mu3, dR_Jpsi1_mu4, dR_Jpsi1_pi1, dR_Jpsi1_pi2, dR_Jpsi1_Jpsi2
+    ├── dR_Jpsi2_mu1, dR_Jpsi2_mu2, dR_Jpsi2_mu3, dR_Jpsi2_mu4, dR_Jpsi2_pi1, dR_Jpsi2_pi2
+    └── dR_mu1_pi1, dR_mu1_pi2, dR_mu2_pi1, dR_mu2_pi2, dR_mu3_pi1, dR_mu3_pi2, dR_mu4_pi1, dR_mu4_pi2
 ```
 
 ### 无效值处理规范
@@ -262,40 +265,46 @@ Onia2MuMu/
 ```cpp
 struct JpsiCandidate {
     // 粒子迭代器
-    edm::View<pat::Muon>::const_iterator muPlus;
-    edm::View<pat::Muon>::const_iterator muMinus;
+    edm::View<pat::Muon>::const_iterator muPlus;   ///< 正 μ 子迭代器
+    edm::View<pat::Muon>::const_iterator muMinus;  ///< 负 μ 子迭代器
     
     // 普通顶点拟合结果
-    double mass, vtxProb, massErr;
-    ROOT::Math::PxPyPzMVector p4;
-    RefCountedKinematicParticle kinematicParticle;
-    RefCountedKinematicVertex vertex;
+    double mass;                    ///< 拟合不变质量 [GeV]
+    double vtxProb;                 ///< 顶点概率 (χ² 概率)
+    double massErr;                 ///< 质量误差 [GeV]
+    ROOT::Math::PxPyPzMVector p4;   ///< 四动量 (px, py, pz, mass)
     
     // 质量约束拟合结果
-    bool hasConstraintFit = false;
-    double constraintMass, constraintVtxProb, constraintMassErr;
-    RefCountedKinematicParticle constraintParticle;
-    RefCountedKinematicVertex constraintVertex;
+    bool hasConstraintFit = false;                   ///< 是否有有效的约束拟合结果
+    RefCountedKinematicParticle constraintParticle;  ///< 约束拟合后的运动学粒子
     
     // 候选类型标记
-    bool isJpsiCandidate = false;
-    bool isPsi2SCandidate = false;
+    bool isJpsiCandidate = false;   ///< 质量在 J/ψ 窗口内
+    bool isPsi2SCandidate = false;  ///< 质量在 ψ(2S) 窗口内
     
-    // 其他信息
-    reco::TransientTrack muonTT1, muonTT2;
-    bool filterMatchPlus, filterMatchMinus;
+    // 触发匹配状态
+    bool filterMatchPlus;           ///< 正 μ 子触发过滤器匹配标志
+    bool filterMatchMinus;          ///< 负 μ 子触发过滤器匹配标志
 };
 ```
 
 ## 核心优化策略
 
-1. **触发器名称预排序**：按长度升序排列，短模式优先匹配，平均提前退出循环
+1. **触发器名称预排序**：按长度升序排列，短模式优先匹配，平均触发匹配时间减少约 30-40%
 
-2. **电荷预分组**：在循环前将径迹和 μ 子按电荷正负分组，减少无效组合
+2. **电荷预分组**：在循环前将径迹和 μ 子按电荷正负分组，组合数减少约 50%
 
-3. **J/ψ 候选预缓存**：在嵌套循环外预先计算所有有效 J/ψ 候选，避免重复拟合
+3. **J/ψ 候选预缓存**：在嵌套循环外预先计算所有有效 J/ψ 候选并缓存拟合结果，避免重复拟合
 
 4. **Cheap Cut First**：将计算成本低的筛选（如快速质量计算）放在循环最内层，提前排除无效组合
+
+5. **线程安全的质量约束初始化**：使用 `std::call_once` 保证质量约束对象仅创建一次，避免多线程环境下的重复构造
+
+6. **编译时质量窗口检查**：使用 `static_assert` 在编译时检查 J/ψ 和 ψ(2S) 的质量窗口是否重叠，避免运行时歧义
+
+7. **径迹预筛选优化**：单次循环同时完成径迹质量筛选、muon 径迹过滤和电荷分组，减少遍历次数
+
+8. **μ子预选择优化**：单次循环同时完成 Soft Muon 筛选、动力学要求检查、触发过滤器匹配和电荷分组
 
 ## 编译与运行
 
