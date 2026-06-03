@@ -91,6 +91,18 @@ ivars.register('requireAcceptedCandidatesForMonteCarloTree',
     mytype=VarParsing.VarParsing.varType.bool,
     info='For MC, keep tree entries only when at least one candidate is stored (default: False)'
 )
+ivars.register('keepAllSingleObjectCandsInMC',
+    default=False,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='For MC, store all object-level J/psi and phi candidates before final combination (default: False)'
+)
+ivars.register('skipCompositeCandBuildingWhenKeepingSingles',
+    default=False,
+    mult=VarParsing.VarParsing.multiplicity.singleton,
+    mytype=VarParsing.VarParsing.varType.bool,
+    info='For MC single-object ntuples, skip final composite candidate building after storing object candidates (default: False)'
+)
 ivars.register('doJpsiDecayVtxFit',
     default=True,
     mult=VarParsing.VarParsing.multiplicity.singleton,
@@ -272,6 +284,10 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     inputGEN = cms.untracked.InputTag("prunedGenParticles"),
     MuonLabel = cms.untracked.InputTag("slimmedMuons"),
     TrackLabel = cms.untracked.InputTag("packedPFCandidates"),
+    GenEventInfo = cms.untracked.InputTag("generator"),
+    ReadLHEWeights = cms.untracked.bool(False),
+    LHEEventInfo = cms.untracked.InputTag("externalLHEProducer"),
+    DebugGeneratorWeights = cms.untracked.bool(False),
 
     # ====== Analysis mode ======
     # Options: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi"
@@ -341,6 +357,8 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     # whether MC events without kept candidates are still written to the tree.
     DoMonteCarloTree = cms.untracked.bool(ivars.runOnMC),
     RequireAcceptedCandidatesForMonteCarloTree = cms.untracked.bool(ivars.requireAcceptedCandidatesForMonteCarloTree),
+    KeepAllSingleObjectCandsInMC = cms.untracked.bool(ivars.keepAllSingleObjectCandsInMC),
+    SkipCompositeCandBuildingWhenKeepingSingles = cms.untracked.bool(ivars.skipCompositeCandBuildingWhenKeepingSingles),
     DoJPsiMassConstraint = cms.untracked.bool(True),
     Debug_Output = cms.untracked.bool(ivars.debugOutput),
     DebugMask    = cms.untracked.uint32(max(ivars.debugMask, 0)),

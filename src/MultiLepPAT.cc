@@ -41,6 +41,7 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Common/interface/TriggerNames.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
 
 #include "CommonTools/Statistics/interface/ChiSquaredProbability.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
@@ -233,15 +234,25 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
           "MuonLabel", edm::InputTag("slimmedMuons"))),
       trackLabel_(iConfig.getUntrackedParameter<edm::InputTag>(
           "TrackLabel", edm::InputTag("packedPFCandidates"))),
+      genInfoTag_(iConfig.getUntrackedParameter<edm::InputTag>(
+          "GenEventInfo", edm::InputTag("generator"))),
+      lheEventTag_(iConfig.getUntrackedParameter<edm::InputTag>(
+          "LHEEventInfo", edm::InputTag("externalLHEProducer"))),
       magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
       theTTBuilderToken_(esConsumes<TransientTrackBuilder, TransientTrackRecord>(
           edm::ESInputTag("", "TransientTrackBuilder"))),
       doMC(iConfig.getUntrackedParameter<bool>("DoMonteCarloTree", false)),
       requireAcceptedCandidatesForMonteCarloTree_(iConfig.getUntrackedParameter<bool>(
           "RequireAcceptedCandidatesForMonteCarloTree", false)),
+      keepAllSingleObjectCandsInMC_(iConfig.getUntrackedParameter<bool>(
+          "KeepAllSingleObjectCandsInMC", false)),
+      skipCompositeCandBuildingWhenKeepingSingles_(iConfig.getUntrackedParameter<bool>(
+          "SkipCompositeCandBuildingWhenKeepingSingles", false)),
       doJPsiMassCost(iConfig.getUntrackedParameter<bool>("DoJPsiMassConstraint", false)),
       Debug_(iConfig.getUntrackedParameter<bool>("Debug_Output", false)),
+      debugGeneratorWeights_(iConfig.getUntrackedParameter<bool>("DebugGeneratorWeights", false)),
       debugMask_(iConfig.getUntrackedParameter<unsigned int>("DebugMask", 0)),
+      readLHEWeights_(iConfig.getUntrackedParameter<bool>("ReadLHEWeights", false)),
       // Analysis mode: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi"
       analysisModeName_(iConfig.getUntrackedParameter<std::string>("AnalysisMode", "JpsiJpsiPhi")),
       // StringCutObjectSelector for muon and track
@@ -335,7 +346,11 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       configInputGENTag_(),
       configMuonLabelTag_(),
       configTrackLabelTag_(),
+      configGenInfoTag_(),
+      configLHEEventTag_(),
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
+      genWeight(1.0f), nGenWeights(0), genWeights(nullptr),
+      lheOriginalXWGTUP(1.0f), lheXWGTUP(1.0f), nLHEWeights(0), lheWeights(nullptr),
       trigRes(nullptr), trigNames(nullptr), L1TT(nullptr), MatchJpsiTrigNames(nullptr), MatchUpsTrigNames(nullptr),
       priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXE(0), priVtxYE(0), priVtxZE(0),
       priVtxChiNorm(0), priVtxChi(0), priVtxCL(0),
@@ -495,6 +510,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     configInputGENTag_ = inputGEN_.encode();
     configMuonLabelTag_ = muonLabel_.encode();
     configTrackLabelTag_ = trackLabel_.encode();
+    configGenInfoTag_ = genInfoTag_.encode();
+    configLHEEventTag_ = lheEventTag_.encode();
     
     // EDM tokens
     gtRecordToken_     = consumes<L1GlobalTriggerReadoutRecord>(edm::InputTag("gtDigis"));
@@ -504,6 +521,10 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     gttriggerToken_    = consumes<edm::TriggerResults>(edm::InputTag("TriggerResults::HLT"));
     trackToken_        = consumes<edm::View<pat::PackedCandidate>>(trackLabel_);
     genParticlesToken_ = consumes<reco::GenParticleCollection>(inputGEN_);
+    genInfoToken_      = consumes<GenEventInfoProduct>(genInfoTag_);
+    if (readLHEWeights_) {
+        lheEventToken_ = consumes<LHEEventProduct>(lheEventTag_);
+    }
 }
 
 MultiLepPAT::~MultiLepPAT() {}
@@ -524,6 +545,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
     currentRun_ = runNum;
     currentLumi_ = lumiNum;
     currentEvent_ = evtNum;
+    processGeneratorWeights(iEvent);
 
     EventDebugSummary debugSummary{};
     const auto totalStart = Clock::now();
@@ -606,7 +628,13 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         if (hasAcceptedCandidate) {
             return true;
         }
-        return doMC && !requireAcceptedCandidatesForMonteCarloTree_;
+        if (doMC && !requireAcceptedCandidatesForMonteCarloTree_) {
+            return true;
+        }
+        if (doMC && keepAllSingleObjectCandsInMC_) {
+            return true;
+        }
+        return false;
     };
 
     const auto finalizeCurrentEvent = [&]() {
@@ -652,6 +680,14 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         const auto stepStart = Clock::now();
         pairTracks(nonMuonTrack_, bFieldHandle);
         debugSummary.pairTracksMs = elapsedMs(stepStart);
+    }
+
+    if (doMC && keepAllSingleObjectCandsInMC_) {
+        storeAllSingleObjectCandidatesForMC(theBeamSpotV_, genParticles);
+        if (skipCompositeCandBuildingWhenKeepingSingles_) {
+            finalizeCurrentEvent();
+            return;
+        }
     }
 
     // Step 10: Combine candidates and fill branches
@@ -730,6 +766,77 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
         }
 
         MC_GenPart_motherGenIdx->push_back(motherGenIdx);
+    }
+}
+
+/*****************************************************************************
+ * Process generator event weights
+ *****************************************************************************/
+void MultiLepPAT::processGeneratorWeights(const edm::Event &iEvent)
+{
+    genWeight = 1.0f;
+    nGenWeights = 0;
+    if (genWeights) {
+        genWeights->clear();
+    }
+
+    edm::Handle<GenEventInfoProduct> genInfo;
+    try {
+        iEvent.getByToken(genInfoToken_, genInfo);
+    } catch (...) {
+    }
+    if (genInfo.isValid()) {
+        genWeight = static_cast<float>(genInfo->weight());
+
+        const auto& weights = genInfo->weights();
+        nGenWeights = static_cast<int>(weights.size());
+        if (genWeights) {
+            genWeights->reserve(weights.size());
+            for (double weight : weights) {
+                genWeights->push_back(static_cast<float>(weight));
+            }
+        }
+    }
+
+    lheOriginalXWGTUP = 1.0f;
+    lheXWGTUP = 1.0f;
+    nLHEWeights = 0;
+    if (lheWeights) {
+        lheWeights->clear();
+    }
+
+    if (readLHEWeights_) {
+        edm::Handle<LHEEventProduct> lhe;
+        try {
+            iEvent.getByToken(lheEventToken_, lhe);
+        } catch (...) {
+        }
+        if (lhe.isValid()) {
+            lheOriginalXWGTUP = static_cast<float>(lhe->originalXWGTUP());
+            lheXWGTUP = static_cast<float>(lhe->hepeup().XWGTUP);
+
+            const auto& weights = lhe->weights();
+            nLHEWeights = static_cast<int>(weights.size());
+            if (lheWeights) {
+                lheWeights->reserve(weights.size());
+                for (const auto& weight : weights) {
+                    lheWeights->push_back(static_cast<float>(weight.wgt));
+                }
+            }
+        }
+    }
+
+    if (debugGeneratorWeights_) {
+        static unsigned int nDebugPrints = 0;
+        if (nDebugPrints < 10) {
+            edm::LogPrint("MultiLepPAT")
+                << "Event " << iEvent.id()
+                << " genWeight=" << genWeight
+                << " nGenWeights=" << nGenWeights
+                << " lheOriginalXWGTUP=" << lheOriginalXWGTUP
+                << " nLHEWeights=" << nLHEWeights;
+            ++nDebugPrints;
+        }
     }
 }
 
@@ -1485,6 +1592,305 @@ void MultiLepPAT::pairTracks(
         transTrackPair.pop_back();
         transTrackPairId.pop_back();
     }
+}
+
+
+/*****************************************************************************
+ * Store object-level candidates for MC efficiency studies
+ *****************************************************************************/
+void MultiLepPAT::storeAllSingleObjectCandidatesForMC(
+    const reco::Vertex& beamSpotV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
+{
+    if (!doMC || !keepAllSingleObjectCandsInMC_) {
+        return;
+    }
+
+    storeSingleJpsiCandidatesForMC(beamSpotV, genParticles);
+
+    if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
+        analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
+        storeSinglePhiCandidatesForMC(beamSpotV, genParticles);
+    }
+}
+
+void MultiLepPAT::storeSingleJpsiCandidatesForMC(
+    const reco::Vertex& beamSpotV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
+{
+    nSingleJpsiCand = 0;
+
+    auto pushSentinelResonance = [&]() {
+        const float sentinel = -999999.f;
+        SingleJpsi_mass->push_back(sentinel);
+        SingleJpsi_massErr->push_back(sentinel);
+        SingleJpsi_massDiff->push_back(sentinel);
+        SingleJpsi_ctau->push_back(sentinel);
+        SingleJpsi_ctauErr->push_back(sentinel);
+        SingleJpsi_Chi2->push_back(sentinel);
+        SingleJpsi_ndof->push_back(sentinel);
+        SingleJpsi_VtxProb->push_back(sentinel);
+        SingleJpsi_px->push_back(sentinel);
+        SingleJpsi_py->push_back(sentinel);
+        SingleJpsi_pz->push_back(sentinel);
+        SingleJpsi_phi->push_back(sentinel);
+        SingleJpsi_eta->push_back(sentinel);
+        SingleJpsi_pt->push_back(sentinel);
+        SingleJpsi_pxErr->push_back(sentinel);
+        SingleJpsi_pyErr->push_back(sentinel);
+        SingleJpsi_pzErr->push_back(sentinel);
+        SingleJpsi_ptErr->push_back(sentinel);
+    };
+
+    reco::Vertex bsV(beamSpotV);
+
+    for (const auto& pair : muPairCand_Onia1_) {
+        const auto& particles = pair.first;
+        const auto& muIdx = pair.second;
+        if (muIdx.size() != 2 || !thePATMuonHandle_.isValid()) {
+            continue;
+        }
+
+        const unsigned int iMu1 = muIdx[0];
+        const unsigned int iMu2 = muIdx[1];
+        if (iMu1 >= thePATMuonHandle_->size() || iMu2 >= thePATMuonHandle_->size()) {
+            continue;
+        }
+
+        const auto& mu1 = thePATMuonHandle_->at(iMu1);
+        const auto& mu2 = thePATMuonHandle_->at(iMu2);
+        const auto prefitP4 = mu1.p4() + mu2.p4();
+
+        RefCountedKinematicTree vtxFitTree;
+        RefCountedKinematicParticle fitJpsi;
+        RefCountedKinematicVertex vtxJpsi;
+        double massErr = -1.0;
+        bool fitValid = particlesToVtx(vtxFitTree, particles, "SingleJpsi", JpsiDecayVtxProbCut_);
+        bool fitPass = false;
+
+        if (fitValid) {
+            fitValid = extractFitRes(vtxFitTree, fitJpsi, vtxJpsi, massErr);
+        }
+
+        if (fitValid && massErr >= 0.0) {
+            const double vtxProb = ChiSquaredProbability(
+                static_cast<double>(vtxJpsi->chiSquared()),
+                static_cast<double>(vtxJpsi->degreesOfFreedom()));
+            fitPass = vtxProb >= JpsiDecayVtxProbCut_;
+            storeResonanceBranches(
+                fitJpsi, vtxJpsi, massErr, myJpsiMass, bsV,
+                SingleJpsi_mass, SingleJpsi_massErr, SingleJpsi_massDiff,
+                SingleJpsi_ctau, SingleJpsi_ctauErr,
+                SingleJpsi_Chi2, SingleJpsi_ndof, SingleJpsi_VtxProb,
+                SingleJpsi_px, SingleJpsi_py, SingleJpsi_pz,
+                SingleJpsi_phi, SingleJpsi_eta, SingleJpsi_pt,
+                SingleJpsi_pxErr, SingleJpsi_pyErr, SingleJpsi_pzErr, SingleJpsi_ptErr);
+        } else {
+            pushSentinelResonance();
+        }
+
+        SingleJpsi_fitValid->push_back(fitValid ? 1 : 0);
+        SingleJpsi_fitPass->push_back(fitPass ? 1 : 0);
+        SingleJpsi_prefitMass->push_back(prefitP4.mass());
+        SingleJpsi_prefitPt->push_back(prefitP4.pt());
+        SingleJpsi_prefitEta->push_back(prefitP4.eta());
+        SingleJpsi_prefitPhi->push_back(prefitP4.phi());
+        SingleJpsi_mu1_Idx->push_back(static_cast<int>(iMu1));
+        SingleJpsi_mu2_Idx->push_back(static_cast<int>(iMu2));
+        SingleJpsi_mu1_charge->push_back(mu1.charge());
+        SingleJpsi_mu2_charge->push_back(mu2.charge());
+
+        const auto mu1Match = matchRecoMuonToStoredGenMuon(iMu1, genParticles, true);
+        const auto mu2Match = matchRecoMuonToStoredGenMuon(iMu2, genParticles, true);
+        SingleJpsi_mu1_genMatchIdx->push_back(mu1Match.first);
+        SingleJpsi_mu2_genMatchIdx->push_back(mu2Match.first);
+        SingleJpsi_mu1_genMatchChi2->push_back(mu1Match.second);
+        SingleJpsi_mu2_genMatchChi2->push_back(mu2Match.second);
+
+        ++nSingleJpsiCand;
+    }
+}
+
+void MultiLepPAT::storeSinglePhiCandidatesForMC(
+    const reco::Vertex& beamSpotV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
+{
+    nSinglePhiCand = 0;
+
+    auto pushSentinelResonance = [&]() {
+        const float sentinel = -999999.f;
+        SinglePhi_mass->push_back(sentinel);
+        SinglePhi_massErr->push_back(sentinel);
+        SinglePhi_massDiff->push_back(sentinel);
+        SinglePhi_ctau->push_back(sentinel);
+        SinglePhi_ctauErr->push_back(sentinel);
+        SinglePhi_Chi2->push_back(sentinel);
+        SinglePhi_ndof->push_back(sentinel);
+        SinglePhi_VtxProb->push_back(sentinel);
+        SinglePhi_px->push_back(sentinel);
+        SinglePhi_py->push_back(sentinel);
+        SinglePhi_pz->push_back(sentinel);
+        SinglePhi_phi->push_back(sentinel);
+        SinglePhi_eta->push_back(sentinel);
+        SinglePhi_pt->push_back(sentinel);
+        SinglePhi_pxErr->push_back(sentinel);
+        SinglePhi_pyErr->push_back(sentinel);
+        SinglePhi_pzErr->push_back(sentinel);
+        SinglePhi_ptErr->push_back(sentinel);
+    };
+
+    reco::Vertex bsV(beamSpotV);
+
+    for (const auto& pair : KPairCand_Meson_) {
+        const auto& particles = pair.first;
+        const auto& kIdx = pair.second;
+        if (kIdx.size() != 2) {
+            continue;
+        }
+
+        const unsigned int iK1 = kIdx[0];
+        const unsigned int iK2 = kIdx[1];
+        if (iK1 >= nonMuonTrack_.size() || iK2 >= nonMuonTrack_.size()) {
+            continue;
+        }
+
+        const auto& k1 = *nonMuonTrack_[iK1];
+        const auto& k2 = *nonMuonTrack_[iK2];
+
+        TLorentzVector p4K1, p4K2, p4Phi;
+        p4K1.SetPtEtaPhiM(k1.pt(), k1.eta(), k1.phi(), myKMass);
+        p4K2.SetPtEtaPhiM(k2.pt(), k2.eta(), k2.phi(), myKMass);
+        p4Phi = p4K1 + p4K2;
+
+        RefCountedKinematicTree vtxFitTree;
+        RefCountedKinematicParticle fitPhi;
+        RefCountedKinematicVertex vtxPhi;
+        double massErr = -1.0;
+        bool fitValid = particlesToVtx(vtxFitTree, particles, "SinglePhi", PhiDecayVtxProbCut_);
+        bool fitPass = false;
+
+        if (fitValid) {
+            fitValid = extractFitRes(vtxFitTree, fitPhi, vtxPhi, massErr);
+        }
+
+        if (fitValid && massErr >= 0.0) {
+            const double vtxProb = ChiSquaredProbability(
+                static_cast<double>(vtxPhi->chiSquared()),
+                static_cast<double>(vtxPhi->degreesOfFreedom()));
+            fitPass = vtxProb >= PhiDecayVtxProbCut_;
+            storeResonanceBranches(
+                fitPhi, vtxPhi, massErr, myPhiMass, bsV,
+                SinglePhi_mass, SinglePhi_massErr, SinglePhi_massDiff,
+                SinglePhi_ctau, SinglePhi_ctauErr,
+                SinglePhi_Chi2, SinglePhi_ndof, SinglePhi_VtxProb,
+                SinglePhi_px, SinglePhi_py, SinglePhi_pz,
+                SinglePhi_phi, SinglePhi_eta, SinglePhi_pt,
+                SinglePhi_pxErr, SinglePhi_pyErr, SinglePhi_pzErr, SinglePhi_ptErr);
+        } else {
+            pushSentinelResonance();
+        }
+
+        SinglePhi_fitValid->push_back(fitValid ? 1 : 0);
+        SinglePhi_fitPass->push_back(fitPass ? 1 : 0);
+        SinglePhi_prefitMass->push_back(p4Phi.M());
+        SinglePhi_prefitPt->push_back(p4Phi.Pt());
+        SinglePhi_prefitEta->push_back(p4Phi.Eta());
+        SinglePhi_prefitPhi->push_back(p4Phi.Phi());
+        SinglePhi_K1_nonMuonTrackIdx->push_back(static_cast<int>(iK1));
+        SinglePhi_K2_nonMuonTrackIdx->push_back(static_cast<int>(iK2));
+        SinglePhi_K1_charge->push_back(k1.charge());
+        SinglePhi_K2_charge->push_back(k2.charge());
+        SinglePhi_K1_pt->push_back(k1.pt());
+        SinglePhi_K1_eta->push_back(k1.eta());
+        SinglePhi_K1_phi->push_back(k1.phi());
+        SinglePhi_K2_pt->push_back(k2.pt());
+        SinglePhi_K2_eta->push_back(k2.eta());
+        SinglePhi_K2_phi->push_back(k2.phi());
+
+        const auto k1Diag = buildPhiKaonDiagnostics(k1, thePrimaryV_, genParticles);
+        const auto k2Diag = buildPhiKaonDiagnostics(k2, thePrimaryV_, genParticles);
+        const auto phiDiag = buildPhiVertexDiagnostics(fitPass, k1Diag, k2Diag);
+
+        SinglePhi_K1_fromPV->push_back(k1Diag.fromPV);
+        SinglePhi_K2_fromPV->push_back(k2Diag.fromPV);
+        SinglePhi_K1_pvAssocQuality->push_back(k1Diag.pvAssocQuality);
+        SinglePhi_K2_pvAssocQuality->push_back(k2Diag.pvAssocQuality);
+        SinglePhi_K1_vertexId->push_back(k1Diag.vertexId);
+        SinglePhi_K2_vertexId->push_back(k2Diag.vertexId);
+        SinglePhi_K1_passDzPV->push_back(k1Diag.passDzPV ? 1 : 0);
+        SinglePhi_K2_passDzPV->push_back(k2Diag.passDzPV ? 1 : 0);
+        SinglePhi_K1_passDxyPV->push_back(k1Diag.passDxyPV ? 1 : 0);
+        SinglePhi_K2_passDxyPV->push_back(k2Diag.passDxyPV ? 1 : 0);
+        SinglePhi_K1_passTrackPV->push_back(k1Diag.passTrackPV ? 1 : 0);
+        SinglePhi_K2_passTrackPV->push_back(k2Diag.passTrackPV ? 1 : 0);
+        SinglePhi_K1_dzPV->push_back(k1Diag.dzPV);
+        SinglePhi_K2_dzPV->push_back(k2Diag.dzPV);
+        SinglePhi_K1_dxyPV->push_back(k1Diag.dxyPV);
+        SinglePhi_K2_dxyPV->push_back(k2Diag.dxyPV);
+        SinglePhi_K1_genMatchIdx->push_back(k1Diag.genMatchIdx);
+        SinglePhi_K2_genMatchIdx->push_back(k2Diag.genMatchIdx);
+        SinglePhi_K1_genMatchSource->push_back(k1Diag.genMatchSource);
+        SinglePhi_K2_genMatchSource->push_back(k2Diag.genMatchSource);
+        SinglePhi_K1_genMatchChi2->push_back(k1Diag.genMatchChi2);
+        SinglePhi_K2_genMatchChi2->push_back(k2Diag.genMatchChi2);
+        SinglePhi_commonAssocPVPass->push_back(phiDiag.commonAssocPVPass ? 1 : 0);
+        SinglePhi_commonAssocPVIdx->push_back(phiDiag.commonAssocPVIdx);
+        SinglePhi_trackPVPass->push_back(phiDiag.trackPVPass ? 1 : 0);
+        SinglePhi_vertexCriteriaPass->push_back(phiDiag.vertexCriteriaPass ? 1 : 0);
+        SinglePhi_maxAbsDzPV->push_back(phiDiag.maxAbsDzPV);
+        SinglePhi_maxAbsDxyPV->push_back(phiDiag.maxAbsDxyPV);
+
+        ++nSinglePhiCand;
+    }
+}
+
+std::pair<int, float> MultiLepPAT::matchRecoMuonToStoredGenMuon(
+    unsigned int muIdx,
+    const edm::Handle<reco::GenParticleCollection>& genParticles,
+    bool requireJpsiMother) const
+{
+    if (!thePATMuonHandle_.isValid() || muIdx >= thePATMuonHandle_->size() ||
+        !genParticles.isValid()) {
+        return {-1, -1.f};
+    }
+
+    const auto& mu = thePATMuonHandle_->at(muIdx);
+    double bestChi2 = recoGenMuonMatchChi2Max_;
+    int bestStoredIdx = -1;
+
+    for (size_t genIdx = 0; genIdx < genParticles->size(); ++genIdx) {
+        const auto& gen = genParticles->at(genIdx);
+        if (std::abs(gen.pdgId()) != 13 || gen.status() != 1) {
+            continue;
+        }
+        if (gen.charge() != 0 && gen.charge() != mu.charge()) {
+            continue;
+        }
+        if (requireJpsiMother &&
+            (gen.numberOfMothers() == 0 || gen.mother(0) == nullptr ||
+             std::abs(gen.mother(0)->pdgId()) != 443)) {
+            continue;
+        }
+
+        const auto storedIt = handleToNtupleIndex_.find(genIdx);
+        if (storedIt == handleToNtupleIndex_.end()) {
+            continue;
+        }
+
+        const double chi2 = recoGenMuonChi2(mu, gen);
+        if (!std::isfinite(chi2) || chi2 >= bestChi2) {
+            continue;
+        }
+
+        bestChi2 = chi2;
+        bestStoredIdx = storedIt->second;
+    }
+
+    if (bestStoredIdx < 0) {
+        return {-1, -1.f};
+    }
+
+    return {bestStoredIdx, static_cast<float>(bestChi2)};
 }
 
 /*****************************************************************************
@@ -2263,6 +2669,18 @@ void MultiLepPAT::doMCGenMatching(
  *****************************************************************************/
 void MultiLepPAT::clearEventData()
 {
+    genWeight = 1.0f;
+    nGenWeights = 0;
+    if (genWeights) {
+        genWeights->clear();
+    }
+    lheOriginalXWGTUP = 1.0f;
+    lheXWGTUP = 1.0f;
+    nLHEWeights = 0;
+    if (lheWeights) {
+        lheWeights->clear();
+    }
+
     // MC gen-level (new)
     if (doMC) {
         MC_GenPart_pdgId->clear(); MC_GenPart_status->clear();
@@ -2394,6 +2812,51 @@ void MultiLepPAT::clearEventData()
     Phi_K_2_dzPV->clear(); Phi_K_2_dxyPV->clear();
     Phi_K_2_dzAssocPV->clear(); Phi_K_2_dxyAssocPV->clear();
     Phi_K_2_genMatchIdx->clear(); Phi_K_2_genMatchSource->clear(); Phi_K_2_genMatchChi2->clear();
+
+
+    nSingleJpsiCand = 0;
+    SingleJpsi_mass->clear(); SingleJpsi_massErr->clear(); SingleJpsi_massDiff->clear();
+    SingleJpsi_ctau->clear(); SingleJpsi_ctauErr->clear();
+    SingleJpsi_Chi2->clear(); SingleJpsi_ndof->clear(); SingleJpsi_VtxProb->clear();
+    SingleJpsi_px->clear(); SingleJpsi_py->clear(); SingleJpsi_pz->clear();
+    SingleJpsi_phi->clear(); SingleJpsi_eta->clear(); SingleJpsi_pt->clear();
+    SingleJpsi_pxErr->clear(); SingleJpsi_pyErr->clear(); SingleJpsi_pzErr->clear(); SingleJpsi_ptErr->clear();
+    SingleJpsi_fitValid->clear(); SingleJpsi_fitPass->clear();
+    SingleJpsi_prefitMass->clear(); SingleJpsi_prefitPt->clear();
+    SingleJpsi_prefitEta->clear(); SingleJpsi_prefitPhi->clear();
+    SingleJpsi_mu1_Idx->clear(); SingleJpsi_mu2_Idx->clear();
+    SingleJpsi_mu1_charge->clear(); SingleJpsi_mu2_charge->clear();
+    SingleJpsi_mu1_genMatchIdx->clear(); SingleJpsi_mu2_genMatchIdx->clear();
+    SingleJpsi_mu1_genMatchChi2->clear(); SingleJpsi_mu2_genMatchChi2->clear();
+
+    nSinglePhiCand = 0;
+    SinglePhi_mass->clear(); SinglePhi_massErr->clear(); SinglePhi_massDiff->clear();
+    SinglePhi_ctau->clear(); SinglePhi_ctauErr->clear();
+    SinglePhi_Chi2->clear(); SinglePhi_ndof->clear(); SinglePhi_VtxProb->clear();
+    SinglePhi_px->clear(); SinglePhi_py->clear(); SinglePhi_pz->clear();
+    SinglePhi_phi->clear(); SinglePhi_eta->clear(); SinglePhi_pt->clear();
+    SinglePhi_pxErr->clear(); SinglePhi_pyErr->clear(); SinglePhi_pzErr->clear(); SinglePhi_ptErr->clear();
+    SinglePhi_fitValid->clear(); SinglePhi_fitPass->clear();
+    SinglePhi_prefitMass->clear(); SinglePhi_prefitPt->clear();
+    SinglePhi_prefitEta->clear(); SinglePhi_prefitPhi->clear();
+    SinglePhi_K1_nonMuonTrackIdx->clear(); SinglePhi_K2_nonMuonTrackIdx->clear();
+    SinglePhi_K1_charge->clear(); SinglePhi_K2_charge->clear();
+    SinglePhi_K1_pt->clear(); SinglePhi_K1_eta->clear(); SinglePhi_K1_phi->clear();
+    SinglePhi_K2_pt->clear(); SinglePhi_K2_eta->clear(); SinglePhi_K2_phi->clear();
+    SinglePhi_K1_fromPV->clear(); SinglePhi_K2_fromPV->clear();
+    SinglePhi_K1_pvAssocQuality->clear(); SinglePhi_K2_pvAssocQuality->clear();
+    SinglePhi_K1_vertexId->clear(); SinglePhi_K2_vertexId->clear();
+    SinglePhi_K1_passDzPV->clear(); SinglePhi_K2_passDzPV->clear();
+    SinglePhi_K1_passDxyPV->clear(); SinglePhi_K2_passDxyPV->clear();
+    SinglePhi_K1_passTrackPV->clear(); SinglePhi_K2_passTrackPV->clear();
+    SinglePhi_K1_dzPV->clear(); SinglePhi_K2_dzPV->clear();
+    SinglePhi_K1_dxyPV->clear(); SinglePhi_K2_dxyPV->clear();
+    SinglePhi_K1_genMatchIdx->clear(); SinglePhi_K2_genMatchIdx->clear();
+    SinglePhi_K1_genMatchSource->clear(); SinglePhi_K2_genMatchSource->clear();
+    SinglePhi_K1_genMatchChi2->clear(); SinglePhi_K2_genMatchChi2->clear();
+    SinglePhi_commonAssocPVPass->clear(); SinglePhi_commonAssocPVIdx->clear();
+    SinglePhi_trackPVPass->clear(); SinglePhi_vertexCriteriaPass->clear();
+    SinglePhi_maxAbsDzPV->clear(); SinglePhi_maxAbsDxyPV->clear();
 
     // Upsilon branches
     Ups_mu_1_Idx->clear(); Ups_mu_2_Idx->clear();
@@ -3014,11 +3477,21 @@ void MultiLepPAT::beginJob()
     X_Config_Tree_->Branch("RequireAcceptedCandidatesForMonteCarloTree",
                            &requireAcceptedCandidatesForMonteCarloTree_,
                            "RequireAcceptedCandidatesForMonteCarloTree/O");
+    X_Config_Tree_->Branch("KeepAllSingleObjectCandsInMC",
+                           &keepAllSingleObjectCandsInMC_,
+                           "KeepAllSingleObjectCandsInMC/O");
+    X_Config_Tree_->Branch("SkipCompositeCandBuildingWhenKeepingSingles",
+                           &skipCompositeCandBuildingWhenKeepingSingles_,
+                           "SkipCompositeCandBuildingWhenKeepingSingles/O");
     X_Config_Tree_->Branch("DoJPsiMassConstraint", &doJPsiMassCost, "DoJPsiMassConstraint/O");
     X_Config_Tree_->Branch("Debug_Output", &Debug_, "Debug_Output/O");
     X_Config_Tree_->Branch("DebugMask", &debugMask_, "DebugMask/i");
     X_Config_Tree_->Branch("HLTriggerResults", &configHLTriggerResultsTag_);
     X_Config_Tree_->Branch("inputGEN", &configInputGENTag_);
+    X_Config_Tree_->Branch("GenEventInfo", &configGenInfoTag_);
+    X_Config_Tree_->Branch("LHEEventInfo", &configLHEEventTag_);
+    X_Config_Tree_->Branch("ReadLHEWeights", &readLHEWeights_, "ReadLHEWeights/O");
+    X_Config_Tree_->Branch("DebugGeneratorWeights", &debugGeneratorWeights_, "DebugGeneratorWeights/O");
     X_Config_Tree_->Branch("MuonLabel", &configMuonLabelTag_);
     X_Config_Tree_->Branch("TrackLabel", &configTrackLabelTag_);
     X_Config_Tree_->Branch("MuonSelection", &muonSelectionStr_);
@@ -3075,6 +3548,15 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("runNum", &runNum, "runNum/i");
     X_One_Tree_->Branch("lumiNum", &lumiNum, "lumiNum/i");
     X_One_Tree_->Branch("nGoodPrimVtx", &nGoodPrimVtx, "nGoodPrimVtx/i");
+    genWeights = new vector<float>();
+    lheWeights = new vector<float>();
+    X_One_Tree_->Branch("genWeight", &genWeight, "genWeight/F");
+    X_One_Tree_->Branch("nGenWeights", &nGenWeights, "nGenWeights/I");
+    X_One_Tree_->Branch("genWeights", &genWeights);
+    X_One_Tree_->Branch("lheOriginalXWGTUP", &lheOriginalXWGTUP, "lheOriginalXWGTUP/F");
+    X_One_Tree_->Branch("lheXWGTUP", &lheXWGTUP, "lheXWGTUP/F");
+    X_One_Tree_->Branch("nLHEWeights", &nLHEWeights, "nLHEWeights/I");
+    X_One_Tree_->Branch("lheWeights", &lheWeights);
 
     X_One_Tree_->Branch("priVtxX", &priVtxX, "priVtxX/f");
     X_One_Tree_->Branch("priVtxY", &priVtxY, "priVtxY/f");
@@ -3216,6 +3698,8 @@ void MultiLepPAT::beginJob()
     Jpsi_2_massDiff = new vector<float>();
     Phi_massDiff    = new vector<float>();
     Ups_massDiff    = new vector<float>();
+    SingleJpsi_massDiff = new vector<float>();
+    SinglePhi_massDiff = new vector<float>();
 
     branchReso("Jpsi_1", Jpsi_1_mass, Jpsi_1_massErr, Jpsi_1_massDiff,
                Jpsi_1_ctau, Jpsi_1_ctauErr, Jpsi_1_Chi2, Jpsi_1_ndof, Jpsi_1_VtxProb,
@@ -3244,6 +3728,81 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("Phi_maxAbsDxyPV", &Phi_maxAbsDxyPV);
     X_One_Tree_->Branch("Phi_K_1_Idx", &Phi_K_1_Idx);
     X_One_Tree_->Branch("Phi_K_2_Idx", &Phi_K_2_Idx);
+
+
+    X_One_Tree_->Branch("nSingleJpsiCand", &nSingleJpsiCand, "nSingleJpsiCand/I");
+    branchReso("SingleJpsi", SingleJpsi_mass, SingleJpsi_massErr, SingleJpsi_massDiff,
+               SingleJpsi_ctau, SingleJpsi_ctauErr,
+               SingleJpsi_Chi2, SingleJpsi_ndof, SingleJpsi_VtxProb,
+               SingleJpsi_px, SingleJpsi_py, SingleJpsi_pz,
+               SingleJpsi_phi, SingleJpsi_eta, SingleJpsi_pt,
+               SingleJpsi_pxErr, SingleJpsi_pyErr, SingleJpsi_pzErr, SingleJpsi_ptErr);
+    X_One_Tree_->Branch("SingleJpsi_fitValid", &SingleJpsi_fitValid);
+    X_One_Tree_->Branch("SingleJpsi_fitPass", &SingleJpsi_fitPass);
+    X_One_Tree_->Branch("SingleJpsi_prefitMass", &SingleJpsi_prefitMass);
+    X_One_Tree_->Branch("SingleJpsi_prefitPt", &SingleJpsi_prefitPt);
+    X_One_Tree_->Branch("SingleJpsi_prefitEta", &SingleJpsi_prefitEta);
+    X_One_Tree_->Branch("SingleJpsi_prefitPhi", &SingleJpsi_prefitPhi);
+    X_One_Tree_->Branch("SingleJpsi_mu1_Idx", &SingleJpsi_mu1_Idx);
+    X_One_Tree_->Branch("SingleJpsi_mu2_Idx", &SingleJpsi_mu2_Idx);
+    X_One_Tree_->Branch("SingleJpsi_mu1_charge", &SingleJpsi_mu1_charge);
+    X_One_Tree_->Branch("SingleJpsi_mu2_charge", &SingleJpsi_mu2_charge);
+    X_One_Tree_->Branch("SingleJpsi_mu1_genMatchIdx", &SingleJpsi_mu1_genMatchIdx);
+    X_One_Tree_->Branch("SingleJpsi_mu2_genMatchIdx", &SingleJpsi_mu2_genMatchIdx);
+    X_One_Tree_->Branch("SingleJpsi_mu1_genMatchChi2", &SingleJpsi_mu1_genMatchChi2);
+    X_One_Tree_->Branch("SingleJpsi_mu2_genMatchChi2", &SingleJpsi_mu2_genMatchChi2);
+
+    X_One_Tree_->Branch("nSinglePhiCand", &nSinglePhiCand, "nSinglePhiCand/I");
+    branchReso("SinglePhi", SinglePhi_mass, SinglePhi_massErr, SinglePhi_massDiff,
+               SinglePhi_ctau, SinglePhi_ctauErr,
+               SinglePhi_Chi2, SinglePhi_ndof, SinglePhi_VtxProb,
+               SinglePhi_px, SinglePhi_py, SinglePhi_pz,
+               SinglePhi_phi, SinglePhi_eta, SinglePhi_pt,
+               SinglePhi_pxErr, SinglePhi_pyErr, SinglePhi_pzErr, SinglePhi_ptErr);
+    X_One_Tree_->Branch("SinglePhi_fitValid", &SinglePhi_fitValid);
+    X_One_Tree_->Branch("SinglePhi_fitPass", &SinglePhi_fitPass);
+    X_One_Tree_->Branch("SinglePhi_prefitMass", &SinglePhi_prefitMass);
+    X_One_Tree_->Branch("SinglePhi_prefitPt", &SinglePhi_prefitPt);
+    X_One_Tree_->Branch("SinglePhi_prefitEta", &SinglePhi_prefitEta);
+    X_One_Tree_->Branch("SinglePhi_prefitPhi", &SinglePhi_prefitPhi);
+    X_One_Tree_->Branch("SinglePhi_K1_nonMuonTrackIdx", &SinglePhi_K1_nonMuonTrackIdx);
+    X_One_Tree_->Branch("SinglePhi_K2_nonMuonTrackIdx", &SinglePhi_K2_nonMuonTrackIdx);
+    X_One_Tree_->Branch("SinglePhi_K1_charge", &SinglePhi_K1_charge);
+    X_One_Tree_->Branch("SinglePhi_K2_charge", &SinglePhi_K2_charge);
+    X_One_Tree_->Branch("SinglePhi_K1_pt", &SinglePhi_K1_pt);
+    X_One_Tree_->Branch("SinglePhi_K1_eta", &SinglePhi_K1_eta);
+    X_One_Tree_->Branch("SinglePhi_K1_phi", &SinglePhi_K1_phi);
+    X_One_Tree_->Branch("SinglePhi_K2_pt", &SinglePhi_K2_pt);
+    X_One_Tree_->Branch("SinglePhi_K2_eta", &SinglePhi_K2_eta);
+    X_One_Tree_->Branch("SinglePhi_K2_phi", &SinglePhi_K2_phi);
+    X_One_Tree_->Branch("SinglePhi_K1_fromPV", &SinglePhi_K1_fromPV);
+    X_One_Tree_->Branch("SinglePhi_K2_fromPV", &SinglePhi_K2_fromPV);
+    X_One_Tree_->Branch("SinglePhi_K1_pvAssocQuality", &SinglePhi_K1_pvAssocQuality);
+    X_One_Tree_->Branch("SinglePhi_K2_pvAssocQuality", &SinglePhi_K2_pvAssocQuality);
+    X_One_Tree_->Branch("SinglePhi_K1_vertexId", &SinglePhi_K1_vertexId);
+    X_One_Tree_->Branch("SinglePhi_K2_vertexId", &SinglePhi_K2_vertexId);
+    X_One_Tree_->Branch("SinglePhi_K1_passDzPV", &SinglePhi_K1_passDzPV);
+    X_One_Tree_->Branch("SinglePhi_K2_passDzPV", &SinglePhi_K2_passDzPV);
+    X_One_Tree_->Branch("SinglePhi_K1_passDxyPV", &SinglePhi_K1_passDxyPV);
+    X_One_Tree_->Branch("SinglePhi_K2_passDxyPV", &SinglePhi_K2_passDxyPV);
+    X_One_Tree_->Branch("SinglePhi_K1_passTrackPV", &SinglePhi_K1_passTrackPV);
+    X_One_Tree_->Branch("SinglePhi_K2_passTrackPV", &SinglePhi_K2_passTrackPV);
+    X_One_Tree_->Branch("SinglePhi_K1_dzPV", &SinglePhi_K1_dzPV);
+    X_One_Tree_->Branch("SinglePhi_K2_dzPV", &SinglePhi_K2_dzPV);
+    X_One_Tree_->Branch("SinglePhi_K1_dxyPV", &SinglePhi_K1_dxyPV);
+    X_One_Tree_->Branch("SinglePhi_K2_dxyPV", &SinglePhi_K2_dxyPV);
+    X_One_Tree_->Branch("SinglePhi_K1_genMatchIdx", &SinglePhi_K1_genMatchIdx);
+    X_One_Tree_->Branch("SinglePhi_K2_genMatchIdx", &SinglePhi_K2_genMatchIdx);
+    X_One_Tree_->Branch("SinglePhi_K1_genMatchSource", &SinglePhi_K1_genMatchSource);
+    X_One_Tree_->Branch("SinglePhi_K2_genMatchSource", &SinglePhi_K2_genMatchSource);
+    X_One_Tree_->Branch("SinglePhi_K1_genMatchChi2", &SinglePhi_K1_genMatchChi2);
+    X_One_Tree_->Branch("SinglePhi_K2_genMatchChi2", &SinglePhi_K2_genMatchChi2);
+    X_One_Tree_->Branch("SinglePhi_commonAssocPVPass", &SinglePhi_commonAssocPVPass);
+    X_One_Tree_->Branch("SinglePhi_commonAssocPVIdx", &SinglePhi_commonAssocPVIdx);
+    X_One_Tree_->Branch("SinglePhi_trackPVPass", &SinglePhi_trackPVPass);
+    X_One_Tree_->Branch("SinglePhi_vertexCriteriaPass", &SinglePhi_vertexCriteriaPass);
+    X_One_Tree_->Branch("SinglePhi_maxAbsDzPV", &SinglePhi_maxAbsDzPV);
+    X_One_Tree_->Branch("SinglePhi_maxAbsDxyPV", &SinglePhi_maxAbsDxyPV);
 
     vector<float>* nullDiff = nullptr;
     branchReso("Pri", Pri_mass, Pri_massErr, nullDiff,

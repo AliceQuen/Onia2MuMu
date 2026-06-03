@@ -74,7 +74,9 @@
 
 #include "CommonTools/Utils/interface/StringCutObjectSelector.h"
 
+#include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 #include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
+#include "SimDataFormats/GeneratorProducts/interface/LHEEventProduct.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
 #include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
@@ -275,6 +277,7 @@ private:
     // ======================== Modularized analysis steps ========================
     // Step 1: Process MC gen-level truth
     void processMCGenInfo(const edm::Event& iEvent);
+    void processGeneratorWeights(const edm::Event& iEvent);
     // Step 2: Process HLT trigger info
     void processHLTInfo(const edm::Event& iEvent);
     // Step 3: Reconstruct primary vertex
@@ -292,6 +295,15 @@ private:
     // Step 7: Combine resonances and fill final candidate branches
     void combineCandidates(const reco::Vertex& beamSpotV,
                            const edm::Handle<reco::GenParticleCollection>& genParticles);
+    void storeAllSingleObjectCandidatesForMC(
+        const reco::Vertex& beamSpotV,
+        const edm::Handle<reco::GenParticleCollection>& genParticles);
+    void storeSingleJpsiCandidatesForMC(
+        const reco::Vertex& beamSpotV,
+        const edm::Handle<reco::GenParticleCollection>& genParticles);
+    void storeSinglePhiCandidatesForMC(
+        const reco::Vertex& beamSpotV,
+        const edm::Handle<reco::GenParticleCollection>& genParticles);
     // Step 8: MC gen-level matching for efficiency studies
     void doMCGenMatching(const edm::Handle<edm::View<pat::Muon>>& muonHandle,
                          const edm::Handle<edm::View<pat::PackedCandidate>>& trackHandle);
@@ -431,6 +443,10 @@ private:
         vector<float>* br_phi, vector<float>* br_eta, vector<float>* br_pt,
         vector<float>* br_pxErr, vector<float>* br_pyErr, vector<float>* br_pzErr,
         vector<float>* br_ptErr);
+    std::pair<int, float> matchRecoMuonToStoredGenMuon(
+        unsigned int muIdx,
+        const edm::Handle<reco::GenParticleCollection>& genParticles,
+        bool requireJpsiMother) const;
 
     // Store sentinel values for failed 3-body vertex fit
     void storeSentinelPri();
@@ -443,6 +459,8 @@ private:
     edm::EDGetTokenT<edm::TriggerResults>             gttriggerToken_;
     edm::EDGetTokenT<edm::View<pat::PackedCandidate>> trackToken_;
     edm::EDGetTokenT<reco::GenParticleCollection>     genParticlesToken_;
+    edm::EDGetTokenT<GenEventInfoProduct>             genInfoToken_;
+    edm::EDGetTokenT<LHEEventProduct>                 lheEventToken_;
 
     // ======================== Config parameters ========================
     
@@ -451,14 +469,20 @@ private:
     InputTag inputGEN_;
     InputTag muonLabel_;
     InputTag trackLabel_;
+    InputTag genInfoTag_;
+    InputTag lheEventTag_;
     edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magneticFieldToken_;
     edm::ESGetToken<TransientTrackBuilder, TransientTrackRecord> theTTBuilderToken_;
     
     bool    doMC;
     bool    requireAcceptedCandidatesForMonteCarloTree_;
+    bool    keepAllSingleObjectCandsInMC_;
+    bool    skipCompositeCandBuildingWhenKeepingSingles_;
     bool    doJPsiMassCost;
     bool    Debug_;
+    bool    debugGeneratorWeights_;
     unsigned int debugMask_;
+    bool    readLHEWeights_;
     
     // -- Analysis mode: "JpsiJpsiPhi", "JpsiJpsiUps", "JpsiUpsPhi" --
     std::string analysisModeName_;
@@ -590,10 +614,19 @@ private:
     std::string configInputGENTag_;
     std::string configMuonLabelTag_;
     std::string configTrackLabelTag_;
+    std::string configGenInfoTag_;
+    std::string configLHEEventTag_;
     
     // -- Event info --
     unsigned int runNum, evtNum, lumiNum;
     unsigned int nGoodPrimVtx;
+    float genWeight;
+    int nGenWeights;
+    vector<float>* genWeights;
+    float lheOriginalXWGTUP;
+    float lheXWGTUP;
+    int nLHEWeights;
+    vector<float>* lheWeights;
     
     vector<unsigned int>* trigRes;
     vector<std::string>*  trigNames;
@@ -707,6 +740,53 @@ private:
     vector<float> *Phi_pxErr, *Phi_pyErr, *Phi_pzErr, *Phi_ptErr;
     vector<int>   *Phi_fitPass, *Phi_commonAssocPVPass, *Phi_commonAssocPVIdx, *Phi_trackPVPass, *Phi_vertexCriteriaPass;
     vector<float> *Phi_maxAbsDzPV, *Phi_maxAbsDxyPV;
+
+    // -- Single-object candidates for MC efficiency studies --
+    int nSingleJpsiCand = 0;
+    vector<float> *SingleJpsi_mass = nullptr, *SingleJpsi_massErr = nullptr, *SingleJpsi_massDiff = nullptr;
+    vector<float> *SingleJpsi_ctau = nullptr, *SingleJpsi_ctauErr = nullptr;
+    vector<float> *SingleJpsi_Chi2 = nullptr, *SingleJpsi_ndof = nullptr, *SingleJpsi_VtxProb = nullptr;
+    vector<float> *SingleJpsi_px = nullptr, *SingleJpsi_py = nullptr, *SingleJpsi_pz = nullptr;
+    vector<float> *SingleJpsi_phi = nullptr, *SingleJpsi_eta = nullptr, *SingleJpsi_pt = nullptr;
+    vector<float> *SingleJpsi_pxErr = nullptr, *SingleJpsi_pyErr = nullptr;
+    vector<float> *SingleJpsi_pzErr = nullptr, *SingleJpsi_ptErr = nullptr;
+    vector<int>   *SingleJpsi_fitValid = nullptr, *SingleJpsi_fitPass = nullptr;
+    vector<float> *SingleJpsi_prefitMass = nullptr, *SingleJpsi_prefitPt = nullptr;
+    vector<float> *SingleJpsi_prefitEta = nullptr, *SingleJpsi_prefitPhi = nullptr;
+    vector<int>   *SingleJpsi_mu1_Idx = nullptr, *SingleJpsi_mu2_Idx = nullptr;
+    vector<int>   *SingleJpsi_mu1_charge = nullptr, *SingleJpsi_mu2_charge = nullptr;
+    vector<int>   *SingleJpsi_mu1_genMatchIdx = nullptr, *SingleJpsi_mu2_genMatchIdx = nullptr;
+    vector<float> *SingleJpsi_mu1_genMatchChi2 = nullptr, *SingleJpsi_mu2_genMatchChi2 = nullptr;
+
+    int nSinglePhiCand = 0;
+    vector<float> *SinglePhi_mass = nullptr, *SinglePhi_massErr = nullptr, *SinglePhi_massDiff = nullptr;
+    vector<float> *SinglePhi_ctau = nullptr, *SinglePhi_ctauErr = nullptr;
+    vector<float> *SinglePhi_Chi2 = nullptr, *SinglePhi_ndof = nullptr, *SinglePhi_VtxProb = nullptr;
+    vector<float> *SinglePhi_px = nullptr, *SinglePhi_py = nullptr, *SinglePhi_pz = nullptr;
+    vector<float> *SinglePhi_phi = nullptr, *SinglePhi_eta = nullptr, *SinglePhi_pt = nullptr;
+    vector<float> *SinglePhi_pxErr = nullptr, *SinglePhi_pyErr = nullptr;
+    vector<float> *SinglePhi_pzErr = nullptr, *SinglePhi_ptErr = nullptr;
+    vector<int>   *SinglePhi_fitValid = nullptr, *SinglePhi_fitPass = nullptr;
+    vector<float> *SinglePhi_prefitMass = nullptr, *SinglePhi_prefitPt = nullptr;
+    vector<float> *SinglePhi_prefitEta = nullptr, *SinglePhi_prefitPhi = nullptr;
+    vector<int>   *SinglePhi_K1_nonMuonTrackIdx = nullptr, *SinglePhi_K2_nonMuonTrackIdx = nullptr;
+    vector<int>   *SinglePhi_K1_charge = nullptr, *SinglePhi_K2_charge = nullptr;
+    vector<float> *SinglePhi_K1_pt = nullptr, *SinglePhi_K1_eta = nullptr, *SinglePhi_K1_phi = nullptr;
+    vector<float> *SinglePhi_K2_pt = nullptr, *SinglePhi_K2_eta = nullptr, *SinglePhi_K2_phi = nullptr;
+    vector<int>   *SinglePhi_K1_fromPV = nullptr, *SinglePhi_K2_fromPV = nullptr;
+    vector<int>   *SinglePhi_K1_pvAssocQuality = nullptr, *SinglePhi_K2_pvAssocQuality = nullptr;
+    vector<int>   *SinglePhi_K1_vertexId = nullptr, *SinglePhi_K2_vertexId = nullptr;
+    vector<int>   *SinglePhi_K1_passDzPV = nullptr, *SinglePhi_K2_passDzPV = nullptr;
+    vector<int>   *SinglePhi_K1_passDxyPV = nullptr, *SinglePhi_K2_passDxyPV = nullptr;
+    vector<int>   *SinglePhi_K1_passTrackPV = nullptr, *SinglePhi_K2_passTrackPV = nullptr;
+    vector<float> *SinglePhi_K1_dzPV = nullptr, *SinglePhi_K2_dzPV = nullptr;
+    vector<float> *SinglePhi_K1_dxyPV = nullptr, *SinglePhi_K2_dxyPV = nullptr;
+    vector<int>   *SinglePhi_K1_genMatchIdx = nullptr, *SinglePhi_K2_genMatchIdx = nullptr;
+    vector<int>   *SinglePhi_K1_genMatchSource = nullptr, *SinglePhi_K2_genMatchSource = nullptr;
+    vector<float> *SinglePhi_K1_genMatchChi2 = nullptr, *SinglePhi_K2_genMatchChi2 = nullptr;
+    vector<int>   *SinglePhi_commonAssocPVPass = nullptr, *SinglePhi_commonAssocPVIdx = nullptr;
+    vector<int>   *SinglePhi_trackPVPass = nullptr, *SinglePhi_vertexCriteriaPass = nullptr;
+    vector<float> *SinglePhi_maxAbsDzPV = nullptr, *SinglePhi_maxAbsDxyPV = nullptr;
     
     // -- Primary (combined) vertex --
     vector<float> *Pri_mass, *Pri_massErr;
