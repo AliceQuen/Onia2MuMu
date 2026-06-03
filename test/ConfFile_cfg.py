@@ -287,6 +287,10 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     GenEventInfo = cms.untracked.InputTag("generator"),
     ReadLHEWeights = cms.untracked.bool(False),
     LHEEventInfo = cms.untracked.InputTag("externalLHEProducer"),
+    LHEEventInfoFallbacks = cms.untracked.VInputTag(
+        cms.InputTag("source"),
+        cms.InputTag("generator"),
+    ),
     DebugGeneratorWeights = cms.untracked.bool(False),
 
     # ====== Analysis mode ======

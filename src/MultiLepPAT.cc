@@ -38,6 +38,7 @@
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
+#include "FWCore/Framework/interface/Run.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Common/interface/TriggerNames.h"
@@ -238,6 +239,9 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
           "GenEventInfo", edm::InputTag("generator"))),
       lheEventTag_(iConfig.getUntrackedParameter<edm::InputTag>(
           "LHEEventInfo", edm::InputTag("externalLHEProducer"))),
+      lheEventFallbackTags_(iConfig.getUntrackedParameter<std::vector<edm::InputTag>>(
+          "LHEEventInfoFallbacks",
+          std::vector<edm::InputTag>{edm::InputTag("source"), edm::InputTag("generator")})),
       magneticFieldToken_(esConsumes<MagneticField, IdealMagneticFieldRecord>()),
       theTTBuilderToken_(esConsumes<TransientTrackBuilder, TransientTrackRecord>(
           edm::ESInputTag("", "TransientTrackBuilder"))),
@@ -342,15 +346,26 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       currentEvent_(0),
       X_One_Tree_(nullptr),
       X_Config_Tree_(nullptr),
+      X_LHERunInfo_Tree_(nullptr),
       configHLTriggerResultsTag_(),
       configInputGENTag_(),
       configMuonLabelTag_(),
       configTrackLabelTag_(),
       configGenInfoTag_(),
       configLHEEventTag_(),
+      configLHEEventFallbackTags_(),
+      configLHEEventFallbackTagsText_(),
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
-      genWeight(1.0f), nGenWeights(0), genWeights(nullptr),
-      lheOriginalXWGTUP(1.0f), lheXWGTUP(1.0f), nLHEWeights(0), lheWeights(nullptr),
+      genWeight(1.0f), genWeightAbs(1.0f), genWeightSign(1), genWeightProduct(1.0f),
+      genQScale(-1.0f), genAlphaQCD(-1.0f), genAlphaQED(-1.0f), genSignalProcessID(0),
+      genHasPDF(0), genPdfId1(0), genPdfId2(0), genPdfX1(-1.0f), genPdfX2(-1.0f),
+      genPdfXPDF1(-1.0f), genPdfXPDF2(-1.0f), genPdfScalePDF(-1.0f),
+      genNMEPartons(-1), genNMEPartonsFiltered(-1),
+      nGenWeights(0), genWeights(nullptr), genBinningValues(nullptr),
+      lheOriginalXWGTUP(1.0f), lheXWGTUP(1.0f), nLHEWeights(0),
+      lheWeightNormalizationValid(false), lheEventInfoUsed(),
+      lheWeightIDs(nullptr), lheWeights(nullptr), lheWeightsRelative(nullptr),
+      lheRunNum(0), lheRunInfoTag(), lheHeaderTags(nullptr), lheHeaderLines(nullptr),
       trigRes(nullptr), trigNames(nullptr), L1TT(nullptr), MatchJpsiTrigNames(nullptr), MatchUpsTrigNames(nullptr),
       priVtxX(0), priVtxY(0), priVtxZ(0), priVtxXE(0), priVtxYE(0), priVtxZE(0),
       priVtxChiNorm(0), priVtxChi(0), priVtxCL(0),
@@ -512,6 +527,14 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     configTrackLabelTag_ = trackLabel_.encode();
     configGenInfoTag_ = genInfoTag_.encode();
     configLHEEventTag_ = lheEventTag_.encode();
+    for (const auto& tag : lheEventFallbackTags_) {
+        const std::string encoded = tag.encode();
+        configLHEEventFallbackTags_.push_back(encoded);
+        if (!configLHEEventFallbackTagsText_.empty()) {
+            configLHEEventFallbackTagsText_ += ",";
+        }
+        configLHEEventFallbackTagsText_ += encoded;
+    }
     
     // EDM tokens
     gtRecordToken_     = consumes<L1GlobalTriggerReadoutRecord>(edm::InputTag("gtDigis"));
@@ -523,7 +546,21 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
     genParticlesToken_ = consumes<reco::GenParticleCollection>(inputGEN_);
     genInfoToken_      = consumes<GenEventInfoProduct>(genInfoTag_);
     if (readLHEWeights_) {
-        lheEventToken_ = consumes<LHEEventProduct>(lheEventTag_);
+        std::vector<std::string> consumedLHELabels;
+        const auto addLHEConsumes = [&](const edm::InputTag& tag) {
+            const std::string encoded = tag.encode();
+            if (std::find(consumedLHELabels.begin(), consumedLHELabels.end(), encoded) !=
+                consumedLHELabels.end()) {
+                return;
+            }
+            consumedLHELabels.push_back(encoded);
+            lheEventTokens_.push_back(consumes<LHEEventProduct>(tag));
+            lheRunInfoTokens_.push_back(consumes<LHERunInfoProduct, edm::InRun>(tag));
+        };
+        addLHEConsumes(lheEventTag_);
+        for (const auto& tag : lheEventFallbackTags_) {
+            addLHEConsumes(tag);
+        }
     }
 }
 
@@ -775,18 +812,63 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
 void MultiLepPAT::processGeneratorWeights(const edm::Event &iEvent)
 {
     genWeight = 1.0f;
+    genWeightAbs = 1.0f;
+    genWeightSign = 1;
+    genWeightProduct = 1.0f;
+    genQScale = -1.0f;
+    genAlphaQCD = -1.0f;
+    genAlphaQED = -1.0f;
+    genSignalProcessID = 0;
+    genHasPDF = 0;
+    genPdfId1 = 0;
+    genPdfId2 = 0;
+    genPdfX1 = -1.0f;
+    genPdfX2 = -1.0f;
+    genPdfXPDF1 = -1.0f;
+    genPdfXPDF2 = -1.0f;
+    genPdfScalePDF = -1.0f;
+    genNMEPartons = -1;
+    genNMEPartonsFiltered = -1;
     nGenWeights = 0;
     if (genWeights) {
         genWeights->clear();
     }
+    if (genBinningValues) {
+        genBinningValues->clear();
+    }
+
+    lheOriginalXWGTUP = 1.0f;
+    lheXWGTUP = 1.0f;
+    nLHEWeights = 0;
+    lheWeightNormalizationValid = false;
+    lheEventInfoUsed.clear();
+    if (lheWeightIDs) {
+        lheWeightIDs->clear();
+    }
+    if (lheWeights) {
+        lheWeights->clear();
+    }
+    if (lheWeightsRelative) {
+        lheWeightsRelative->clear();
+    }
+
+    if (!doMC) {
+        return;
+    }
 
     edm::Handle<GenEventInfoProduct> genInfo;
-    try {
-        iEvent.getByToken(genInfoToken_, genInfo);
-    } catch (...) {
-    }
+    iEvent.getByToken(genInfoToken_, genInfo);
     if (genInfo.isValid()) {
         genWeight = static_cast<float>(genInfo->weight());
+        genWeightAbs = std::abs(genWeight);
+        genWeightSign = (genWeight > 0.0f) - (genWeight < 0.0f);
+        genWeightProduct = static_cast<float>(genInfo->weightProduct());
+        genQScale = static_cast<float>(genInfo->qScale());
+        genAlphaQCD = static_cast<float>(genInfo->alphaQCD());
+        genAlphaQED = static_cast<float>(genInfo->alphaQED());
+        genSignalProcessID = genInfo->signalProcessID();
+        genNMEPartons = genInfo->nMEPartons();
+        genNMEPartonsFiltered = genInfo->nMEPartonsFiltered();
 
         const auto& weights = genInfo->weights();
         nGenWeights = static_cast<int>(weights.size());
@@ -796,31 +878,79 @@ void MultiLepPAT::processGeneratorWeights(const edm::Event &iEvent)
                 genWeights->push_back(static_cast<float>(weight));
             }
         }
-    }
 
-    lheOriginalXWGTUP = 1.0f;
-    lheXWGTUP = 1.0f;
-    nLHEWeights = 0;
-    if (lheWeights) {
-        lheWeights->clear();
+        const auto& binningValues = genInfo->binningValues();
+        if (genBinningValues) {
+            genBinningValues->reserve(binningValues.size());
+            for (double value : binningValues) {
+                genBinningValues->push_back(static_cast<float>(value));
+            }
+        }
+
+        if (genInfo->hasPDF()) {
+            const auto* pdf = genInfo->pdf();
+            genHasPDF = 1;
+            genPdfId1 = pdf->id.first;
+            genPdfId2 = pdf->id.second;
+            genPdfX1 = static_cast<float>(pdf->x.first);
+            genPdfX2 = static_cast<float>(pdf->x.second);
+            genPdfXPDF1 = static_cast<float>(pdf->xPDF.first);
+            genPdfXPDF2 = static_cast<float>(pdf->xPDF.second);
+            genPdfScalePDF = static_cast<float>(pdf->scalePDF);
+        }
     }
 
     if (readLHEWeights_) {
-        edm::Handle<LHEEventProduct> lhe;
-        try {
-            iEvent.getByToken(lheEventToken_, lhe);
-        } catch (...) {
+        std::vector<std::string> lheLabels;
+        const auto addLHELabel = [&](const std::string& label) {
+            if (std::find(lheLabels.begin(), lheLabels.end(), label) == lheLabels.end()) {
+                lheLabels.push_back(label);
+            }
+        };
+        addLHELabel(configLHEEventTag_);
+        for (const auto& label : configLHEEventFallbackTags_) {
+            addLHELabel(label);
         }
+
+        edm::Handle<LHEEventProduct> lhe;
+        for (size_t i = 0; i < lheEventTokens_.size(); ++i) {
+            iEvent.getByToken(lheEventTokens_[i], lhe);
+            if (lhe.isValid()) {
+                if (i < lheLabels.size()) {
+                    lheEventInfoUsed = lheLabels[i];
+                }
+                break;
+            }
+        }
+
         if (lhe.isValid()) {
             lheOriginalXWGTUP = static_cast<float>(lhe->originalXWGTUP());
             lheXWGTUP = static_cast<float>(lhe->hepeup().XWGTUP);
+            lheWeightNormalizationValid = (lheOriginalXWGTUP != 0.0f);
 
             const auto& weights = lhe->weights();
             nLHEWeights = static_cast<int>(weights.size());
+            if (lheWeightIDs) {
+                lheWeightIDs->reserve(weights.size());
+            }
             if (lheWeights) {
                 lheWeights->reserve(weights.size());
-                for (const auto& weight : weights) {
+            }
+            if (lheWeightsRelative) {
+                lheWeightsRelative->reserve(weights.size());
+            }
+            for (const auto& weight : weights) {
+                if (lheWeightIDs) {
+                    lheWeightIDs->push_back(weight.id);
+                }
+                if (lheWeights) {
                     lheWeights->push_back(static_cast<float>(weight.wgt));
+                }
+                if (lheWeightsRelative) {
+                    const float relativeWeight = lheWeightNormalizationValid
+                        ? static_cast<float>(weight.wgt / lhe->originalXWGTUP())
+                        : 0.0f;
+                    lheWeightsRelative->push_back(relativeWeight);
                 }
             }
         }
@@ -834,7 +964,8 @@ void MultiLepPAT::processGeneratorWeights(const edm::Event &iEvent)
                 << " genWeight=" << genWeight
                 << " nGenWeights=" << nGenWeights
                 << " lheOriginalXWGTUP=" << lheOriginalXWGTUP
-                << " nLHEWeights=" << nLHEWeights;
+                << " nLHEWeights=" << nLHEWeights
+                << " lheEventInfoUsed=" << lheEventInfoUsed;
             ++nDebugPrints;
         }
     }
@@ -2670,15 +2801,43 @@ void MultiLepPAT::doMCGenMatching(
 void MultiLepPAT::clearEventData()
 {
     genWeight = 1.0f;
+    genWeightAbs = 1.0f;
+    genWeightSign = 1;
+    genWeightProduct = 1.0f;
+    genQScale = -1.0f;
+    genAlphaQCD = -1.0f;
+    genAlphaQED = -1.0f;
+    genSignalProcessID = 0;
+    genHasPDF = 0;
+    genPdfId1 = 0;
+    genPdfId2 = 0;
+    genPdfX1 = -1.0f;
+    genPdfX2 = -1.0f;
+    genPdfXPDF1 = -1.0f;
+    genPdfXPDF2 = -1.0f;
+    genPdfScalePDF = -1.0f;
+    genNMEPartons = -1;
+    genNMEPartonsFiltered = -1;
     nGenWeights = 0;
     if (genWeights) {
         genWeights->clear();
     }
+    if (genBinningValues) {
+        genBinningValues->clear();
+    }
     lheOriginalXWGTUP = 1.0f;
     lheXWGTUP = 1.0f;
     nLHEWeights = 0;
+    lheWeightNormalizationValid = false;
+    lheEventInfoUsed.clear();
+    if (lheWeightIDs) {
+        lheWeightIDs->clear();
+    }
     if (lheWeights) {
         lheWeights->clear();
+    }
+    if (lheWeightsRelative) {
+        lheWeightsRelative->clear();
     }
 
     // MC gen-level (new)
@@ -3468,6 +3627,62 @@ void MultiLepPAT::printCompositeCandidateDebug(
 /*****************************************************************************
  * beginRun / beginJob / endJob
  *****************************************************************************/
+void MultiLepPAT::beginRun(const edm::Run &, const edm::EventSetup &)
+{
+}
+
+void MultiLepPAT::endRun(const edm::Run &iRun, const edm::EventSetup &)
+{
+    if (!readLHEWeights_ || X_LHERunInfo_Tree_ == nullptr ||
+        lheHeaderTags == nullptr || lheHeaderLines == nullptr) {
+        return;
+    }
+
+    std::vector<std::string> lheLabels;
+    const auto addLHELabel = [&](const std::string& label) {
+        if (std::find(lheLabels.begin(), lheLabels.end(), label) == lheLabels.end()) {
+            lheLabels.push_back(label);
+        }
+    };
+    addLHELabel(configLHEEventTag_);
+    for (const auto& label : configLHEEventFallbackTags_) {
+        addLHELabel(label);
+    }
+
+    edm::Handle<LHERunInfoProduct> lheRunInfo;
+    for (size_t i = 0; i < lheRunInfoTokens_.size(); ++i) {
+        iRun.getByToken(lheRunInfoTokens_[i], lheRunInfo);
+        if (lheRunInfo.isValid()) {
+            lheRunInfoTag = (i < lheLabels.size()) ? lheLabels[i] : std::string();
+            break;
+        }
+    }
+
+    if (!lheRunInfo.isValid()) {
+        return;
+    }
+
+    lheRunNum = iRun.id().run();
+    lheHeaderTags->clear();
+    lheHeaderLines->clear();
+
+    for (auto header = lheRunInfo->headers_begin();
+         header != lheRunInfo->headers_end(); ++header) {
+        const auto& lines = header->lines();
+        if (lines.empty()) {
+            lheHeaderTags->push_back(header->tag());
+            lheHeaderLines->push_back(std::string());
+            continue;
+        }
+        for (const auto& line : lines) {
+            lheHeaderTags->push_back(header->tag());
+            lheHeaderLines->push_back(line);
+        }
+    }
+
+    X_LHERunInfo_Tree_->Fill();
+}
+
 void MultiLepPAT::beginJob()
 {
     edm::Service<TFileService> fs;
@@ -3490,6 +3705,7 @@ void MultiLepPAT::beginJob()
     X_Config_Tree_->Branch("inputGEN", &configInputGENTag_);
     X_Config_Tree_->Branch("GenEventInfo", &configGenInfoTag_);
     X_Config_Tree_->Branch("LHEEventInfo", &configLHEEventTag_);
+    X_Config_Tree_->Branch("LHEEventInfoFallbacks", &configLHEEventFallbackTagsText_);
     X_Config_Tree_->Branch("ReadLHEWeights", &readLHEWeights_, "ReadLHEWeights/O");
     X_Config_Tree_->Branch("DebugGeneratorWeights", &debugGeneratorWeights_, "DebugGeneratorWeights/O");
     X_Config_Tree_->Branch("MuonLabel", &configMuonLabelTag_);
@@ -3536,6 +3752,14 @@ void MultiLepPAT::beginJob()
     X_Config_Tree_->Branch("RecoGenKaonMatchChi2Max", &recoGenKaonMatchChi2Max_, "RecoGenKaonMatchChi2Max/D");
     X_Config_Tree_->Fill();
 
+    lheHeaderTags = new vector<std::string>();
+    lheHeaderLines = new vector<std::string>();
+    X_LHERunInfo_Tree_ = fs->make<TTree>("X_lhe_run_info", "LHE run-level metadata");
+    X_LHERunInfo_Tree_->Branch("runNum", &lheRunNum, "runNum/i");
+    X_LHERunInfo_Tree_->Branch("lheRunInfoTag", &lheRunInfoTag);
+    X_LHERunInfo_Tree_->Branch("lheHeaderTags", &lheHeaderTags);
+    X_LHERunInfo_Tree_->Branch("lheHeaderLines", &lheHeaderLines);
+
     X_One_Tree_ = fs->make<TTree>("X_data", "Quarkonia Reconstruction Data");
 
     X_One_Tree_->Branch("TrigRes", &trigRes);
@@ -3549,14 +3773,39 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("lumiNum", &lumiNum, "lumiNum/i");
     X_One_Tree_->Branch("nGoodPrimVtx", &nGoodPrimVtx, "nGoodPrimVtx/i");
     genWeights = new vector<float>();
+    genBinningValues = new vector<float>();
+    lheWeightIDs = new vector<std::string>();
     lheWeights = new vector<float>();
+    lheWeightsRelative = new vector<float>();
     X_One_Tree_->Branch("genWeight", &genWeight, "genWeight/F");
+    X_One_Tree_->Branch("genWeightAbs", &genWeightAbs, "genWeightAbs/F");
+    X_One_Tree_->Branch("genWeightSign", &genWeightSign, "genWeightSign/I");
+    X_One_Tree_->Branch("genWeightProduct", &genWeightProduct, "genWeightProduct/F");
+    X_One_Tree_->Branch("genQScale", &genQScale, "genQScale/F");
+    X_One_Tree_->Branch("genAlphaQCD", &genAlphaQCD, "genAlphaQCD/F");
+    X_One_Tree_->Branch("genAlphaQED", &genAlphaQED, "genAlphaQED/F");
+    X_One_Tree_->Branch("genSignalProcessID", &genSignalProcessID, "genSignalProcessID/i");
+    X_One_Tree_->Branch("genHasPDF", &genHasPDF, "genHasPDF/I");
+    X_One_Tree_->Branch("genPdfId1", &genPdfId1, "genPdfId1/I");
+    X_One_Tree_->Branch("genPdfId2", &genPdfId2, "genPdfId2/I");
+    X_One_Tree_->Branch("genPdfX1", &genPdfX1, "genPdfX1/F");
+    X_One_Tree_->Branch("genPdfX2", &genPdfX2, "genPdfX2/F");
+    X_One_Tree_->Branch("genPdfXPDF1", &genPdfXPDF1, "genPdfXPDF1/F");
+    X_One_Tree_->Branch("genPdfXPDF2", &genPdfXPDF2, "genPdfXPDF2/F");
+    X_One_Tree_->Branch("genPdfScalePDF", &genPdfScalePDF, "genPdfScalePDF/F");
+    X_One_Tree_->Branch("genNMEPartons", &genNMEPartons, "genNMEPartons/I");
+    X_One_Tree_->Branch("genNMEPartonsFiltered", &genNMEPartonsFiltered, "genNMEPartonsFiltered/I");
     X_One_Tree_->Branch("nGenWeights", &nGenWeights, "nGenWeights/I");
     X_One_Tree_->Branch("genWeights", &genWeights);
+    X_One_Tree_->Branch("genBinningValues", &genBinningValues);
     X_One_Tree_->Branch("lheOriginalXWGTUP", &lheOriginalXWGTUP, "lheOriginalXWGTUP/F");
     X_One_Tree_->Branch("lheXWGTUP", &lheXWGTUP, "lheXWGTUP/F");
     X_One_Tree_->Branch("nLHEWeights", &nLHEWeights, "nLHEWeights/I");
+    X_One_Tree_->Branch("lheWeightNormalizationValid", &lheWeightNormalizationValid, "lheWeightNormalizationValid/O");
+    X_One_Tree_->Branch("lheEventInfoUsed", &lheEventInfoUsed);
+    X_One_Tree_->Branch("lheWeightIDs", &lheWeightIDs);
     X_One_Tree_->Branch("lheWeights", &lheWeights);
+    X_One_Tree_->Branch("lheWeightsRelative", &lheWeightsRelative);
 
     X_One_Tree_->Branch("priVtxX", &priVtxX, "priVtxX/f");
     X_One_Tree_->Branch("priVtxY", &priVtxY, "priVtxY/f");

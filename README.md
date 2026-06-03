@@ -158,6 +158,8 @@ cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/ConfFile_cfg.py \
     AnalysisMode=JpsiUpsPhi
 ```
 
+Before rerunning a config, remove or change the `TFileService` output name. The default outputs are `mymultilep.root` for `ConfFile_cfg.py` and `mymultilep_MC_DPS1.root` for `runMultiLepPAT_MCRun3_miniAOD_Run2022.py`. If a file with the same name already exists, ROOT can abort either at final `TTree::Write()` or in `beginJob()` while building streamer info, sometimes as a segmentation violation. Prefer an explicit unique output, for example `outputFile=/tmp/chiw/multileppat_check.root`, for quick validation runs.
+
 ## Additional Documentation
 
 The previous README contained longer reference material that is now preserved separately:

@@ -77,6 +77,7 @@
 #include "SimDataFormats/GeneratorProducts/interface/GenEventInfoProduct.h"
 #include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "SimDataFormats/GeneratorProducts/interface/LHEEventProduct.h"
+#include "SimDataFormats/GeneratorProducts/interface/LHERunInfoProduct.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
 #include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
 #include "TrackingTools/Records/interface/TransientTrackRecord.h"
@@ -133,7 +134,7 @@ using std::string;
 using namespace edm;
 using namespace reco;
 
-class MultiLepPAT : public edm::one::EDAnalyzer<edm::one::SharedResources> {
+class MultiLepPAT : public edm::one::EDAnalyzer<edm::one::SharedResources, edm::one::WatchRuns> {
 public:
     explicit MultiLepPAT(const ParameterSet&);
     ~MultiLepPAT();
@@ -272,6 +273,8 @@ private:
     // ======================== Framework methods ========================
     virtual void beginJob() override;
     virtual void analyze(const Event&, const EventSetup&) override;
+    virtual void beginRun(const edm::Run&, const edm::EventSetup&) override;
+    virtual void endRun(const edm::Run&, const edm::EventSetup&) override;
     virtual void endJob() override;
 
     // ======================== Modularized analysis steps ========================
@@ -460,7 +463,8 @@ private:
     edm::EDGetTokenT<edm::View<pat::PackedCandidate>> trackToken_;
     edm::EDGetTokenT<reco::GenParticleCollection>     genParticlesToken_;
     edm::EDGetTokenT<GenEventInfoProduct>             genInfoToken_;
-    edm::EDGetTokenT<LHEEventProduct>                 lheEventToken_;
+    std::vector<edm::EDGetTokenT<LHEEventProduct>>    lheEventTokens_;
+    std::vector<edm::EDGetTokenT<LHERunInfoProduct>>  lheRunInfoTokens_;
 
     // ======================== Config parameters ========================
     
@@ -471,6 +475,7 @@ private:
     InputTag trackLabel_;
     InputTag genInfoTag_;
     InputTag lheEventTag_;
+    std::vector<edm::InputTag> lheEventFallbackTags_;
     edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> magneticFieldToken_;
     edm::ESGetToken<TransientTrackBuilder, TransientTrackRecord> theTTBuilderToken_;
     
@@ -610,23 +615,52 @@ private:
     // ======================== TTree ========================
     TTree* X_One_Tree_;
     TTree* X_Config_Tree_;
+    TTree* X_LHERunInfo_Tree_;
     std::string configHLTriggerResultsTag_;
     std::string configInputGENTag_;
     std::string configMuonLabelTag_;
     std::string configTrackLabelTag_;
     std::string configGenInfoTag_;
     std::string configLHEEventTag_;
+    std::vector<std::string> configLHEEventFallbackTags_;
+    std::string configLHEEventFallbackTagsText_;
     
     // -- Event info --
     unsigned int runNum, evtNum, lumiNum;
     unsigned int nGoodPrimVtx;
     float genWeight;
+    float genWeightAbs;
+    int genWeightSign;
+    float genWeightProduct;
+    float genQScale;
+    float genAlphaQCD;
+    float genAlphaQED;
+    unsigned int genSignalProcessID;
+    int genHasPDF;
+    int genPdfId1;
+    int genPdfId2;
+    float genPdfX1;
+    float genPdfX2;
+    float genPdfXPDF1;
+    float genPdfXPDF2;
+    float genPdfScalePDF;
+    int genNMEPartons;
+    int genNMEPartonsFiltered;
     int nGenWeights;
     vector<float>* genWeights;
+    vector<float>* genBinningValues;
     float lheOriginalXWGTUP;
     float lheXWGTUP;
     int nLHEWeights;
+    bool lheWeightNormalizationValid;
+    std::string lheEventInfoUsed;
+    vector<std::string>* lheWeightIDs;
     vector<float>* lheWeights;
+    vector<float>* lheWeightsRelative;
+    unsigned int lheRunNum;
+    std::string lheRunInfoTag;
+    vector<std::string>* lheHeaderTags;
+    vector<std::string>* lheHeaderLines;
     
     vector<unsigned int>* trigRes;
     vector<std::string>*  trigNames;
