@@ -391,6 +391,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       muIsGlobalMuon(nullptr), muIsGoodTightMuon(nullptr),
       muIsJpsiTrigMatch(nullptr), muIsUpsTrigMatch(nullptr), munMatchedSeg(nullptr),
       muIsJpsiFilterMatch(nullptr), muIsUpsFilterMatch(nullptr),
+      muJpsiMatchedTriggerIndices(nullptr), muJpsiMatchedFilterIndices(nullptr),
+      muUpsMatchedTriggerIndices(nullptr), muUpsMatchedFilterIndices(nullptr),
       muIsPatLooseMuon(nullptr), muIsPatTightMuon(nullptr),
       muIsPatSoftMuon(nullptr), muIsPatMediumMuon(nullptr),
       muFromPV(nullptr), muPVAssocQuality(nullptr),
@@ -1364,47 +1366,97 @@ void MultiLepPAT::fillMuonBlock(const edm::Event& iEvent,
 
         // Trigger matching
         bool isJpsiTrigMatch = false;
-        bool isJpsiFilterMatch = false;
+        bool isUpsTrigMatch = false;
+        std::vector<int> jpsiMatchedTriggerIndices;
+        std::vector<int> jpsiMatchedFilterIndices;
+        std::vector<int> upsMatchedTriggerIndices;
+        std::vector<int> upsMatchedFilterIndices;
+
         for (unsigned int JpsiTrig = 0; JpsiTrig < TriggersForJpsi_.size(); JpsiTrig++) {
             if (JpsiMatchTrig[JpsiTrig] != 0) isJpsiTrigMatch = true;
         }
-        muIsJpsiTrigMatch->push_back(isJpsiTrigMatch);
-
-        for (unsigned int JpsiFilter = 0; JpsiFilter < FiltersForJpsi_.size(); JpsiFilter++) {
-            if (isJpsiTrigMatch && hltresults.isValid()) {
-                for (auto it = iMuonP->triggerObjectMatches().begin();
-                     it != iMuonP->triggerObjectMatches().end(); ++it) {
-                    pat::TriggerObjectStandAlone tempObj(*it);
-                    tempObj.unpackFilterLabels(iEvent, *hltresults);
-                    if (tempObj.hasFilterLabel(FiltersForJpsi_[JpsiFilter])) {
-                        isJpsiFilterMatch = true;
-                    }
-                }
-            }
-        }
-        muIsJpsiFilterMatch->push_back(isJpsiFilterMatch);
-
-        // Upsilon trigger matching
-        bool isUpsTrigMatch = false;
-        bool isUpsFilterMatch = false;
         for (unsigned int UpsTrig = 0; UpsTrig < TriggersForUpsilon_.size(); UpsTrig++) {
             if (UpsilonMatchTrig[UpsTrig] != 0) isUpsTrigMatch = true;
         }
-        muIsUpsTrigMatch->push_back(isUpsTrigMatch);
 
-        for (unsigned int UpsFilter = 0; UpsFilter < FiltersForUpsilon_.size(); UpsFilter++) {
-            if (isUpsTrigMatch && hltresults.isValid()) {
-                for (auto it = iMuonP->triggerObjectMatches().begin();
-                     it != iMuonP->triggerObjectMatches().end(); ++it) {
-                    pat::TriggerObjectStandAlone tempObj(*it);
-                    tempObj.unpackFilterLabels(iEvent, *hltresults);
-                    if (tempObj.hasFilterLabel(FiltersForUpsilon_[UpsFilter])) {
-                        isUpsFilterMatch = true;
+        std::vector<pat::TriggerObjectStandAlone> unpackedTriggerObjects;
+        if ((isJpsiTrigMatch || isUpsTrigMatch) && hltresults.isValid()) {
+            unpackedTriggerObjects.reserve(iMuonP->triggerObjectMatches().size());
+            for (auto it = iMuonP->triggerObjectMatches().begin();
+                 it != iMuonP->triggerObjectMatches().end(); ++it) {
+                pat::TriggerObjectStandAlone tempObj(*it);
+                tempObj.unpackNamesAndLabels(iEvent, *hltresults);
+                unpackedTriggerObjects.push_back(std::move(tempObj));
+            }
+        }
+
+        auto appendUniqueIndex = [](std::vector<int>& indices, int index) {
+            if (std::find(indices.begin(), indices.end(), index) == indices.end()) {
+                indices.push_back(index);
+            }
+        };
+
+        auto objectMatchesConfiguredTrigger = [](const pat::TriggerObjectStandAlone& obj,
+                                                const std::string& triggerPattern) {
+            const auto pathNames = obj.pathNames(false, true);
+            for (const auto& pathName : pathNames) {
+                if (pathName.find(triggerPattern) != std::string::npos) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        if (isJpsiTrigMatch) {
+            for (unsigned int JpsiTrig = 0; JpsiTrig < TriggersForJpsi_.size(); JpsiTrig++) {
+                if (JpsiMatchTrig[JpsiTrig] == 0) continue;
+                for (const auto& obj : unpackedTriggerObjects) {
+                    if (objectMatchesConfiguredTrigger(obj, TriggersForJpsi_[JpsiTrig])) {
+                        appendUniqueIndex(jpsiMatchedTriggerIndices, JpsiTrig);
+                        break;
+                    }
+                }
+            }
+
+            for (unsigned int JpsiFilter = 0; JpsiFilter < FiltersForJpsi_.size(); JpsiFilter++) {
+                for (const auto& obj : unpackedTriggerObjects) {
+                    if (obj.hasFilterLabel(FiltersForJpsi_[JpsiFilter])) {
+                        appendUniqueIndex(jpsiMatchedFilterIndices, JpsiFilter);
+                        break;
                     }
                 }
             }
         }
-        muIsUpsFilterMatch->push_back(isUpsFilterMatch);
+
+        if (isUpsTrigMatch) {
+            for (unsigned int UpsTrig = 0; UpsTrig < TriggersForUpsilon_.size(); UpsTrig++) {
+                if (UpsilonMatchTrig[UpsTrig] == 0) continue;
+                for (const auto& obj : unpackedTriggerObjects) {
+                    if (objectMatchesConfiguredTrigger(obj, TriggersForUpsilon_[UpsTrig])) {
+                        appendUniqueIndex(upsMatchedTriggerIndices, UpsTrig);
+                        break;
+                    }
+                }
+            }
+
+            for (unsigned int UpsFilter = 0; UpsFilter < FiltersForUpsilon_.size(); UpsFilter++) {
+                for (const auto& obj : unpackedTriggerObjects) {
+                    if (obj.hasFilterLabel(FiltersForUpsilon_[UpsFilter])) {
+                        appendUniqueIndex(upsMatchedFilterIndices, UpsFilter);
+                        break;
+                    }
+                }
+            }
+        }
+
+        muIsJpsiTrigMatch->push_back(isJpsiTrigMatch);
+        muIsJpsiFilterMatch->push_back(!jpsiMatchedFilterIndices.empty());
+        muIsUpsTrigMatch->push_back(isUpsTrigMatch);
+        muIsUpsFilterMatch->push_back(!upsMatchedFilterIndices.empty());
+        muJpsiMatchedTriggerIndices->push_back(std::move(jpsiMatchedTriggerIndices));
+        muJpsiMatchedFilterIndices->push_back(std::move(jpsiMatchedFilterIndices));
+        muUpsMatchedTriggerIndices->push_back(std::move(upsMatchedTriggerIndices));
+        muUpsMatchedFilterIndices->push_back(std::move(upsMatchedFilterIndices));
 
         munMatchedSeg->push_back(-1);
     }
@@ -2856,6 +2908,8 @@ void MultiLepPAT::clearEventData()
     L1TT->clear(); MatchJpsiTrigNames->clear(); MatchUpsTrigNames->clear();
     muIsJpsiTrigMatch->clear(); muIsJpsiFilterMatch->clear();
     muIsUpsTrigMatch->clear(); muIsUpsFilterMatch->clear();
+    muJpsiMatchedTriggerIndices->clear(); muJpsiMatchedFilterIndices->clear();
+    muUpsMatchedTriggerIndices->clear(); muUpsMatchedFilterIndices->clear();
 
     runNum = 0; evtNum = 0; lumiNum = 0; nGoodPrimVtx = 0;
     priVtxX = 0; priVtxY = 0; priVtxZ = 0;
@@ -3739,6 +3793,10 @@ void MultiLepPAT::beginJob()
     X_Config_Tree_->Branch("PriTrackDzPVMax", &priTrackDzPVMax_, "PriTrackDzPVMax/D");
     X_Config_Tree_->Branch("PriTrackDxyPVMax", &priTrackDxyPVMax_, "PriTrackDxyPVMax/D");
     X_Config_Tree_->Branch("CheckFinalMass", &checkFinalMass_, "CheckFinalMass/O");
+    X_Config_Tree_->Branch("TriggersForJpsi", &TriggersForJpsi_);
+    X_Config_Tree_->Branch("FiltersForJpsi", &FiltersForJpsi_);
+    X_Config_Tree_->Branch("TriggersForUpsilon", &TriggersForUpsilon_);
+    X_Config_Tree_->Branch("FiltersForUpsilon", &FiltersForUpsilon_);
     X_Config_Tree_->Branch("PVSelectionMode", &pvSelectionMode_);
     X_Config_Tree_->Branch("MinTrackFromPV", &minTrackFromPV_, "MinTrackFromPV/I");
     X_Config_Tree_->Branch("MinMuonCount", &minMuonCount_, "MinMuonCount/i");
@@ -3892,6 +3950,10 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("muIsUpsTrigMatch", &muIsUpsTrigMatch);
     X_One_Tree_->Branch("muIsJpsiFilterMatch", &muIsJpsiFilterMatch);
     X_One_Tree_->Branch("muIsUpsFilterMatch", &muIsUpsFilterMatch);
+    X_One_Tree_->Branch("muJpsiMatchedTriggerIndices", &muJpsiMatchedTriggerIndices);
+    X_One_Tree_->Branch("muJpsiMatchedFilterIndices", &muJpsiMatchedFilterIndices);
+    X_One_Tree_->Branch("muUpsMatchedTriggerIndices", &muUpsMatchedTriggerIndices);
+    X_One_Tree_->Branch("muUpsMatchedFilterIndices", &muUpsMatchedFilterIndices);
     X_One_Tree_->Branch("muMVAMuonID", &muMVAMuonID);
     X_One_Tree_->Branch("musegmentCompatibility", &musegmentCompatibility);
     X_One_Tree_->Branch("mupulldXdZ_pos_noArb", &mupulldXdZ_pos_noArb);

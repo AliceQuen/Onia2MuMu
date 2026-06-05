@@ -708,6 +708,8 @@ private:
     vector<int> *muIsGoodTightMuon, *muIsJpsiTrigMatch;
     vector<int> *muIsUpsTrigMatch, *munMatchedSeg;
     vector<int> *muIsJpsiFilterMatch, *muIsUpsFilterMatch;
+    vector<vector<int>> *muJpsiMatchedTriggerIndices, *muJpsiMatchedFilterIndices;
+    vector<vector<int>> *muUpsMatchedTriggerIndices, *muUpsMatchedFilterIndices;
     vector<int> *muIsPatLooseMuon, *muIsPatTightMuon, *muIsPatSoftMuon, *muIsPatMediumMuon;
     vector<int> *muFromPV, *muPVAssocQuality;
 
