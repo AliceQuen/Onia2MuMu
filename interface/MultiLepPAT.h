@@ -764,6 +764,7 @@ private:
     vector<float> *Jpsi_1_mu_1_Idx, *Jpsi_1_mu_2_Idx;
     vector<float> *Jpsi_2_mu_1_Idx, *Jpsi_2_mu_2_Idx;
     vector<float> *Phi_K_1_Idx, *Phi_K_2_Idx;
+    vector<int>   *Phi_K_1_RecoKaonTrackIdx = nullptr, *Phi_K_2_RecoKaonTrackIdx = nullptr;
     // [Comment] Storing raw dxy and dz values for muons and the fitted candidates is good redundancy.
     // -- Reconstructed resonances: mass, vertex, kinematics --
     vector<float> *Jpsi_1_mass, *Jpsi_1_massErr, *Jpsi_1_massDiff;
@@ -837,6 +838,7 @@ private:
     vector<float> *SinglePhi_prefitMass = nullptr, *SinglePhi_prefitPt = nullptr;
     vector<float> *SinglePhi_prefitEta = nullptr, *SinglePhi_prefitPhi = nullptr;
     vector<int>   *SinglePhi_K1_nonMuonTrackIdx = nullptr, *SinglePhi_K2_nonMuonTrackIdx = nullptr;
+    vector<int>   *SinglePhi_K1_RecoKaonTrackIdx = nullptr, *SinglePhi_K2_RecoKaonTrackIdx = nullptr;
     vector<int>   *SinglePhi_K1_charge = nullptr, *SinglePhi_K2_charge = nullptr;
     vector<float> *SinglePhi_K1_pt = nullptr, *SinglePhi_K1_eta = nullptr, *SinglePhi_K1_phi = nullptr;
     vector<float> *SinglePhi_K2_pt = nullptr, *SinglePhi_K2_eta = nullptr, *SinglePhi_K2_phi = nullptr;
