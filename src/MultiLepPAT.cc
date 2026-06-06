@@ -776,6 +776,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
 void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
 {
     handleToNtupleIndex_.clear();
+    ntupleToHandleIndex_.clear();
 
     edm::Handle<reco::GenParticleCollection> genParticles;
     iEvent.getByToken(genParticlesToken_, genParticles);
@@ -821,6 +822,7 @@ void MultiLepPAT::processMCGenInfo(const edm::Event &iEvent)
                 MC_GenPart_eta->push_back(particle.eta());
                 MC_GenPart_phi->push_back(particle.phi());
                 handleToNtupleIndex_[i] = ntupleIndex;
+                ntupleToHandleIndex_[ntupleIndex] = static_cast<unsigned int>(i);
                 storedHandleIndices.push_back(i);
             }
         }
@@ -1925,6 +1927,8 @@ void MultiLepPAT::storeSingleJpsiCandidatesForMC(
         SingleJpsi_mu2_genMatchIdx->push_back(mu2Match.first);
         SingleJpsi_mu1_genMatchChi2->push_back(mu1Match.second);
         SingleJpsi_mu2_genMatchChi2->push_back(mu2Match.second);
+        SingleJpsi_genMatchIdx->push_back(
+            findCommonStoredGenMotherIdx(mu1Match.first, mu2Match.first, 443, genParticles));
 
         ++nSingleJpsiCand;
     }
@@ -2022,6 +2026,8 @@ void MultiLepPAT::storeSingleUpsCandidatesForMC(
         SingleUps_mu2_genMatchIdx->push_back(mu2Match.first);
         SingleUps_mu1_genMatchChi2->push_back(mu1Match.second);
         SingleUps_mu2_genMatchChi2->push_back(mu2Match.second);
+        SingleUps_genMatchIdx->push_back(
+            findCommonStoredGenMotherIdx(mu1Match.first, mu2Match.first, 553, genParticles));
 
         ++nSingleUpsCand;
     }
@@ -2149,6 +2155,10 @@ void MultiLepPAT::storeSinglePhiCandidatesForMC(
         SinglePhi_K2_genMatchSource->push_back(k2Diag.genMatchSource);
         SinglePhi_K1_genMatchChi2->push_back(k1Diag.genMatchChi2);
         SinglePhi_K2_genMatchChi2->push_back(k2Diag.genMatchChi2);
+        const int phiGenMatchIdx = (k1Diag.genMatchSource == 1 && k2Diag.genMatchSource == 1)
+            ? findCommonStoredGenMotherIdx(k1Diag.genMatchIdx, k2Diag.genMatchIdx, 333, genParticles)
+            : -1;
+        SinglePhi_genMatchIdx->push_back(phiGenMatchIdx);
         SinglePhi_commonAssocPVPass->push_back(phiDiag.commonAssocPVPass ? 1 : 0);
         SinglePhi_commonAssocPVIdx->push_back(phiDiag.commonAssocPVIdx);
         SinglePhi_trackPVPass->push_back(phiDiag.trackPVPass ? 1 : 0);
@@ -2207,6 +2217,53 @@ std::pair<int, float> MultiLepPAT::matchRecoMuonToStoredGenMuon(
     }
 
     return {bestStoredIdx, static_cast<float>(bestChi2)};
+}
+
+int MultiLepPAT::findCommonStoredGenMotherIdx(
+    int daughter1StoredIdx,
+    int daughter2StoredIdx,
+    int requiredMotherPdgId,
+    const edm::Handle<reco::GenParticleCollection>& genParticles) const
+{
+    if (daughter1StoredIdx < 0 || daughter2StoredIdx < 0 || !genParticles.isValid()) {
+        return -1;
+    }
+
+    const auto daughter1HandleIt = ntupleToHandleIndex_.find(daughter1StoredIdx);
+    const auto daughter2HandleIt = ntupleToHandleIndex_.find(daughter2StoredIdx);
+    if (daughter1HandleIt == ntupleToHandleIndex_.end() ||
+        daughter2HandleIt == ntupleToHandleIndex_.end() ||
+        daughter1HandleIt->second >= genParticles->size() ||
+        daughter2HandleIt->second >= genParticles->size()) {
+        return -1;
+    }
+
+    const auto& daughter1 = genParticles->at(daughter1HandleIt->second);
+    const auto& daughter2 = genParticles->at(daughter2HandleIt->second);
+    if (daughter1.numberOfMothers() == 0 || daughter2.numberOfMothers() == 0) {
+        return -1;
+    }
+
+    const reco::Candidate* mother1 = daughter1.mother(0);
+    const reco::Candidate* mother2 = daughter2.mother(0);
+    if (mother1 == nullptr || mother2 == nullptr || mother1 != mother2 ||
+        std::abs(mother1->pdgId()) != requiredMotherPdgId) {
+        return -1;
+    }
+
+    for (unsigned int genIdx = 0; genIdx < genParticles->size(); ++genIdx) {
+        if (&genParticles->at(genIdx) != mother1) {
+            continue;
+        }
+
+        const auto storedIt = handleToNtupleIndex_.find(genIdx);
+        if (storedIt == handleToNtupleIndex_.end()) {
+            return -1;
+        }
+        return storedIt->second;
+    }
+
+    return -1;
 }
 
 /*****************************************************************************
@@ -3172,6 +3229,7 @@ void MultiLepPAT::clearEventData()
     SingleJpsi_prefitEta->clear(); SingleJpsi_prefitPhi->clear();
     SingleJpsi_mu1_Idx->clear(); SingleJpsi_mu2_Idx->clear();
     SingleJpsi_mu1_charge->clear(); SingleJpsi_mu2_charge->clear();
+    SingleJpsi_genMatchIdx->clear();
     SingleJpsi_mu1_genMatchIdx->clear(); SingleJpsi_mu2_genMatchIdx->clear();
     SingleJpsi_mu1_genMatchChi2->clear(); SingleJpsi_mu2_genMatchChi2->clear();
 
@@ -3187,6 +3245,7 @@ void MultiLepPAT::clearEventData()
     SingleUps_prefitEta->clear(); SingleUps_prefitPhi->clear();
     SingleUps_mu1_Idx->clear(); SingleUps_mu2_Idx->clear();
     SingleUps_mu1_charge->clear(); SingleUps_mu2_charge->clear();
+    SingleUps_genMatchIdx->clear();
     SingleUps_mu1_genMatchIdx->clear(); SingleUps_mu2_genMatchIdx->clear();
     SingleUps_mu1_genMatchChi2->clear(); SingleUps_mu2_genMatchChi2->clear();
 
@@ -3212,6 +3271,7 @@ void MultiLepPAT::clearEventData()
     SinglePhi_K1_passTrackPV->clear(); SinglePhi_K2_passTrackPV->clear();
     SinglePhi_K1_dzPV->clear(); SinglePhi_K2_dzPV->clear();
     SinglePhi_K1_dxyPV->clear(); SinglePhi_K2_dxyPV->clear();
+    SinglePhi_genMatchIdx->clear();
     SinglePhi_K1_genMatchIdx->clear(); SinglePhi_K2_genMatchIdx->clear();
     SinglePhi_K1_genMatchSource->clear(); SinglePhi_K2_genMatchSource->clear();
     SinglePhi_K1_genMatchChi2->clear(); SinglePhi_K2_genMatchChi2->clear();
@@ -3230,6 +3290,7 @@ void MultiLepPAT::clearEventData()
 
     // Clear intermediate storage
     handleToNtupleIndex_.clear();
+    ntupleToHandleIndex_.clear();
     muPairCand_Onia1_.clear();
     muPairCand_Onia2_.clear();
     diOniaCands_.clear();
@@ -4207,6 +4268,7 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("SingleJpsi_mu2_Idx", &SingleJpsi_mu2_Idx);
     X_One_Tree_->Branch("SingleJpsi_mu1_charge", &SingleJpsi_mu1_charge);
     X_One_Tree_->Branch("SingleJpsi_mu2_charge", &SingleJpsi_mu2_charge);
+    X_One_Tree_->Branch("SingleJpsi_genMatchIdx", &SingleJpsi_genMatchIdx);
     X_One_Tree_->Branch("SingleJpsi_mu1_genMatchIdx", &SingleJpsi_mu1_genMatchIdx);
     X_One_Tree_->Branch("SingleJpsi_mu2_genMatchIdx", &SingleJpsi_mu2_genMatchIdx);
     X_One_Tree_->Branch("SingleJpsi_mu1_genMatchChi2", &SingleJpsi_mu1_genMatchChi2);
@@ -4229,6 +4291,7 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("SingleUps_mu2_Idx", &SingleUps_mu2_Idx);
     X_One_Tree_->Branch("SingleUps_mu1_charge", &SingleUps_mu1_charge);
     X_One_Tree_->Branch("SingleUps_mu2_charge", &SingleUps_mu2_charge);
+    X_One_Tree_->Branch("SingleUps_genMatchIdx", &SingleUps_genMatchIdx);
     X_One_Tree_->Branch("SingleUps_mu1_genMatchIdx", &SingleUps_mu1_genMatchIdx);
     X_One_Tree_->Branch("SingleUps_mu2_genMatchIdx", &SingleUps_mu2_genMatchIdx);
     X_One_Tree_->Branch("SingleUps_mu1_genMatchChi2", &SingleUps_mu1_genMatchChi2);
@@ -4275,6 +4338,7 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("SinglePhi_K2_dxyPV", &SinglePhi_K2_dxyPV);
     X_One_Tree_->Branch("SinglePhi_K1_genMatchIdx", &SinglePhi_K1_genMatchIdx);
     X_One_Tree_->Branch("SinglePhi_K2_genMatchIdx", &SinglePhi_K2_genMatchIdx);
+    X_One_Tree_->Branch("SinglePhi_genMatchIdx", &SinglePhi_genMatchIdx);
     X_One_Tree_->Branch("SinglePhi_K1_genMatchSource", &SinglePhi_K1_genMatchSource);
     X_One_Tree_->Branch("SinglePhi_K2_genMatchSource", &SinglePhi_K2_genMatchSource);
     X_One_Tree_->Branch("SinglePhi_K1_genMatchChi2", &SinglePhi_K1_genMatchChi2);

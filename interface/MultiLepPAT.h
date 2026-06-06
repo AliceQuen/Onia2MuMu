@@ -453,6 +453,11 @@ private:
         unsigned int muIdx,
         const edm::Handle<reco::GenParticleCollection>& genParticles,
         int requiredMotherPdgId) const;
+    int findCommonStoredGenMotherIdx(
+        int daughter1StoredIdx,
+        int daughter2StoredIdx,
+        int requiredMotherPdgId,
+        const edm::Handle<reco::GenParticleCollection>& genParticles) const;
 
     // Store sentinel values for failed 3-body vertex fit
     void storeSentinelPri();
@@ -604,6 +609,7 @@ private:
     unsigned long long currentEvent_;
     std::vector<edm::View<pat::PackedCandidate>::const_iterator> nonMuonTrack_;
     std::unordered_map<unsigned int, int> handleToNtupleIndex_;
+    std::unordered_map<int, unsigned int> ntupleToHandleIndex_;
     
     // Muon pair candidates
     std::vector<muList_t> muPairCand_Onia1_;  // J/psi (or 1st quarkonium)
@@ -794,6 +800,7 @@ private:
     vector<float> *SingleJpsi_prefitEta = nullptr, *SingleJpsi_prefitPhi = nullptr;
     vector<int>   *SingleJpsi_mu1_Idx = nullptr, *SingleJpsi_mu2_Idx = nullptr;
     vector<int>   *SingleJpsi_mu1_charge = nullptr, *SingleJpsi_mu2_charge = nullptr;
+    vector<int>   *SingleJpsi_genMatchIdx = nullptr;
     vector<int>   *SingleJpsi_mu1_genMatchIdx = nullptr, *SingleJpsi_mu2_genMatchIdx = nullptr;
     vector<float> *SingleJpsi_mu1_genMatchChi2 = nullptr, *SingleJpsi_mu2_genMatchChi2 = nullptr;
 
@@ -810,6 +817,7 @@ private:
     vector<float> *SingleUps_prefitEta = nullptr, *SingleUps_prefitPhi = nullptr;
     vector<int>   *SingleUps_mu1_Idx = nullptr, *SingleUps_mu2_Idx = nullptr;
     vector<int>   *SingleUps_mu1_charge = nullptr, *SingleUps_mu2_charge = nullptr;
+    vector<int>   *SingleUps_genMatchIdx = nullptr;
     vector<int>   *SingleUps_mu1_genMatchIdx = nullptr, *SingleUps_mu2_genMatchIdx = nullptr;
     vector<float> *SingleUps_mu1_genMatchChi2 = nullptr, *SingleUps_mu2_genMatchChi2 = nullptr;
 
@@ -836,6 +844,7 @@ private:
     vector<int>   *SinglePhi_K1_passTrackPV = nullptr, *SinglePhi_K2_passTrackPV = nullptr;
     vector<float> *SinglePhi_K1_dzPV = nullptr, *SinglePhi_K2_dzPV = nullptr;
     vector<float> *SinglePhi_K1_dxyPV = nullptr, *SinglePhi_K2_dxyPV = nullptr;
+    vector<int>   *SinglePhi_genMatchIdx = nullptr;
     vector<int>   *SinglePhi_K1_genMatchIdx = nullptr, *SinglePhi_K2_genMatchIdx = nullptr;
     vector<int>   *SinglePhi_K1_genMatchSource = nullptr, *SinglePhi_K2_genMatchSource = nullptr;
     vector<float> *SinglePhi_K1_genMatchChi2 = nullptr, *SinglePhi_K2_genMatchChi2 = nullptr;
