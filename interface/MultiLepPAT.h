@@ -304,6 +304,9 @@ private:
     void storeSingleJpsiCandidatesForMC(
         const reco::Vertex& beamSpotV,
         const edm::Handle<reco::GenParticleCollection>& genParticles);
+    void storeSingleUpsCandidatesForMC(
+        const reco::Vertex& beamSpotV,
+        const edm::Handle<reco::GenParticleCollection>& genParticles);
     void storeSinglePhiCandidatesForMC(
         const reco::Vertex& beamSpotV,
         const edm::Handle<reco::GenParticleCollection>& genParticles);
@@ -449,7 +452,7 @@ private:
     std::pair<int, float> matchRecoMuonToStoredGenMuon(
         unsigned int muIdx,
         const edm::Handle<reco::GenParticleCollection>& genParticles,
-        bool requireJpsiMother) const;
+        int requiredMotherPdgId) const;
 
     // Store sentinel values for failed 3-body vertex fit
     void storeSentinelPri();
@@ -793,6 +796,22 @@ private:
     vector<int>   *SingleJpsi_mu1_charge = nullptr, *SingleJpsi_mu2_charge = nullptr;
     vector<int>   *SingleJpsi_mu1_genMatchIdx = nullptr, *SingleJpsi_mu2_genMatchIdx = nullptr;
     vector<float> *SingleJpsi_mu1_genMatchChi2 = nullptr, *SingleJpsi_mu2_genMatchChi2 = nullptr;
+
+    int nSingleUpsCand = 0;
+    vector<float> *SingleUps_mass = nullptr, *SingleUps_massErr = nullptr, *SingleUps_massDiff = nullptr;
+    vector<float> *SingleUps_ctau = nullptr, *SingleUps_ctauErr = nullptr;
+    vector<float> *SingleUps_Chi2 = nullptr, *SingleUps_ndof = nullptr, *SingleUps_VtxProb = nullptr;
+    vector<float> *SingleUps_px = nullptr, *SingleUps_py = nullptr, *SingleUps_pz = nullptr;
+    vector<float> *SingleUps_phi = nullptr, *SingleUps_eta = nullptr, *SingleUps_pt = nullptr;
+    vector<float> *SingleUps_pxErr = nullptr, *SingleUps_pyErr = nullptr;
+    vector<float> *SingleUps_pzErr = nullptr, *SingleUps_ptErr = nullptr;
+    vector<int>   *SingleUps_fitValid = nullptr, *SingleUps_fitPass = nullptr;
+    vector<float> *SingleUps_prefitMass = nullptr, *SingleUps_prefitPt = nullptr;
+    vector<float> *SingleUps_prefitEta = nullptr, *SingleUps_prefitPhi = nullptr;
+    vector<int>   *SingleUps_mu1_Idx = nullptr, *SingleUps_mu2_Idx = nullptr;
+    vector<int>   *SingleUps_mu1_charge = nullptr, *SingleUps_mu2_charge = nullptr;
+    vector<int>   *SingleUps_mu1_genMatchIdx = nullptr, *SingleUps_mu2_genMatchIdx = nullptr;
+    vector<float> *SingleUps_mu1_genMatchChi2 = nullptr, *SingleUps_mu2_genMatchChi2 = nullptr;
 
     int nSinglePhiCand = 0;
     vector<float> *SinglePhi_mass = nullptr, *SinglePhi_massErr = nullptr, *SinglePhi_massDiff = nullptr;

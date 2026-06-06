@@ -644,19 +644,37 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
             nonMuonTrack_.push_back(iTrack);
         }
     }
-    debugSummary.nRecoMuons = thePATMuonHandle_.isValid() ? thePATMuonHandle_->size() : 0u;
-    debugSummary.nPackedTracks = theTrackHandle_.isValid() ? theTrackHandle_->size() : 0u;
+    const bool hasMuonHandle = thePATMuonHandle_.isValid();
+    const bool hasTrackHandle = theTrackHandle_.isValid();
+    const size_t nRecoMuons = hasMuonHandle ? thePATMuonHandle_->size() : 0u;
+    const bool keepSingles = doMC && keepAllSingleObjectCandsInMC_;
+    const bool needsTrackPairs = (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
+                                  analysisChannel_ == AnalysisChannel::JpsiUpsPhi);
+    const bool channelHasSingleUps = (analysisChannel_ == AnalysisChannel::JpsiUpsPhi ||
+                                      analysisChannel_ == AnalysisChannel::JpsiJpsiUps);
+
+    debugSummary.nRecoMuons = nRecoMuons;
+    debugSummary.nPackedTracks = hasTrackHandle ? theTrackHandle_->size() : 0u;
     debugSummary.nTrackPool = nonMuonTrack_.size();
 
     // Step 6: Fill the muon block for all available muons.
-    if (thePATMuonHandle_.isValid()) {
+    if (hasMuonHandle) {
         const auto stepStart = Clock::now();
         fillMuonBlock(iEvent, iSetup, thePrimaryV_);
         debugSummary.fillMuonBlockMs = elapsedMs(stepStart);
     }
 
+    const size_t nNonMuonTracks = nonMuonTrack_.size();
+    debugSummary.nTrackPool = nNonMuonTracks;
+
+    const bool canTrySingleJpsi = keepSingles && hasMuonHandle && nRecoMuons >= 2;
+    const bool canTrySingleUps = keepSingles && channelHasSingleUps && hasMuonHandle && nRecoMuons >= 2;
+    const bool canTrySinglePhi = keepSingles && needsTrackPairs && hasTrackHandle && nNonMuonTracks >= 2;
+    const bool canTryFullMuonSide = hasMuonHandle && nRecoMuons >= minMuonCount_;
+    const bool canTryFullPhiSide = !needsTrackPairs || (hasTrackHandle && nNonMuonTracks >= 2);
+
     // Step 7: MC matching of tracks
-    if (doMC && thePATMuonHandle_.isValid() && theTrackHandle_.isValid()) {
+    if (doMC && hasMuonHandle && hasTrackHandle) {
         const auto stepStart = Clock::now();
         doMCGenMatching(thePATMuonHandle_, theTrackHandle_);
         debugSummary.mcMatchMs = elapsedMs(stepStart);
@@ -696,32 +714,21 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         clearEventData();
     };
 
-    // Step 8: Pair muons
-    if (!thePATMuonHandle_.isValid() || thePATMuonHandle_->size() < minMuonCount_) {
-        finalizeCurrentEvent();
-        return;
+    // Step 8: Pair muons once when either single-object or full reconstruction needs them.
+    if (canTrySingleJpsi || canTrySingleUps || canTryFullMuonSide) {
+        const auto stepStart = Clock::now();
+        pairMuons(thePATMuonHandle_, bFieldHandle);
+        debugSummary.pairMuonsMs = elapsedMs(stepStart);
     }
 
-    {
-    const auto stepStart = Clock::now();
-    pairMuons(thePATMuonHandle_, bFieldHandle);
-    debugSummary.pairMuonsMs = elapsedMs(stepStart);
-    }
-
-    // Step 9: Pair tracks into meson candidates
-    bool needsTrackPairs = (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
-                            analysisChannel_ == AnalysisChannel::JpsiUpsPhi);
-    if (needsTrackPairs && !theTrackHandle_.isValid()) {
-        finalizeCurrentEvent();
-        return;
-    }
-    if (needsTrackPairs) {
+    // Step 9: Pair tracks once when either single-phi or full reconstruction needs them.
+    if (needsTrackPairs && (canTrySinglePhi || canTryFullPhiSide)) {
         const auto stepStart = Clock::now();
         pairTracks(nonMuonTrack_, bFieldHandle);
         debugSummary.pairTracksMs = elapsedMs(stepStart);
     }
 
-    if (doMC && keepAllSingleObjectCandsInMC_) {
+    if (keepSingles) {
         storeAllSingleObjectCandidatesForMC(theBeamSpotV_, genParticles);
         if (skipCompositeCandBuildingWhenKeepingSingles_) {
             finalizeCurrentEvent();
@@ -729,11 +736,35 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         }
     }
 
+    const auto hasFullCandidateInputs = [&]() {
+        switch (analysisChannel_) {
+            case AnalysisChannel::JpsiJpsiPhi:
+                return muPairCand_Onia1_.size() >= 2 &&
+                       !diOniaCands_.empty() &&
+                       !KPairCand_Meson_.empty();
+            case AnalysisChannel::JpsiUpsPhi:
+                return !muPairCand_Onia1_.empty() &&
+                       !muPairCand_Onia2_.empty() &&
+                       !diOniaCands_.empty() &&
+                       !KPairCand_Meson_.empty();
+            case AnalysisChannel::JpsiJpsiUps:
+                return muPairCand_Onia1_.size() >= 2 &&
+                       !muPairCand_Onia2_.empty() &&
+                       !diOniaCands_.empty();
+        }
+        return false;
+    };
+
+    if (!canTryFullMuonSide || !canTryFullPhiSide || !hasFullCandidateInputs()) {
+        finalizeCurrentEvent();
+        return;
+    }
+
     // Step 10: Combine candidates and fill branches
     {
-    const auto stepStart = Clock::now();
-    combineCandidates(theBeamSpotV_, genParticles);
-    debugSummary.combineCandidatesMs = elapsedMs(stepStart);
+        const auto stepStart = Clock::now();
+        combineCandidates(theBeamSpotV_, genParticles);
+        debugSummary.combineCandidatesMs = elapsedMs(stepStart);
     }
 
     finalizeCurrentEvent();
@@ -1791,6 +1822,11 @@ void MultiLepPAT::storeAllSingleObjectCandidatesForMC(
 
     storeSingleJpsiCandidatesForMC(beamSpotV, genParticles);
 
+    if (analysisChannel_ == AnalysisChannel::JpsiUpsPhi ||
+        analysisChannel_ == AnalysisChannel::JpsiJpsiUps) {
+        storeSingleUpsCandidatesForMC(beamSpotV, genParticles);
+    }
+
     if (analysisChannel_ == AnalysisChannel::JpsiJpsiPhi ||
         analysisChannel_ == AnalysisChannel::JpsiUpsPhi) {
         storeSinglePhiCandidatesForMC(beamSpotV, genParticles);
@@ -1883,14 +1919,111 @@ void MultiLepPAT::storeSingleJpsiCandidatesForMC(
         SingleJpsi_mu1_charge->push_back(mu1.charge());
         SingleJpsi_mu2_charge->push_back(mu2.charge());
 
-        const auto mu1Match = matchRecoMuonToStoredGenMuon(iMu1, genParticles, true);
-        const auto mu2Match = matchRecoMuonToStoredGenMuon(iMu2, genParticles, true);
+        const auto mu1Match = matchRecoMuonToStoredGenMuon(iMu1, genParticles, 443);
+        const auto mu2Match = matchRecoMuonToStoredGenMuon(iMu2, genParticles, 443);
         SingleJpsi_mu1_genMatchIdx->push_back(mu1Match.first);
         SingleJpsi_mu2_genMatchIdx->push_back(mu2Match.first);
         SingleJpsi_mu1_genMatchChi2->push_back(mu1Match.second);
         SingleJpsi_mu2_genMatchChi2->push_back(mu2Match.second);
 
         ++nSingleJpsiCand;
+    }
+}
+
+void MultiLepPAT::storeSingleUpsCandidatesForMC(
+    const reco::Vertex& beamSpotV,
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
+{
+    nSingleUpsCand = 0;
+
+    auto pushSentinelResonance = [&]() {
+        const float sentinel = -999999.f;
+        SingleUps_mass->push_back(sentinel);
+        SingleUps_massErr->push_back(sentinel);
+        SingleUps_massDiff->push_back(sentinel);
+        SingleUps_ctau->push_back(sentinel);
+        SingleUps_ctauErr->push_back(sentinel);
+        SingleUps_Chi2->push_back(sentinel);
+        SingleUps_ndof->push_back(sentinel);
+        SingleUps_VtxProb->push_back(sentinel);
+        SingleUps_px->push_back(sentinel);
+        SingleUps_py->push_back(sentinel);
+        SingleUps_pz->push_back(sentinel);
+        SingleUps_phi->push_back(sentinel);
+        SingleUps_eta->push_back(sentinel);
+        SingleUps_pt->push_back(sentinel);
+        SingleUps_pxErr->push_back(sentinel);
+        SingleUps_pyErr->push_back(sentinel);
+        SingleUps_pzErr->push_back(sentinel);
+        SingleUps_ptErr->push_back(sentinel);
+    };
+
+    reco::Vertex bsV(beamSpotV);
+
+    for (const auto& pair : muPairCand_Onia2_) {
+        const auto& particles = pair.first;
+        const auto& muIdx = pair.second;
+        if (muIdx.size() != 2 || !thePATMuonHandle_.isValid()) {
+            continue;
+        }
+
+        const unsigned int iMu1 = muIdx[0];
+        const unsigned int iMu2 = muIdx[1];
+        if (iMu1 >= thePATMuonHandle_->size() || iMu2 >= thePATMuonHandle_->size()) {
+            continue;
+        }
+
+        const auto& mu1 = thePATMuonHandle_->at(iMu1);
+        const auto& mu2 = thePATMuonHandle_->at(iMu2);
+        const auto prefitP4 = mu1.p4() + mu2.p4();
+
+        RefCountedKinematicTree vtxFitTree;
+        RefCountedKinematicParticle fitUps;
+        RefCountedKinematicVertex vtxUps;
+        double massErr = -1.0;
+        bool fitValid = particlesToVtx(vtxFitTree, particles, "SingleUps", UpsDecayVtxProbCut_);
+        bool fitPass = false;
+
+        if (fitValid) {
+            fitValid = extractFitRes(vtxFitTree, fitUps, vtxUps, massErr);
+        }
+
+        if (fitValid && massErr >= 0.0) {
+            const double vtxProb = ChiSquaredProbability(
+                static_cast<double>(vtxUps->chiSquared()),
+                static_cast<double>(vtxUps->degreesOfFreedom()));
+            fitPass = vtxProb >= UpsDecayVtxProbCut_;
+            storeResonanceBranches(
+                fitUps, vtxUps, massErr, myUpsMass, bsV,
+                SingleUps_mass, SingleUps_massErr, SingleUps_massDiff,
+                SingleUps_ctau, SingleUps_ctauErr,
+                SingleUps_Chi2, SingleUps_ndof, SingleUps_VtxProb,
+                SingleUps_px, SingleUps_py, SingleUps_pz,
+                SingleUps_phi, SingleUps_eta, SingleUps_pt,
+                SingleUps_pxErr, SingleUps_pyErr, SingleUps_pzErr, SingleUps_ptErr);
+        } else {
+            pushSentinelResonance();
+        }
+
+        SingleUps_fitValid->push_back(fitValid ? 1 : 0);
+        SingleUps_fitPass->push_back(fitPass ? 1 : 0);
+        SingleUps_prefitMass->push_back(prefitP4.mass());
+        SingleUps_prefitPt->push_back(prefitP4.pt());
+        SingleUps_prefitEta->push_back(prefitP4.eta());
+        SingleUps_prefitPhi->push_back(prefitP4.phi());
+        SingleUps_mu1_Idx->push_back(static_cast<int>(iMu1));
+        SingleUps_mu2_Idx->push_back(static_cast<int>(iMu2));
+        SingleUps_mu1_charge->push_back(mu1.charge());
+        SingleUps_mu2_charge->push_back(mu2.charge());
+
+        const auto mu1Match = matchRecoMuonToStoredGenMuon(iMu1, genParticles, 553);
+        const auto mu2Match = matchRecoMuonToStoredGenMuon(iMu2, genParticles, 553);
+        SingleUps_mu1_genMatchIdx->push_back(mu1Match.first);
+        SingleUps_mu2_genMatchIdx->push_back(mu2Match.first);
+        SingleUps_mu1_genMatchChi2->push_back(mu1Match.second);
+        SingleUps_mu2_genMatchChi2->push_back(mu2Match.second);
+
+        ++nSingleUpsCand;
     }
 }
 
@@ -2030,7 +2163,7 @@ void MultiLepPAT::storeSinglePhiCandidatesForMC(
 std::pair<int, float> MultiLepPAT::matchRecoMuonToStoredGenMuon(
     unsigned int muIdx,
     const edm::Handle<reco::GenParticleCollection>& genParticles,
-    bool requireJpsiMother) const
+    int requiredMotherPdgId) const
 {
     if (!thePATMuonHandle_.isValid() || muIdx >= thePATMuonHandle_->size() ||
         !genParticles.isValid()) {
@@ -2049,9 +2182,9 @@ std::pair<int, float> MultiLepPAT::matchRecoMuonToStoredGenMuon(
         if (gen.charge() != 0 && gen.charge() != mu.charge()) {
             continue;
         }
-        if (requireJpsiMother &&
+        if (requiredMotherPdgId != 0 &&
             (gen.numberOfMothers() == 0 || gen.mother(0) == nullptr ||
-             std::abs(gen.mother(0)->pdgId()) != 443)) {
+             std::abs(gen.mother(0)->pdgId()) != requiredMotherPdgId)) {
             continue;
         }
 
@@ -3042,6 +3175,21 @@ void MultiLepPAT::clearEventData()
     SingleJpsi_mu1_genMatchIdx->clear(); SingleJpsi_mu2_genMatchIdx->clear();
     SingleJpsi_mu1_genMatchChi2->clear(); SingleJpsi_mu2_genMatchChi2->clear();
 
+    nSingleUpsCand = 0;
+    SingleUps_mass->clear(); SingleUps_massErr->clear(); SingleUps_massDiff->clear();
+    SingleUps_ctau->clear(); SingleUps_ctauErr->clear();
+    SingleUps_Chi2->clear(); SingleUps_ndof->clear(); SingleUps_VtxProb->clear();
+    SingleUps_px->clear(); SingleUps_py->clear(); SingleUps_pz->clear();
+    SingleUps_phi->clear(); SingleUps_eta->clear(); SingleUps_pt->clear();
+    SingleUps_pxErr->clear(); SingleUps_pyErr->clear(); SingleUps_pzErr->clear(); SingleUps_ptErr->clear();
+    SingleUps_fitValid->clear(); SingleUps_fitPass->clear();
+    SingleUps_prefitMass->clear(); SingleUps_prefitPt->clear();
+    SingleUps_prefitEta->clear(); SingleUps_prefitPhi->clear();
+    SingleUps_mu1_Idx->clear(); SingleUps_mu2_Idx->clear();
+    SingleUps_mu1_charge->clear(); SingleUps_mu2_charge->clear();
+    SingleUps_mu1_genMatchIdx->clear(); SingleUps_mu2_genMatchIdx->clear();
+    SingleUps_mu1_genMatchChi2->clear(); SingleUps_mu2_genMatchChi2->clear();
+
     nSinglePhiCand = 0;
     SinglePhi_mass->clear(); SinglePhi_massErr->clear(); SinglePhi_massDiff->clear();
     SinglePhi_ctau->clear(); SinglePhi_ctauErr->clear();
@@ -4010,6 +4158,7 @@ void MultiLepPAT::beginJob()
     Phi_massDiff    = new vector<float>();
     Ups_massDiff    = new vector<float>();
     SingleJpsi_massDiff = new vector<float>();
+    SingleUps_massDiff = new vector<float>();
     SinglePhi_massDiff = new vector<float>();
 
     branchReso("Jpsi_1", Jpsi_1_mass, Jpsi_1_massErr, Jpsi_1_massDiff,
@@ -4062,6 +4211,28 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("SingleJpsi_mu2_genMatchIdx", &SingleJpsi_mu2_genMatchIdx);
     X_One_Tree_->Branch("SingleJpsi_mu1_genMatchChi2", &SingleJpsi_mu1_genMatchChi2);
     X_One_Tree_->Branch("SingleJpsi_mu2_genMatchChi2", &SingleJpsi_mu2_genMatchChi2);
+
+    X_One_Tree_->Branch("nSingleUpsCand", &nSingleUpsCand, "nSingleUpsCand/I");
+    branchReso("SingleUps", SingleUps_mass, SingleUps_massErr, SingleUps_massDiff,
+               SingleUps_ctau, SingleUps_ctauErr,
+               SingleUps_Chi2, SingleUps_ndof, SingleUps_VtxProb,
+               SingleUps_px, SingleUps_py, SingleUps_pz,
+               SingleUps_phi, SingleUps_eta, SingleUps_pt,
+               SingleUps_pxErr, SingleUps_pyErr, SingleUps_pzErr, SingleUps_ptErr);
+    X_One_Tree_->Branch("SingleUps_fitValid", &SingleUps_fitValid);
+    X_One_Tree_->Branch("SingleUps_fitPass", &SingleUps_fitPass);
+    X_One_Tree_->Branch("SingleUps_prefitMass", &SingleUps_prefitMass);
+    X_One_Tree_->Branch("SingleUps_prefitPt", &SingleUps_prefitPt);
+    X_One_Tree_->Branch("SingleUps_prefitEta", &SingleUps_prefitEta);
+    X_One_Tree_->Branch("SingleUps_prefitPhi", &SingleUps_prefitPhi);
+    X_One_Tree_->Branch("SingleUps_mu1_Idx", &SingleUps_mu1_Idx);
+    X_One_Tree_->Branch("SingleUps_mu2_Idx", &SingleUps_mu2_Idx);
+    X_One_Tree_->Branch("SingleUps_mu1_charge", &SingleUps_mu1_charge);
+    X_One_Tree_->Branch("SingleUps_mu2_charge", &SingleUps_mu2_charge);
+    X_One_Tree_->Branch("SingleUps_mu1_genMatchIdx", &SingleUps_mu1_genMatchIdx);
+    X_One_Tree_->Branch("SingleUps_mu2_genMatchIdx", &SingleUps_mu2_genMatchIdx);
+    X_One_Tree_->Branch("SingleUps_mu1_genMatchChi2", &SingleUps_mu1_genMatchChi2);
+    X_One_Tree_->Branch("SingleUps_mu2_genMatchChi2", &SingleUps_mu2_genMatchChi2);
 
     X_One_Tree_->Branch("nSinglePhiCand", &nSinglePhiCand, "nSinglePhiCand/I");
     branchReso("SinglePhi", SinglePhi_mass, SinglePhi_massErr, SinglePhi_massDiff,
