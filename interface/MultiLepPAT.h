@@ -307,6 +307,8 @@ private:
     void storeSingleUpsCandidatesForMC(
         const reco::Vertex& beamSpotV,
         const edm::Handle<reco::GenParticleCollection>& genParticles);
+    void fillRecoKaonTrackBlockForMC(
+        const edm::Handle<reco::GenParticleCollection>& genParticles);
     void storeSinglePhiCandidatesForMC(
         const reco::Vertex& beamSpotV,
         const edm::Handle<reco::GenParticleCollection>& genParticles);
@@ -610,6 +612,7 @@ private:
     std::vector<edm::View<pat::PackedCandidate>::const_iterator> nonMuonTrack_;
     std::unordered_map<unsigned int, int> handleToNtupleIndex_;
     std::unordered_map<int, unsigned int> ntupleToHandleIndex_;
+    std::unordered_map<unsigned int, int> nonMuonTrackIdxToRecoKaonTrackIdx_;
     
     // Muon pair candidates
     std::vector<muList_t> muPairCand_Onia1_;  // J/psi (or 1st quarkonium)
@@ -822,6 +825,7 @@ private:
     vector<float> *SingleUps_mu1_genMatchChi2 = nullptr, *SingleUps_mu2_genMatchChi2 = nullptr;
 
     int nSinglePhiCand = 0;
+    int nRecoKaonTrack = 0;
     vector<float> *SinglePhi_mass = nullptr, *SinglePhi_massErr = nullptr, *SinglePhi_massDiff = nullptr;
     vector<float> *SinglePhi_ctau = nullptr, *SinglePhi_ctauErr = nullptr;
     vector<float> *SinglePhi_Chi2 = nullptr, *SinglePhi_ndof = nullptr, *SinglePhi_VtxProb = nullptr;
@@ -851,7 +855,22 @@ private:
     vector<int>   *SinglePhi_commonAssocPVPass = nullptr, *SinglePhi_commonAssocPVIdx = nullptr;
     vector<int>   *SinglePhi_trackPVPass = nullptr, *SinglePhi_vertexCriteriaPass = nullptr;
     vector<float> *SinglePhi_maxAbsDzPV = nullptr, *SinglePhi_maxAbsDxyPV = nullptr;
-    
+
+    // RecoKaonTrack block: lightweight per-track storage for phi/kaon efficiency
+    vector<int>   *RecoKaonTrack_nonMuonTrackIdx = nullptr;
+    vector<float> *RecoKaonTrack_pt = nullptr, *RecoKaonTrack_eta = nullptr, *RecoKaonTrack_phi = nullptr;
+    vector<float> *RecoKaonTrack_px = nullptr, *RecoKaonTrack_py = nullptr, *RecoKaonTrack_pz = nullptr;
+    vector<int>   *RecoKaonTrack_charge = nullptr;
+    vector<int>   *RecoKaonTrack_fromPV = nullptr, *RecoKaonTrack_pvAssocQuality = nullptr;
+    vector<int>   *RecoKaonTrack_vertexId = nullptr;
+    vector<float> *RecoKaonTrack_dzPV = nullptr, *RecoKaonTrack_dxyPV = nullptr;
+    vector<float> *RecoKaonTrack_dzAssocPV = nullptr, *RecoKaonTrack_dxyAssocPV = nullptr;
+    vector<int>   *RecoKaonTrack_passDzPV = nullptr, *RecoKaonTrack_passDxyPV = nullptr;
+    vector<int>   *RecoKaonTrack_passTrackPV = nullptr;
+    vector<int>   *RecoKaonTrack_genMatchIdx = nullptr, *RecoKaonTrack_genMatchSource = nullptr;
+    vector<float> *RecoKaonTrack_genMatchChi2 = nullptr;
+    vector<int>   *RecoKaonTrack_usedInSinglePhi = nullptr;
+
     // -- Primary (combined) vertex --
     vector<float> *Pri_mass, *Pri_massErr;
     vector<float> *Pri_ctau, *Pri_ctauErr, *Pri_Chi2, *Pri_ndof, *Pri_VtxProb;

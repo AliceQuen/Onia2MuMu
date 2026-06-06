@@ -33,6 +33,8 @@
 #include <string>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <set>
 #include <unordered_set>
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
@@ -438,6 +440,19 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Phi_fitPass(nullptr), Phi_commonAssocPVPass(nullptr), Phi_commonAssocPVIdx(nullptr),
       Phi_trackPVPass(nullptr), Phi_vertexCriteriaPass(nullptr),
       Phi_maxAbsDzPV(nullptr), Phi_maxAbsDxyPV(nullptr),
+      RecoKaonTrack_nonMuonTrackIdx(new vector<int>()),
+      RecoKaonTrack_pt(new vector<float>()), RecoKaonTrack_eta(new vector<float>()), RecoKaonTrack_phi(new vector<float>()),
+      RecoKaonTrack_px(new vector<float>()), RecoKaonTrack_py(new vector<float>()), RecoKaonTrack_pz(new vector<float>()),
+      RecoKaonTrack_charge(new vector<int>()),
+      RecoKaonTrack_fromPV(new vector<int>()), RecoKaonTrack_pvAssocQuality(new vector<int>()),
+      RecoKaonTrack_vertexId(new vector<int>()),
+      RecoKaonTrack_dzPV(new vector<float>()), RecoKaonTrack_dxyPV(new vector<float>()),
+      RecoKaonTrack_dzAssocPV(new vector<float>()), RecoKaonTrack_dxyAssocPV(new vector<float>()),
+      RecoKaonTrack_passDzPV(new vector<int>()), RecoKaonTrack_passDxyPV(new vector<int>()),
+      RecoKaonTrack_passTrackPV(new vector<int>()),
+      RecoKaonTrack_genMatchIdx(new vector<int>()), RecoKaonTrack_genMatchSource(new vector<int>()),
+      RecoKaonTrack_genMatchChi2(new vector<float>()),
+      RecoKaonTrack_usedInSinglePhi(new vector<int>()),
       Pri_mass(nullptr), Pri_massErr(nullptr),
       Pri_ctau(nullptr), Pri_ctauErr(nullptr), Pri_Chi2(nullptr),
       Pri_ndof(nullptr), Pri_VtxProb(nullptr),
@@ -1814,6 +1829,94 @@ void MultiLepPAT::pairTracks(
 /*****************************************************************************
  * Store object-level candidates for MC efficiency studies
  *****************************************************************************/
+void MultiLepPAT::fillRecoKaonTrackBlockForMC(
+    const edm::Handle<reco::GenParticleCollection>& genParticles)
+{
+    nRecoKaonTrack = 0;
+    nonMuonTrackIdxToRecoKaonTrackIdx_.clear();
+    RecoKaonTrack_nonMuonTrackIdx->clear();
+    RecoKaonTrack_pt->clear(); RecoKaonTrack_eta->clear(); RecoKaonTrack_phi->clear();
+    RecoKaonTrack_px->clear(); RecoKaonTrack_py->clear(); RecoKaonTrack_pz->clear();
+    RecoKaonTrack_charge->clear();
+    RecoKaonTrack_fromPV->clear(); RecoKaonTrack_pvAssocQuality->clear();
+    RecoKaonTrack_vertexId->clear();
+    RecoKaonTrack_dzPV->clear(); RecoKaonTrack_dxyPV->clear();
+    RecoKaonTrack_dzAssocPV->clear(); RecoKaonTrack_dxyAssocPV->clear();
+    RecoKaonTrack_passDzPV->clear(); RecoKaonTrack_passDxyPV->clear();
+    RecoKaonTrack_passTrackPV->clear();
+    RecoKaonTrack_genMatchIdx->clear(); RecoKaonTrack_genMatchSource->clear();
+    RecoKaonTrack_genMatchChi2->clear();
+    RecoKaonTrack_usedInSinglePhi->clear();
+
+    if (!doMC || !keepAllSingleObjectCandsInMC_ || nonMuonTrack_.empty()) {
+        return;
+    }
+
+    std::set<unsigned int> selectedNonMuonTrackIdx;
+    std::set<unsigned int> usedInSinglePhiSet;
+    std::map<unsigned int, PhiKaonDiagnostics> diagnosticsCache;
+
+    for (unsigned int nonMuonIdx = 0; nonMuonIdx < nonMuonTrack_.size(); ++nonMuonIdx) {
+        const auto& cand = *nonMuonTrack_[nonMuonIdx];
+        const auto diagnostics = buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
+        diagnosticsCache[nonMuonIdx] = diagnostics;
+
+        const bool hasGoodTrack = cand.hasTrackDetails() &&
+                                  cand.bestTrack() != nullptr &&
+                                  cand.bestTrack()->normalizedChi2() <= 8.0 &&
+                                  cand.bestTrack()->quality(reco::Track::highPurity);
+        const bool passesTrackSel = static_cast<int>(cand.fromPV()) >= minTrackFromPV_ &&
+                                    hasGoodTrack &&
+                                    trackSelector_(cand);
+        if (diagnostics.genMatchIdx >= 0 && passesTrackSel) {
+            selectedNonMuonTrackIdx.insert(nonMuonIdx);
+        }
+    }
+
+    for (const auto& pair : KPairCand_Meson_) {
+        for (const auto nonMuonIdx : pair.second) {
+            if (nonMuonIdx >= nonMuonTrack_.size()) {
+                continue;
+            }
+            selectedNonMuonTrackIdx.insert(nonMuonIdx);
+            usedInSinglePhiSet.insert(nonMuonIdx);
+        }
+    }
+
+    for (const auto nonMuonIdx : selectedNonMuonTrackIdx) {
+        const auto& cand = *nonMuonTrack_[nonMuonIdx];
+        const auto cacheIt = diagnosticsCache.find(nonMuonIdx);
+        const auto diagnostics = (cacheIt != diagnosticsCache.end())
+            ? cacheIt->second
+            : buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
+
+        nonMuonTrackIdxToRecoKaonTrackIdx_[nonMuonIdx] = nRecoKaonTrack;
+        RecoKaonTrack_nonMuonTrackIdx->push_back(static_cast<int>(nonMuonIdx));
+        RecoKaonTrack_pt->push_back(cand.pt());
+        RecoKaonTrack_eta->push_back(cand.eta());
+        RecoKaonTrack_phi->push_back(cand.phi());
+        RecoKaonTrack_px->push_back(cand.px());
+        RecoKaonTrack_py->push_back(cand.py());
+        RecoKaonTrack_pz->push_back(cand.pz());
+        RecoKaonTrack_charge->push_back(cand.charge());
+        RecoKaonTrack_fromPV->push_back(diagnostics.fromPV);
+        RecoKaonTrack_pvAssocQuality->push_back(diagnostics.pvAssocQuality);
+        RecoKaonTrack_vertexId->push_back(diagnostics.vertexId);
+        RecoKaonTrack_dzPV->push_back(diagnostics.dzPV);
+        RecoKaonTrack_dxyPV->push_back(diagnostics.dxyPV);
+        RecoKaonTrack_dzAssocPV->push_back(diagnostics.dzAssocPV);
+        RecoKaonTrack_dxyAssocPV->push_back(diagnostics.dxyAssocPV);
+        RecoKaonTrack_passDzPV->push_back(diagnostics.passDzPV ? 1 : 0);
+        RecoKaonTrack_passDxyPV->push_back(diagnostics.passDxyPV ? 1 : 0);
+        RecoKaonTrack_passTrackPV->push_back(diagnostics.passTrackPV ? 1 : 0);
+        RecoKaonTrack_genMatchIdx->push_back(diagnostics.genMatchIdx);
+        RecoKaonTrack_genMatchSource->push_back(diagnostics.genMatchSource);
+        RecoKaonTrack_genMatchChi2->push_back(diagnostics.genMatchChi2);
+        RecoKaonTrack_usedInSinglePhi->push_back(usedInSinglePhiSet.count(nonMuonIdx) ? 1 : 0);
+        ++nRecoKaonTrack;
+    }
+}
+
 void MultiLepPAT::storeAllSingleObjectCandidatesForMC(
     const reco::Vertex& beamSpotV,
     const edm::Handle<reco::GenParticleCollection>& genParticles)
@@ -1821,6 +1924,8 @@ void MultiLepPAT::storeAllSingleObjectCandidatesForMC(
     if (!doMC || !keepAllSingleObjectCandsInMC_) {
         return;
     }
+
+    fillRecoKaonTrackBlockForMC(genParticles);
 
     storeSingleJpsiCandidatesForMC(beamSpotV, genParticles);
 
@@ -3279,6 +3384,22 @@ void MultiLepPAT::clearEventData()
     SinglePhi_trackPVPass->clear(); SinglePhi_vertexCriteriaPass->clear();
     SinglePhi_maxAbsDzPV->clear(); SinglePhi_maxAbsDxyPV->clear();
 
+    nRecoKaonTrack = 0;
+    RecoKaonTrack_nonMuonTrackIdx->clear();
+    RecoKaonTrack_pt->clear(); RecoKaonTrack_eta->clear(); RecoKaonTrack_phi->clear();
+    RecoKaonTrack_px->clear(); RecoKaonTrack_py->clear(); RecoKaonTrack_pz->clear();
+    RecoKaonTrack_charge->clear();
+    RecoKaonTrack_fromPV->clear(); RecoKaonTrack_pvAssocQuality->clear();
+    RecoKaonTrack_vertexId->clear();
+    RecoKaonTrack_dzPV->clear(); RecoKaonTrack_dxyPV->clear();
+    RecoKaonTrack_dzAssocPV->clear(); RecoKaonTrack_dxyAssocPV->clear();
+    RecoKaonTrack_passDzPV->clear(); RecoKaonTrack_passDxyPV->clear();
+    RecoKaonTrack_passTrackPV->clear();
+    RecoKaonTrack_genMatchIdx->clear(); RecoKaonTrack_genMatchSource->clear();
+    RecoKaonTrack_genMatchChi2->clear();
+    RecoKaonTrack_usedInSinglePhi->clear();
+    nonMuonTrackIdxToRecoKaonTrackIdx_.clear();
+
     // Upsilon branches
     Ups_mu_1_Idx->clear(); Ups_mu_2_Idx->clear();
     Ups_mass->clear(); Ups_massErr->clear(); Ups_massDiff->clear();
@@ -3291,6 +3412,7 @@ void MultiLepPAT::clearEventData()
     // Clear intermediate storage
     handleToNtupleIndex_.clear();
     ntupleToHandleIndex_.clear();
+    nonMuonTrackIdxToRecoKaonTrackIdx_.clear();
     muPairCand_Onia1_.clear();
     muPairCand_Onia2_.clear();
     diOniaCands_.clear();
@@ -4349,6 +4471,30 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("SinglePhi_vertexCriteriaPass", &SinglePhi_vertexCriteriaPass);
     X_One_Tree_->Branch("SinglePhi_maxAbsDzPV", &SinglePhi_maxAbsDzPV);
     X_One_Tree_->Branch("SinglePhi_maxAbsDxyPV", &SinglePhi_maxAbsDxyPV);
+
+    X_One_Tree_->Branch("nRecoKaonTrack", &nRecoKaonTrack, "nRecoKaonTrack/I");
+    X_One_Tree_->Branch("RecoKaonTrack_nonMuonTrackIdx", &RecoKaonTrack_nonMuonTrackIdx);
+    X_One_Tree_->Branch("RecoKaonTrack_pt", &RecoKaonTrack_pt);
+    X_One_Tree_->Branch("RecoKaonTrack_eta", &RecoKaonTrack_eta);
+    X_One_Tree_->Branch("RecoKaonTrack_phi", &RecoKaonTrack_phi);
+    X_One_Tree_->Branch("RecoKaonTrack_px", &RecoKaonTrack_px);
+    X_One_Tree_->Branch("RecoKaonTrack_py", &RecoKaonTrack_py);
+    X_One_Tree_->Branch("RecoKaonTrack_pz", &RecoKaonTrack_pz);
+    X_One_Tree_->Branch("RecoKaonTrack_charge", &RecoKaonTrack_charge);
+    X_One_Tree_->Branch("RecoKaonTrack_fromPV", &RecoKaonTrack_fromPV);
+    X_One_Tree_->Branch("RecoKaonTrack_pvAssocQuality", &RecoKaonTrack_pvAssocQuality);
+    X_One_Tree_->Branch("RecoKaonTrack_vertexId", &RecoKaonTrack_vertexId);
+    X_One_Tree_->Branch("RecoKaonTrack_dzPV", &RecoKaonTrack_dzPV);
+    X_One_Tree_->Branch("RecoKaonTrack_dxyPV", &RecoKaonTrack_dxyPV);
+    X_One_Tree_->Branch("RecoKaonTrack_dzAssocPV", &RecoKaonTrack_dzAssocPV);
+    X_One_Tree_->Branch("RecoKaonTrack_dxyAssocPV", &RecoKaonTrack_dxyAssocPV);
+    X_One_Tree_->Branch("RecoKaonTrack_passDzPV", &RecoKaonTrack_passDzPV);
+    X_One_Tree_->Branch("RecoKaonTrack_passDxyPV", &RecoKaonTrack_passDxyPV);
+    X_One_Tree_->Branch("RecoKaonTrack_passTrackPV", &RecoKaonTrack_passTrackPV);
+    X_One_Tree_->Branch("RecoKaonTrack_genMatchIdx", &RecoKaonTrack_genMatchIdx);
+    X_One_Tree_->Branch("RecoKaonTrack_genMatchSource", &RecoKaonTrack_genMatchSource);
+    X_One_Tree_->Branch("RecoKaonTrack_genMatchChi2", &RecoKaonTrack_genMatchChi2);
+    X_One_Tree_->Branch("RecoKaonTrack_usedInSinglePhi", &RecoKaonTrack_usedInSinglePhi);
 
     vector<float>* nullDiff = nullptr;
     branchReso("Pri", Pri_mass, Pri_massErr, nullDiff,
