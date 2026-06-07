@@ -18,7 +18,7 @@ All selection cuts are externalized and can be changed **without recompilation**
 
 ```python
 MuonSelection  = cms.untracked.string("pt > 2.5 && abs(eta) < 2.4")
-TrackSelection = cms.untracked.string("pt > 2.0 && abs(eta) < 2.5 && numberOfHits > 4")
+TrackSelection = cms.untracked.string("pt > 1.0 && abs(eta) < 2.5 && numberOfHits > 4")
 ```
 
 These accept any valid expression on `pat::Muon` or `pat::PackedCandidate` members.
@@ -27,12 +27,12 @@ These accept any valid expression on `pat::Muon` or `pat::PackedCandidate` membe
 
 | Parameter     | Default | Description                     |
 |---------------|---------|---------------------------------|
-| `JpsiMassMin` | 1.0    | J/ψ dimuon mass lower bound     |
-| `JpsiMassMax` | 4.0    | J/ψ dimuon mass upper bound     |
-| `UpsMassMin`  | 8.0    | Υ dimuon mass lower bound       |
-| `UpsMassMax`  | 12.0   | Υ dimuon mass upper bound       |
-| `PhiMassMin`  | 0.8    | φ(→KK) mass lower bound         |
-| `PhiMassMax`  | 1.2    | φ(→KK) mass upper bound         |
+| `JpsiMassMin` | 2.8     | J/ψ dimuon mass lower bound     |
+| `JpsiMassMax` | 3.3     | J/ψ dimuon mass upper bound     |
+| `UpsMassMin`  | 8.0     | Υ dimuon mass lower bound       |
+| `UpsMassMax`  | 12.0    | Υ dimuon mass upper bound       |
+| `PhiMassMin`  | 0.97    | φ(→KK) mass lower bound         |
+| `PhiMassMax`  | 1.07    | φ(→KK) mass upper bound         |
 
 ### Primary Vertex Cuts
 
@@ -46,8 +46,45 @@ These accept any valid expression on `pat::Muon` or `pat::PackedCandidate` membe
 
 | Parameter             | Default | Description                          |
 |-----------------------|---------|--------------------------------------|
-| `OniaDecayVtxProbCut` | 0.001   | Minimum vertex prob for dimuon fits  |
-| `PriVtxProbCut`       | 0.0     | Minimum vertex prob for primary vtx  |
+| `OniaDecayVtxProbCut` | 5e-4    | Minimum vertex prob for dimuon fits  |
+| `PriVtxProbCut`       | -1.0    | Minimum vertex prob for primary vtx (negative = disabled) |
+
+### Candidate pT/η Pre-cuts
+
+| Parameter        | Default | Description                          |
+|------------------|---------|--------------------------------------|
+| `JpsiCandPtMin`  | 4.0     | J/ψ candidate minimum pT (GeV)       |
+| `JpsiCandEtaMax` | 999.0   | J/ψ candidate maximum |η|           |
+| `UpsCandPtMin`   | 4.0     | Υ candidate minimum pT (GeV)         |
+| `UpsCandEtaMax`  | 999.0   | Υ candidate maximum |η|             |
+| `PhiCandPtMin`   | 2.0     | φ candidate minimum pT (GeV)         |
+| `PhiCandEtaMax`  | 999.0   | φ candidate maximum |η|             |
+
+### Vertex Fit Toggles
+
+| Parameter          | Default | Description                        |
+|--------------------|---------|------------------------------------|
+| `DoJpsiDecayVtxFit` | True   | Enable J/ψ decay-vertex fit       |
+| `DoUpsDecayVtxFit`  | True   | Enable Υ decay-vertex fit         |
+| `DoPhiDecayVtxFit`  | True   | Enable φ decay-vertex fit         |
+| `DoDiOniaVtxFit`    | True   | Enable DiOnia common-vertex fit   |
+| `DoPriVtxFit`       | True   | Enable 3-body primary-vertex fit  |
+
+### MC Control (VarParsing CLI-only)
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `runOnMC` | False   | Enable `DoMonteCarloTree` + MC branches |
+| `keepAllSingleObjectCandsInMC` | False | Store all single-resonance candidates + RecoKaonTrack block |
+| `skipCompositeCandBuildingWhenKeepingSingles` | False | Skip final combineCandidates when storing singles |
+| `requireAcceptedCandidatesForMonteCarloTree` | False | Only fill TTree entries with ≥1 accepted candidate |
+
+### Multi-threading
+
+| Parameter    | Default | Description |
+|-------------|---------|-------------|
+| `numThreads` | 1       | Number of threads |
+| `numStreams` | 0       | Number of streams (0 = automatic) |
 
 ## New Branches (vs. previous version)
 
@@ -55,6 +92,32 @@ These accept any valid expression on `pat::Muon` or `pat::PackedCandidate` membe
 For each resonance (`Jpsi_1`, `Jpsi_2`, `Phi`, `Pri`):
 - `*_pxErr`, `*_pyErr`, `*_pzErr`: Component errors from `KinematicParametersError`
 - `*_ptErr`: Propagated transverse momentum error
+
+### Kaon Daughter Branches
+For each φ candidate:
+- `Phi_K_1_*`, `Phi_K_2_*`: Per-kaon kinematics, PV diagnostics, vertex ID
+- `Phi_K_1_RecoKaonTrackIdx`, `Phi_K_2_RecoKaonTrackIdx`: Indices into the RecoKaonTrack block (`-1` = not in block)
+
+### Single-Object Candidates (MC only, `KeepAllSingleObjectCandsInMC=True`)
+- `SingleJpsi_*`: Per-candidate J/ψ kinematics, vertex fit, GEN-matching, muon daughter indices
+- `SingleUps_*`: Per-candidate Υ kinematics, vertex fit, GEN-matching, muon daughter indices
+- `SinglePhi_*`: Per-candidate φ kinematics, vertex fit, GEN-matching, kaon daughter indices (`nonMuonTrackIdx` + `RecoKaonTrackIdx`)
+- Counters: `nSingleJpsiCand`, `nSingleUpsCand`, `nSinglePhiCand`
+
+### RecoKaonTrack Block (MC only, `KeepAllSingleObjectCandsInMC=True`)
+Lightweight flat per-track storage for phi/kaon efficiency. Contains the union of:
+1. GEN-matched tracks passing the full track quality filter (same cuts as `pairTracks()`)
+2. All kaon daughters from `KPairCand_Meson_` (φ candidates)
+
+Branches (`RecoKaonTrack_*`):
+- `nonMuonTrackIdx`: Cross-reference into `nonMuonTrack_`
+- `pt, eta, phi, px, py, pz, charge`: Track kinematics
+- `fromPV, pvAssocQuality, vertexId`: PV association
+- `dzPV, dxyPV, dzAssocPV, dxyAssocPV`: Impact parameters
+- `passDzPV, passDxyPV, passTrackPV`: Track quality flags
+- `genMatchIdx, genMatchSource, genMatchChi2`: GEN-level matching
+- `usedInSinglePhi`: 1 if track is a φ-candidate daughter
+- Counter: `nRecoKaonTrack`
 
 ### MC Gen-level (flat storage)
 - `MC_GenPart_pdgId`, `MC_GenPart_status`, `MC_GenPart_motherPdgId`

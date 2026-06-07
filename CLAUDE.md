@@ -28,13 +28,25 @@ cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/ConfFile_cfg.py \
     outputFile=output.root \
     era=Run2023C
 
-# MC
-cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/runMultiLepPAT_MCRun3_miniAOD_Run2022.py \
+# MC (via ConfFile_cfg.py VarParsing)
+cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/ConfFile_cfg.py \
     inputFiles=file:myMC.root \
-    outputFile=mc_output.root
+    outputFile=mc_output.root \
+    runOnMC=True \
+    era=Run2022
+
+# MC single-object efficiency ntuple (skip composite building)
+cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/ConfFile_cfg.py \
+    inputFiles=file:myMC.root \
+    outputFile=mc_singles.root \
+    runOnMC=True \
+    era=Run2022 \
+    keepAllSingleObjectCandsInMC=True \
+    skipCompositeCandBuildingWhenKeepingSingles=True
 
 # Switch analysis mode
-cmsRun ConfFile_cfg.py AnalysisMode=JpsiUpsPhi
+cmsRun HeavyFlavorAnalysis/TPS-Onia2MuMu/test/ConfFile_cfg.py \
+    analysisMode=JpsiUpsPhi
 ```
 
 ### CRAB Submission
@@ -58,9 +70,11 @@ The core analysis is in `MultiLepPAT` (`interface/MultiLepPAT.h`, `src/MultiLepP
 4. **fillMuonBlock()** - Store muon kinematics and ID variables
 5. **pairMuons()** - Build dimuon candidates (J/ψ or Υ) via kinematic vertex fit
 6. **pairTracks()** - Build track-pair candidates (φ or other mesons)
-7. **combineCandidates()** - Combine resonances into 3-body candidates
-8. **doMCGenMatching()** - RECO-to-GEN matching for efficiency studies
+7. **storeAllSingleObjectCandidatesForMC()** - Store single-object J/ψ, Υ, φ candidates and the RecoKaonTrack block (MC efficiency studies)
+8. **combineCandidates()** - Combine resonances into 3-body candidates
 9. **clearEventData()** - Clear event-level storage
+
+Pairs are built at most once per event. Capability flags (`canTrySingleJpsi`, `canTryFullMuonSide`, etc.) and `hasFullCandidateInputs()` gate whether each step runs. `shouldFillCurrentEvent()` controls TTree fill based on candidate presence, MC mode, and `RequireAcceptedCandidatesForMonteCarloTree`.
 
 ### Configuration Architecture
 
@@ -69,8 +83,21 @@ All selection cuts are externalized via `StringCutObjectSelector` syntax, enabli
 - `MuonSelection` - String cut on `pat::Muon` members (e.g., `"pt > 2.5 && abs(eta) < 2.4"`)
 - `TrackSelection` - String cut on `pat::PackedCandidate` for kaons/pions
 - Mass windows (`JpsiMassMin/Max`, `UpsMassMin/Max`, `PhiMassMin/Max`)
+- Candidate pT/eta pre-cuts (`JpsiCandPtMin`, `JpsiCandEtaMax`, `UpsCandPtMin`, `UpsCandEtaMax`, `PhiCandPtMin`, `PhiCandEtaMax`)
 - Vertex probability cuts (`OniaDecayVtxProbCut`, `PriVtxProbCut`)
 - Primary vertex quality (`PVNdofMin`, `PVMaxAbsZ`, `PVMaxRho`)
+- Vertex fit toggles (`DoJpsiDecayVtxFit`, `DoUpsDecayVtxFit`, `DoPhiDecayVtxFit`, `DoDiOniaVtxFit`, `DoPriVtxFit`) — enable/disable individual kinematic fits
+
+### MC Control (VarParsing CLI only, not in canned configs)
+
+- `runOnMC` — enables `DoMonteCarloTree` (bool, default False)
+- `keepAllSingleObjectCandsInMC` — store all single-object J/ψ, Υ, φ candidates and RecoKaonTrack block (default False)
+- `skipCompositeCandBuildingWhenKeepingSingles` — skip `combineCandidates()` after storing singles (default False)
+- `requireAcceptedCandidatesForMonteCarloTree` — only fill TTree entries with ≥1 accepted candidate (default False)
+
+### Multi-threading (VarParsing CLI)
+
+- `numThreads` / `numStreams` — CMSSW multi-threading (default: 1 / 0=auto)
 
 ### Analysis Modes
 
@@ -94,9 +121,14 @@ The main TTree (`X_One_Tree`) stores:
 - Primary vertex: position, errors, χ², beamspot-corrected variants
 - All muons: kinematics, ID flags, impact parameters, trigger matching
 - Resonance candidates (J/ψ, Υ, φ): mass, cτ, vertex prob, momentum (with uncertainties)
+- Kaon daughters of φ (`Phi_K_1_*`, `Phi_K_2_*`): per-track kinematics, PV diagnostics
+- `Phi_K_*_RecoKaonTrackIdx`: indices linking φ daughters to the flat RecoKaonTrack block
+- Single-object MC branches (`SingleJpsi_*`, `SingleUps_*`, `SinglePhi_*`): per-candidate kinematics, GEN-matching, daughter indices
+- `SinglePhi_K*_RecoKaonTrackIdx`: indices linking single-φ daughters to the RecoKaonTrack block
+- RecoKaonTrack block (`RecoKaonTrack_*`): flat per-track storage of (GEN-matched quality kaons) ∪ (φ-candidate daughters), with PV diagnostics, GEN-matching, and `usedInSinglePhi` flag
 - 3-body primary vertex: combined fit results
-- MC gen-level (MC_GenPart_*): flat storage of all relevant gen particles
-- Legacy MC branches (MC_X_*, MC_Dau_*): kept for backward compatibility
+- MC gen-level (`MC_GenPart_*`): flat storage of all relevant gen particles
+- Legacy MC branches (`MC_X_*`, `MC_Dau_*`): kept for backward compatibility
 
 ### Global Tag Selection
 
@@ -115,8 +147,12 @@ The main TTree (`X_One_Tree`) stores:
 ### Naming Conventions
 - Resonance candidates: `Jpsi_1_*`, `Jpsi_2_*`, `Ups_*`, `Phi_*` (suffixes: mass, ctau, px/py/pz, pt/eta/phi)
 - Muon indices: `Jpsi_1_mu_1_Idx`, `Jpsi_1_mu_2_Idx` (links muons to resonances)
-- Kaon indices: `Phi_K_1_Idx`, `Phi_K_2_Idx` (links kaons to φ)
+- Kaon indices: `Phi_K_1_Idx`, `Phi_K_2_Idx` (links kaons to φ, raw nonMuonTrack_ index)
+- Kaon RecoKaonTrack indices: `Phi_K_1_RecoKaonTrackIdx`, `SinglePhi_K1_RecoKaonTrackIdx` (links into `RecoKaonTrack_*` block)
+- Single-object candidates: `SingleJpsi_*`, `SingleUps_*`, `SinglePhi_*` (all-store MC efficiency branches)
 - Uncertainties: `*_pxErr`, `*_pyErr`, `*_pzErr`, `*_ptErr`
+- RecoKaonTrack block: `RecoKaonTrack_*` (flat per-track storage, used for phi/kaon efficiency)
+- Counter branches: `nRecoKaonTrack`, `nSingleJpsiCand`, `nSingleUpsCand`, `nSinglePhiCand`
 
 ### Adding New Branches
 

@@ -26,11 +26,11 @@
 | **3** | Per-resonance candidate pT/eta pre-cuts (6 new config params) | `.h`, `.cc`, both `.py` configs |
 | **4** | Sentinel values (`−999999`) for failed 3-body vertex fits | `.h` (decl), `.cc` (`storeSentinelPri()`, `combineCandidates()`) |
 
-### 0.3 Naming Clarification (planned, not yet applied)
+### 0.3 Naming Clarification (applied)
 
-The variables `jpsiPairPtMin_`, `upsPairPtMin_`, `phiPairPtMin_` (and their `EtaMax` counterparts) are **ambiguous**: they could be misread as "the pT of a pair of J/ψ's" rather than "the pT of the dimuon/dikaon pair forming a single J/ψ/Υ/φ candidate."
+The variables `jpsiPairPtMin_`, `upsPairPtMin_`, `phiPairPtMin_` (and their `EtaMax` counterparts) were **ambiguous**: they could be misread as "the pT of a pair of J/ψ's" rather than "the pT of the dimuon/dikaon pair forming a single J/ψ/Υ/φ candidate."
 
-**Planned rename** (6 members + 6 config keys + 6 config values in 2 `.py` files):
+**Applied rename** (6 members + 6 config keys + 6 config values in 2 `.py` files):
 
 | Old C++ member | New C++ member | Old config key | New config key |
 |----------------|---------------|----------------|----------------|
@@ -42,8 +42,6 @@ The variables `jpsiPairPtMin_`, `upsPairPtMin_`, `phiPairPtMin_` (and their `Eta
 | `phiPairEtaMax_` | `phiCandEtaMax_` | `PhiPairEtaMax` | `PhiCandEtaMax` |
 
 The word "Cand" (candidate) makes it clear that this is the pT of the **single composite candidate** (e.g., the dimuon system forming one J/ψ), not a pair of J/ψ candidates.
-
-**Files to modify**: `MultiLepPAT.h`, `MultiLepPAT.cc`, `ConfFile_cfg.py`, `runMultiLepPAT_MCRun3_miniAOD_Run2022.py`, and the corresponding header comment block.
 
 ---
 
@@ -586,9 +584,12 @@ f.Close()
 | `Ups_*` | ❌ Empty | Not used in this mode |
 | `Pri_*` | ✅ Yes | 3-body combined fit (or sentinel −999999) |
 | `Phi_K_1_*`, `Phi_K_2_*` | ✅ Yes | Kaon tracks |
+| `Phi_K_*_RecoKaonTrackIdx` | ✅ / ❌ | MC with singles: populated; otherwise `-1` |
 | `MatchJpsiTriggerNames` | ✅ Yes | Matched J/ψ trigger paths |
 | `MatchUpsTriggerNames` | ✅ Yes (likely empty) | No Υ triggers expected in JJPhi MC |
-| `MC_GenPart_*` | ✅ Yes | Gen-level info (DoMonteCarloTree=True) |
+| `MC_GenPart_*` | ✅ Yes (MC only) | Gen-level info |
+| `SingleJpsi_*`, `SingleUps_*`, `SinglePhi_*` | ✅ / ❌ | MC with `KeepAllSingleObjectCandsInMC=True` only |
+| `RecoKaonTrack_*` | ✅ / ❌ | MC with `KeepAllSingleObjectCandsInMC=True` only |
 
 ### 5.2 JpsiJpsiUps Mode
 
@@ -600,7 +601,10 @@ f.Close()
 | `Ups_*` | ✅ Yes | Υ from `muPairCand_Onia2_` |
 | `Pri_*` | ✅ Yes | 3-body combined fit (or sentinel) |
 | `Phi_K_*` | ❌ Empty | No kaons |
+| `Phi_K_*_RecoKaonTrackIdx` | ❌ Empty | No φ candidates |
 | `MatchUpsTriggerNames` | ✅ Yes (may be empty) | Depends on HLT menu in MC |
+| `SingleJpsi_*`, `SingleUps_*` | ✅ / ❌ | MC with `KeepAllSingleObjectCandsInMC=True` only |
+| `SinglePhi_*`, `RecoKaonTrack_*` | ❌ Empty | No kaons |
 
 ### 5.3 JpsiUpsPhi Mode
 
@@ -612,8 +616,11 @@ f.Close()
 | `Jpsi_2_*` | ❌ Empty | Not used in this mode |
 | `Pri_*` | ✅ Yes | 3-body fit (or sentinel) |
 | `Phi_K_*` | ✅ Yes | Kaon tracks for φ |
+| `Phi_K_*_RecoKaonTrackIdx` | ✅ / ❌ | MC with singles: populated; otherwise `-1` |
 | `MatchJpsiTriggerNames` | ✅ Yes | J/ψ trigger matches |
 | `MatchUpsTriggerNames` | ✅ Yes | Υ trigger matches |
+| `SingleJpsi_*`, `SingleUps_*`, `SinglePhi_*` | ✅ / ❌ | MC with `KeepAllSingleObjectCandsInMC=True` only |
+| `RecoKaonTrack_*` | ✅ / ❌ | MC with `KeepAllSingleObjectCandsInMC=True` only |
 
 ---
 
@@ -634,7 +641,7 @@ f.Close()
 - Mass windows too narrow (check `JpsiMassMin/Max`, `UpsMassMin/Max`)
 - `OniaDecayVtxProbCut` too tight
 - `MinMuonCount` too high for the MC sample
-- Per-resonance pT/eta cuts filtering everything (defaults are permissive: pT > 0, |η| < 999)
+- Per-resonance pT/eta cuts filtering everything (tight defaults: JpsiCandPtMin=4.0, PhiCandPtMin=2.0; set to 0.0 and 999.0 to loosen)
 
 ### 6.4 Sentinel Values
 **Symptom**: `Pri_mass` contains `−999999`.
