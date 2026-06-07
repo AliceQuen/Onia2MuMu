@@ -44,18 +44,18 @@ Used for: HLT, four-muon vertexing, triOnia vertexing steps.
 
 ## 2. Branch-to-step mapping
 
-### 2.1 Acceptance — A_{J/ψ}, A_{φ}
+### 2.1 Acceptance — $A_{J/\psi}$, $A_{\phi}$
 
 The only step with an unconditional denominator. GEN-level, no RECO needed.
 
-**J/ψ acceptance** — A_{J/ψ}(pT, |y|):
+**$J/\psi$ acceptance** — $A_{J/\psi}(p_T, |y|)$:
 
 | Role | Logic |
 |------|-------|
 | Denominator | GEN J/ψ in kinematic acceptance: `MC_GenPart_pdgId == 443` and `abs(MC_GenPart_pdgId[mother]) != 443` (direct J/ψ, not feed-down) |
 | Numerator | Denominator J/ψ where both GEN daughter muons are in fiducial region: `MC_GenPart_pdgId == 13` or `-13` with mother = the GEN J/ψ, passing fiducial μ cuts (pT, η) |
 
-**φ acceptance** — A_{φ}(pT, |y|):
+**$\phi$ acceptance** — $A_{\phi}(p_T, |y|)$:
 
 | Role | Logic |
 |------|-------|
@@ -69,7 +69,7 @@ particle ordering (daughter follows mother in the GEN record). The
 `processMCGenInfo()` but not persisted to the TTree) are not needed here —
 work directly with the flat `MC_GenPart_*` vectors.
 
-### 2.2 muonRECO — ε_{μReco|J/ψ}
+### 2.2 muonRECO — $\varepsilon_{\mu\mathrm{Reco}|J/\psi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -86,7 +86,7 @@ into `MC_GenPart_*`.
 The RECO-level matching for muons uses the configurable `RecoGenMuonMatchChi2Max`
 (default 25.0). Muons without a valid GEN match have `genMatchIdx = -1`.
 
-### 2.3 kaonRECO — ε_{KReco|φ}
+### 2.3 kaonRECO — $\varepsilon_{K\mathrm{Reco}|\phi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -105,7 +105,7 @@ Alternatively, work entirely through the `RecoKaonTrack` block: iterate
 `RecoKaonTrack_*` entries with `genMatchIdx >= 0`, group by event, and check
 whether both GEN-matched kaons from a given φ are present.
 
-### 2.4 muonID — ε_{μID|J/ψ}
+### 2.4 muonID — $\varepsilon_{\mu\mathrm{ID}|J/\psi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -119,7 +119,7 @@ Available muon ID flags: `muIsGoodTightMuon`, `muIsPatTightMuon`, `muIsPatMedium
 The baseline ID working point is **soft muon**: `muIsPatSoftMuon`. The working
 point is analysis-configurable and can be tightened in post-processing.
 
-### 2.5 kaonID — ε_{KID|φ}
+### 2.5 kaonID — $\varepsilon_{K\mathrm{ID}|\phi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -135,7 +135,7 @@ analysis-configurable. PV-compatibility flags (`RecoKaonTrack_passDzPV`,
 `RecoKaonTrack_passDxyPV`, `RecoKaonTrack_passTrackPV`, `RecoKaonTrack_fromPV`)
 are reserved for the dikaon and triOnia vertexing steps below.
 
-### 2.6 dimuon — ε_{μμ|J/ψ}
+### 2.6 dimuon — $\varepsilon_{\mu\mu|J/\psi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -148,7 +148,7 @@ mass window is already applied in `pairMuons()`; `SingleJpsi_mass` is the
 post-fit mass. Alternative or additional vertexing criteria may be applied
 depending on the analysis working point.
 
-### 2.7 dikaon — ε_{KK|φ}
+### 2.7 dikaon — $\varepsilon_{KK|\phi}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -161,7 +161,7 @@ mass window is already applied in `pairTracks()`. Alternative or additional
 vertexing criteria (e.g., `SinglePhi_trackPVPass`, `SinglePhi_commonAssocPVPass`)
 may be applied depending on the analysis working point.
 
-### 2.8 HLT — ε_{HLT}
+### 2.8 HLT — $\varepsilon_{\mathrm{HLT}}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -211,7 +211,7 @@ matching — it only indicates the trigger fired for the event, not that a
 specific muon was responsible. Use `muJpsiMatchedTriggerIndices` for the
 per-muon association.
 
-### 2.9 four-muon vertexing — ε_{4μvtx}
+### 2.9 four-muon vertexing — $\varepsilon_{4\mu\mathrm{vtx}}$
 
 | Role | Branch / logic |
 |------|----------------|
@@ -224,11 +224,11 @@ fit converged and passes the vertex probability cut (`DiOniaVtxProbCut`).
 Alternative or additional criteria (e.g., `DiOnia_commonRecVtxPass`) may be
 applied depending on the analysis working point.
 
-### 2.10 triOnia — ε_{triOnia}
+### 2.10 triOnia — $\varepsilon_{\mathrm{triOnia}}$
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed four-muon vertexing) | Events passing four-muon vertexing (ε_{4μvtx} numerator), split by φ pT bins |
+| Denominator (passed four-muon vertexing) | Events passing four-muon vertexing ($\varepsilon_{4\mu\mathrm{vtx}}$ numerator), split by φ pT bins |
 | Numerator (passes THIS step) | Denominator events passing the chosen triOnia endpoint |
 
 The code produces four parallel quality flags for the three-meson primary vertex:
@@ -286,34 +286,34 @@ Use `maxEvents=-1` to process all events.
 
 ### Step 2: Build per-object efficiency maps
 
-Each efficiency is conditional: ε_step = N(pass step) / N(pass previous step).
+Each efficiency is conditional: $\varepsilon_{\mathrm{step}} = N(\text{pass step}) \;/\; N(\text{pass previous step})$.
 For each J/ψ and φ kinematic bin `(pT, |y|)`:
 
-1. **Acceptance** — A_{J/ψ}, A_{φ}: From `MC_GenPart_*`.
+1. **Acceptance** — $A_{J/\psi}$, $A_{\phi}$: From `MC_GenPart_*`.
    - Denominator: all GEN J/ψ (or φ) in the kinematic bin.
    - Numerator: denominator mesons where both GEN daughters are in the fiducial region.
 
-2. **muonRECO** — ε_{μReco|J/ψ}: From `SingleJpsi_*` (Run A).
+2. **muonRECO** — $\varepsilon_{\mu\mathrm{Reco}|J/\psi}$: From `SingleJpsi_*` (Run A).
    - Denominator: `SingleJpsi` where both GEN daughters are in fiducial acceptance.
    - Numerator: denominator candidates with both `mu*_genMatchIdx >= 0`.
 
-3. **kaonRECO** — ε_{KReco|φ}: From `SinglePhi_*` (Run A).
+3. **kaonRECO** — $\varepsilon_{K\mathrm{Reco}|\phi}$: From `SinglePhi_*` (Run A).
    - Denominator: `SinglePhi` where both GEN daughters are in fiducial acceptance.
    - Numerator: denominator candidates with both `K*_genMatchIdx >= 0`.
 
-4. **muonID** — ε_{μID|J/ψ}: From `SingleJpsi_*` + `mu*` (Run A).
+4. **muonID** — $\varepsilon_{\mu\mathrm{ID}|J/\psi}$: From `SingleJpsi_*` + `mu*` (Run A).
    - Denominator: `SingleJpsi` passing muonRECO (both muons GEN-matched).
    - Numerator: denominator candidates where both daughter muons pass the chosen ID (baseline: `muIsPatSoftMuon`).
 
-5. **kaonID** — ε_{KID|φ}: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
+5. **kaonID** — $\varepsilon_{K\mathrm{ID}|\phi}$: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
    - Denominator: `SinglePhi` passing kaonRECO (both kaons GEN-matched).
    - Numerator: denominator candidates where both daughter kaons pass the chosen track-quality ID.
 
-6. **dimuon** — ε_{μμ|J/ψ}: From `SingleJpsi_*` (Run A).
+6. **dimuon** — $\varepsilon_{\mu\mu|J/\psi}$: From `SingleJpsi_*` (Run A).
    - Denominator: `SingleJpsi` passing muonID.
    - Numerator: denominator candidates with `SingleJpsi_fitValid && SingleJpsi_fitPass`.
 
-7. **dikaon** — ε_{KK|φ}: From `SinglePhi_*` (Run A).
+7. **dikaon** — $\varepsilon_{KK|\phi}$: From `SinglePhi_*` (Run A).
    - Denominator: `SinglePhi` passing kaonID.
    - Numerator: denominator candidates with `SinglePhi_fitValid && SinglePhi_fitPass`.
 
@@ -321,15 +321,15 @@ For each J/ψ and φ kinematic bin `(pT, |y|)`:
 
 From the full chain ntuple (Run B):
 
-1. **HLT** — ε_{HLT}:
+1. **HLT** — $\varepsilon_{\mathrm{HLT}}$:
    - Denominator: events with ≥1 valid dimuon candidate.
    - Numerator: denominator events where `MatchJpsiTriggerNames` is non-empty AND at least one daughter muon of the candidate has non-empty `muJpsiMatchedTriggerIndices`.
 
-2. **four-muon vertexing** — ε_{4μvtx}: From `DiOnia_*` (Run B).
+2. **four-muon vertexing** — $\varepsilon_{4\mu\mathrm{vtx}}$: From `DiOnia_*` (Run B).
    - Denominator: events passing HLT + trigger matching, with valid dimuon pairs in both J/ψ slots.
    - Numerator: denominator events with `DiOnia_fitValid && DiOnia_fitPass`.
 
-3. **triOnia** — ε_{triOnia}: From `Pri_*` (Run B), split by φ pT bins.
+3. **triOnia** — $\varepsilon_{\mathrm{triOnia}}$: From `Pri_*` (Run B), split by φ pT bins.
    - Denominator: events passing four-muon vertexing.
    - Numerator: denominator events passing the chosen endpoint (default: `Pri_assocPVPass`).
 
