@@ -307,7 +307,7 @@ private:
     void storeSingleUpsCandidatesForMC(
         const reco::Vertex& beamSpotV,
         const edm::Handle<reco::GenParticleCollection>& genParticles);
-    void fillRecoKaonTrackBlockForMC(
+    void fillRecoKaonTrackBlock(
         const edm::Handle<reco::GenParticleCollection>& genParticles);
     void storeSinglePhiCandidatesForMC(
         const reco::Vertex& beamSpotV,

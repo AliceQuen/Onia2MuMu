@@ -743,6 +743,9 @@ void MultiLepPAT::analyze(const edm::Event &iEvent, const edm::EventSetup &iSetu
         debugSummary.pairTracksMs = elapsedMs(stepStart);
     }
 
+    // Step 9a: Populate RecoKaonTrack cross-references from phi-candidate daughters.
+    fillRecoKaonTrackBlock(genParticles);
+
     if (keepSingles) {
         storeAllSingleObjectCandidatesForMC(theBeamSpotV_, genParticles);
         if (skipCompositeCandBuildingWhenKeepingSingles_) {
@@ -1827,7 +1830,7 @@ void MultiLepPAT::pairTracks(
 /*****************************************************************************
  * Store object-level candidates for MC efficiency studies
  *****************************************************************************/
-void MultiLepPAT::fillRecoKaonTrackBlockForMC(
+void MultiLepPAT::fillRecoKaonTrackBlock(
     const edm::Handle<reco::GenParticleCollection>& genParticles)
 {
     nRecoKaonTrack = 0;
@@ -1845,7 +1848,7 @@ void MultiLepPAT::fillRecoKaonTrackBlockForMC(
     RecoKaonTrack_genMatchChi2->clear();
     RecoKaonTrack_usedInSinglePhi->clear();
 
-    if (!doMC || !keepAllSingleObjectCandsInMC_ || nonMuonTrack_.empty()) {
+    if (nonMuonTrack_.empty()) {
         return;
     }
 
@@ -1853,20 +1856,22 @@ void MultiLepPAT::fillRecoKaonTrackBlockForMC(
     std::set<unsigned int> usedInSinglePhiSet;
     std::map<unsigned int, PhiKaonDiagnostics> diagnosticsCache;
 
-    for (unsigned int nonMuonIdx = 0; nonMuonIdx < nonMuonTrack_.size(); ++nonMuonIdx) {
-        const auto& cand = *nonMuonTrack_[nonMuonIdx];
-        const auto diagnostics = buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
-        diagnosticsCache[nonMuonIdx] = diagnostics;
+    if (doMC && keepAllSingleObjectCandsInMC_) {
+        for (unsigned int nonMuonIdx = 0; nonMuonIdx < nonMuonTrack_.size(); ++nonMuonIdx) {
+            const auto& cand = *nonMuonTrack_[nonMuonIdx];
+            const auto diagnostics = buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
+            diagnosticsCache[nonMuonIdx] = diagnostics;
 
-        const bool hasGoodTrack = cand.hasTrackDetails() &&
-                                  cand.bestTrack() != nullptr &&
-                                  cand.bestTrack()->normalizedChi2() <= 8.0 &&
-                                  cand.bestTrack()->quality(reco::Track::highPurity);
-        const bool passesTrackSel = static_cast<int>(cand.fromPV()) >= minTrackFromPV_ &&
-                                    hasGoodTrack &&
-                                    trackSelector_(cand);
-        if (diagnostics.genMatchIdx >= 0 && passesTrackSel) {
-            selectedNonMuonTrackIdx.insert(nonMuonIdx);
+            const bool hasGoodTrack = cand.hasTrackDetails() &&
+                                      cand.bestTrack() != nullptr &&
+                                      cand.bestTrack()->normalizedChi2() <= 8.0 &&
+                                      cand.bestTrack()->quality(reco::Track::highPurity);
+            const bool passesTrackSel = static_cast<int>(cand.fromPV()) >= minTrackFromPV_ &&
+                                        hasGoodTrack &&
+                                        trackSelector_(cand);
+            if (diagnostics.genMatchIdx >= 0 && passesTrackSel) {
+                selectedNonMuonTrackIdx.insert(nonMuonIdx);
+            }
         }
     }
 
@@ -1876,7 +1881,9 @@ void MultiLepPAT::fillRecoKaonTrackBlockForMC(
                 continue;
             }
             selectedNonMuonTrackIdx.insert(nonMuonIdx);
-            usedInSinglePhiSet.insert(nonMuonIdx);
+            if (doMC && keepAllSingleObjectCandsInMC_) {
+                usedInSinglePhiSet.insert(nonMuonIdx);
+            }
         }
     }
 
@@ -1920,8 +1927,6 @@ void MultiLepPAT::storeAllSingleObjectCandidatesForMC(
     if (!doMC || !keepAllSingleObjectCandsInMC_) {
         return;
     }
-
-    fillRecoKaonTrackBlockForMC(genParticles);
 
     storeSingleJpsiCandidatesForMC(beamSpotV, genParticles);
 

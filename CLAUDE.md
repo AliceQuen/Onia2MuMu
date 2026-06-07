@@ -20,6 +20,15 @@ cmsenv
 scram b -j 4
 ```
 
+### Validation Testing
+
+Follow the procedure in `doc/Validation_Test_Plan.md`. Key points:
+
+- Always `cmsenv` before running. Output files get a `_numEvent<N>` suffix when `maxEvents` is set.
+- The TTree is `X_data` inside a `TDirectoryFile` named `mkcands` — use `f.Get("mkcands").Get("X_data")` in ROOT.
+- Count candidates via vector lengths (e.g., `len(Pri_mass)`), not non-existent `nPriCand` branches.
+- Metric reference: 50-event JpsiJpsiPhi MC → 14/16 SingleJpsi, 33/90 SinglePhi, 0/0 SingleUps, 1/2 Pri (composite mode).
+
 ### Running Locally
 ```bash
 # Data (with era-specific global tag)

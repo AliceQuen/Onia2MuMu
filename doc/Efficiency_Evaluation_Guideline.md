@@ -24,13 +24,6 @@ cmsRun ConfFile_cfg.py \
 Provides: `SingleJpsi_*`, `SinglePhi_*`, `RecoKaonTrack_*`, `MC_GenPart_*`.
 Used for: acceptance, muonRECO, kaonRECO, muonID, kaonID, dimuon, dikaon steps.
 
-Use **loose object-level cuts** so that denominator populations are not cut away
-before efficiency evaluation. The tight defaults (`JpsiCandPtMin=4.0`,
-`PhiCandPtMin=2.0`) will bias your denominators. Either pass loose values on the
-command line (not available via VarParsing for these parameters) or maintain a
-loose-cut config variant with `JpsiCandPtMin=0.0`, `PhiCandPtMin=0.0`,
-`JpsiMassMin=1.0`, `JpsiMassMax=4.0`, `PhiMassMin=0.8`, `PhiMassMax=1.2`.
-
 ### Run B — Full chain (singles + composite)
 
 ```bash
@@ -51,35 +44,41 @@ Used for: HLT, four-muon vertexing, triOnia vertexing steps.
 
 ## 2. Branch-to-step mapping
 
-### 2.1 Acceptance (GEN-level, no RECO needed)
+### 2.1 Acceptance — A_{J/ψ}, A_{φ}
 
-| Quantity | Branch / logic |
-|----------|---------------|
-| GEN J/ψ in acceptance | `MC_GenPart_pdgId == 443` and `abs(MC_GenPart_pdgId[mother]) != 443` (direct J/ψ, not feed-down). Apply generator-level pT/rapidity cuts. |
-| GEN φ in acceptance | `MC_GenPart_pdgId == 333` (direct φ). Same logic. |
-| GEN μ from J/ψ | `MC_GenPart_pdgId == 13` or `-13`, mother is the GEN J/ψ. Apply fiducial μ cuts (pT, η). |
-| GEN K from φ | `MC_GenPart_pdgId == 321`, mother is the GEN φ. Apply fiducial K cuts. |
+The only step with an unconditional denominator. GEN-level, no RECO needed.
 
-Numerator: events where both GEN daughters pass fiducial cuts.
-Denominator: events with GEN J/ψ (or φ) in the kinematic acceptance.
+**J/ψ acceptance** — A_{J/ψ}(pT, |y|):
+
+| Role | Logic |
+|------|-------|
+| Denominator | GEN J/ψ in kinematic acceptance: `MC_GenPart_pdgId == 443` and `abs(MC_GenPart_pdgId[mother]) != 443` (direct J/ψ, not feed-down) |
+| Numerator | Denominator J/ψ where both GEN daughter muons are in fiducial region: `MC_GenPart_pdgId == 13` or `-13` with mother = the GEN J/ψ, passing fiducial μ cuts (pT, η) |
+
+**φ acceptance** — A_{φ}(pT, |y|):
+
+| Role | Logic |
+|------|-------|
+| Denominator | GEN φ in kinematic acceptance: `MC_GenPart_pdgId == 333` (direct φ) |
+| Numerator | Denominator φ where both GEN daughter kaons are in fiducial region: `MC_GenPart_pdgId == 321` with mother = the GEN φ, passing fiducial K cuts |
 
 The `MC_GenPart_*` branches store all relevant GEN particles in flat vectors.
-Use the mother-daughter linking via `MC_GenPart_motherPdgId` and the stored
+Use mother-daughter linking via `MC_GenPart_motherPdgId` and the stored
 particle ordering (daughter follows mother in the GEN record). The
 `handleToNtupleIndex_` / `ntupleToHandleIndex_` maps (populated in
 `processMCGenInfo()` but not persisted to the TTree) are not needed here —
 work directly with the flat `MC_GenPart_*` vectors.
 
-### 2.2 muonRECO — both daughter muons reconstructed and matched
+### 2.2 muonRECO — ε_{μReco|J/ψ}
 
-| Quantity | Branch |
-|----------|--------|
-| RECO muons matched to GEN J/ψ daughters | For each `SingleJpsi` candidate: `SingleJpsi_mu1_genMatchIdx >= 0` AND `SingleJpsi_mu2_genMatchIdx >= 0` |
-| Denominator | `SingleJpsi` candidates where both GEN daughter muons are in fiducial acceptance (cross-reference `MC_GenPart_*` via the stored daughter PDG IDs) |
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed acceptance) | `SingleJpsi` candidates where both GEN daughter muons are in fiducial acceptance (cross-reference `MC_GenPart_*` via daughter PDG IDs) |
+| Numerator (passes THIS step) | Denominator `SingleJpsi` where `SingleJpsi_mu1_genMatchIdx >= 0` AND `SingleJpsi_mu2_genMatchIdx >= 0` |
 
 The `SingleJpsi_*` branches are filled **before** the final `JpsiCandPtMin` /
 `JpsiCandEtaMax` cuts in `pairMuons()`, so they capture all dimuon pairs that
-survive the mass window and vertex fit. The `SingleJpsi_mu1_Idx` /
+survive the mass window and vertex fit. `SingleJpsi_mu1_Idx` /
 `SingleJpsi_mu2_Idx` give indices into the `mu*` branches for the daughter
 muons; `SingleJpsi_mu1_genMatchIdx` / `SingleJpsi_mu2_genMatchIdx` are indices
 into `MC_GenPart_*`.
@@ -87,145 +86,170 @@ into `MC_GenPart_*`.
 The RECO-level matching for muons uses the configurable `RecoGenMuonMatchChi2Max`
 (default 25.0). Muons without a valid GEN match have `genMatchIdx = -1`.
 
-### 2.3 kaonRECO — both daughter kaons reconstructed and matched
+### 2.3 kaonRECO — ε_{KReco|φ}
 
-| Quantity | Branch |
-|----------|--------|
-| RECO kaons matched to GEN φ daughters | For each `SinglePhi` candidate: `SinglePhi_K1_genMatchIdx >= 0` AND `SinglePhi_K2_genMatchIdx >= 0` |
-| Denominator | `SinglePhi` candidates where both GEN daughter kaons are in fiducial acceptance |
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed acceptance) | `SinglePhi` candidates where both GEN daughter kaons are in fiducial acceptance |
+| Numerator (passes THIS step) | Denominator `SinglePhi` where `SinglePhi_K1_genMatchIdx >= 0` AND `SinglePhi_K2_genMatchIdx >= 0` |
 
-The `SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` give indices
-into `RecoKaonTrack_*` for the daughter kaons, which contains the GEN-match
-information (`RecoKaonTrack_genMatchIdx`).
+`SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` give indices
+into the `RecoKaonTrack_*` block (always populated from φ-candidate daughters).
+The `RecoKaonTrack_genMatchIdx` field mirrors the inline `SinglePhi_K*_genMatchIdx`
+— they must agree (see Section 5.4).
 
 The RECO-level matching for kaons uses `RecoGenKaonMatchChi2Max` (default 25.0).
+Kaons without a valid GEN match have `genMatchIdx = -1`.
 
 Alternatively, work entirely through the `RecoKaonTrack` block: iterate
 `RecoKaonTrack_*` entries with `genMatchIdx >= 0`, group by event, and check
 whether both GEN-matched kaons from a given φ are present.
 
-### 2.4 muonID — both matched muons pass ID
+### 2.4 muonID — ε_{μID|J/ψ}
 
-| Quantity | Branch |
-|----------|--------|
-| Muon ID flags | `muIsGoodTightMuon`, `muIsPatTightMuon`, `muIsPatMediumMuon`, `muIsPatSoftMuon`, `muIsGlobalMuon` |
-| Per-J/ψ daughter indices | `SingleJpsi_mu1_Idx`, `SingleJpsi_mu2_Idx` — use these to look up the muon block |
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed muonRECO) | `SingleJpsi` candidates with both muons GEN-matched (muonRECO numerator) |
+| Numerator (passes THIS step) | Denominator `SingleJpsi` where both daughter muons pass the chosen ID working point |
 
-The specific ID working point is analysis-dependent. A typical tight-muon
-definition checks `muIsGoodTightMuon && muIsGlobalMuon`. Apply the ID selection
-to both daughter muons of the J/ψ candidate.
+Use `SingleJpsi_mu1_Idx` / `SingleJpsi_mu2_Idx` to look up the muon block.
+Available muon ID flags: `muIsGoodTightMuon`, `muIsPatTightMuon`, `muIsPatMediumMuon`,
+`muIsPatSoftMuon`, `muIsGlobalMuon`.
 
-Denominator: `SingleJpsi` candidates passing muonRECO (both muons GEN-matched).
+The baseline ID working point is **soft muon**: `muIsPatSoftMuon`. The working
+point is analysis-configurable and can be tightened in post-processing.
 
-### 2.5 kaonID — both matched kaons pass track quality
+### 2.5 kaonID — ε_{KID|φ}
 
-| Quantity | Branch |
-|----------|--------|
-| Kaon track quality | `RecoKaonTrack_passDzPV`, `RecoKaonTrack_passDxyPV`, `RecoKaonTrack_passTrackPV`, `RecoKaonTrack_fromPV` |
-| Per-φ daughter RecoKaonTrack indices | `SinglePhi_K1_RecoKaonTrackIdx`, `SinglePhi_K2_RecoKaonTrackIdx` |
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed kaonRECO) | `SinglePhi` candidates with both kaons GEN-matched (kaonRECO numerator) |
+| Numerator (passes THIS step) | Denominator `SinglePhi` where both daughter kaons pass the chosen track-quality ID working point |
 
-The `RecoKaonTrack_*` block stores the same quality flags used in `pairTracks()`
-for both GEN-matched tracks and φ-candidate daughters. Look up the daughter's
-`RecoKaonTrack_*` entry via the `RecoKaonTrackIdx` and check the quality flags.
+Use `SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` to look up
+the `RecoKaonTrack_*` block (always populated from φ-candidate daughters).
 
-Denominator: `SinglePhi` candidates passing kaonRECO (both kaons GEN-matched).
+The baseline kaon ID is the `TrackSelection` string cut applied at the input
+level (e.g., `pt > 1.0 && abs(eta) < 2.5 && numberOfHits > 4`). This is
+analysis-configurable. PV-compatibility flags (`RecoKaonTrack_passDzPV`,
+`RecoKaonTrack_passDxyPV`, `RecoKaonTrack_passTrackPV`, `RecoKaonTrack_fromPV`)
+are reserved for the dikaon and triOnia vertexing steps below.
 
-### 2.6 dimuon — valid J/ψ dimuon candidate
+### 2.6 dimuon — ε_{μμ|J/ψ}
 
-| Quantity | Branch |
-|----------|--------|
-| Vertex fit valid | `SingleJpsi_fitValid > 0` |
-| Vertex fit passes prob cut | `SingleJpsi_fitPass > 0` (respects `JpsiDecayVtxProbCut`) |
-| Mass window | Already applied in `pairMuons()`; `SingleJpsi_mass` is the post-fit mass |
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed muonID) | `SingleJpsi` candidates where both muons pass the chosen ID (muonID numerator) |
+| Numerator (passes THIS step) | Denominator `SingleJpsi` where `SingleJpsi_fitValid > 0` AND `SingleJpsi_fitPass > 0` |
 
-A "valid dimuon candidate" is one where `fitValid && fitPass && massDiff` is
-within acceptable range. The `SingleJpsi_massDiff` branch stores the difference
-between pre-fit and post-fit mass.
+The baseline criterion for a valid dimuon candidate is that the kinematic vertex
+fit converged and passes the vertex probability cut (`JpsiDecayVtxProbCut`). The
+mass window is already applied in `pairMuons()`; `SingleJpsi_mass` is the
+post-fit mass. Alternative or additional vertexing criteria may be applied
+depending on the analysis working point.
 
-Denominator: `SingleJpsi` candidates passing muonID.
+### 2.7 dikaon — ε_{KK|φ}
 
-### 2.7 dikaon — valid φ → K⁺K⁻ candidate
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed kaonID) | `SinglePhi` candidates where both kaons pass track-quality ID (kaonID numerator) |
+| Numerator (passes THIS step) | Denominator `SinglePhi` where `SinglePhi_fitValid > 0` AND `SinglePhi_fitPass > 0` |
 
-| Quantity | Branch |
-|----------|--------|
-| Vertex fit valid | `SinglePhi_fitValid > 0` |
-| Vertex fit passes prob cut | `SinglePhi_fitPass > 0` (respects `PhiDecayVtxProbCut`) |
-| Mass window | Already applied in `pairTracks()`; `SinglePhi_mass` is the post-fit mass |
-| Common PV association | `SinglePhi_commonAssocPVPass` |
-| Track PV compatibility | `SinglePhi_trackPVPass` |
+The baseline criterion for a valid dikaon candidate is that the kinematic vertex
+fit converged and passes the vertex probability cut (`PhiDecayVtxProbCut`). The
+mass window is already applied in `pairTracks()`. Alternative or additional
+vertexing criteria (e.g., `SinglePhi_trackPVPass`, `SinglePhi_commonAssocPVPass`)
+may be applied depending on the analysis working point.
 
-Denominator: `SinglePhi` candidates passing kaonID.
+### 2.8 HLT — ε_{HLT}
 
-### 2.8 HLT — trigger OR of J/ψ triggers
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed per-object steps) | Events with at least one valid dimuon candidate (Run B, full chain) |
+| Numerator (passes THIS step) | Denominator events where at least one configured J/ψ trigger path fired AND the candidate muons have trigger-object matching |
 
-| Quantity | Branch |
-|----------|--------|
-| Event-level trigger decisions | `trigRes` (HLT results), `trigNames` (HLT path names) |
-| J/ψ trigger matching | `MatchJpsiTriggerNames` (which J/ψ trigger paths matched), `muIsJpsiTrigMatch` (per-muon trigger match) |
-| J/ψ filter matching | `muIsJpsiFilterMatch` |
+**Event-level trigger information** (one entry per HLT path in the event):
 
-The HLT step requires at least one of the configured J/ψ trigger paths to fire
-AND have trigger-object matching to the candidate muons.
+| Branch | Content |
+|--------|---------|
+| `TrigRes` | Accept bit (0/1) for each HLT path |
+| `TrigNames` | Name string for each HLT path |
+| `MatchJpsiTriggerNames` | Deduplicated list of which configured J/ψ trigger patterns fired |
+| `MatchUpsTriggerNames` | Same for Upsilon trigger patterns |
+| `L1TrigRes` | L1 technical trigger bits |
 
-Denominator: events with at least one valid `Jpsi_1` candidate (from the full
-chain ntuple, Run B).
+**Per-muon trigger matching** (one entry per muon in the event):
 
-### 2.9 four-muon vertexing — valid J/ψ J/ψ vertex
+| Branch | Content |
+|--------|---------|
+| `muIsJpsiTrigMatch` | Event-level boolean: 1 if any configured J/ψ trigger fired (same value for all muons) |
+| `muIsUpsTrigMatch` | Same for Upsilon triggers |
+| `muIsJpsiFilterMatch` | 1 if this muon's trigger objects match at least one configured J/ψ filter label |
+| `muIsUpsFilterMatch` | Same for Upsilon filters |
+| `muJpsiMatchedTriggerIndices` | Per-muon: list of trigger pattern indices (into `TriggersForJpsi`) that this muon matched |
+| `muJpsiMatchedFilterIndices` | Per-muon: list of filter label indices (into `FiltersForJpsi`) that this muon matched |
+| `muUpsMatchedTriggerIndices` | Per-muon: list of trigger pattern indices (into `TriggersForUpsilon`) that this muon matched |
+| `muUpsMatchedFilterIndices` | Per-muon: list of filter label indices (into `FiltersForUpsilon`) that this muon matched |
 
-| Quantity | Branch |
-|----------|--------|
-| DiOnia fit valid | `DiOnia_fitValid > 0` |
-| DiOnia fit passes prob cut | `DiOnia_fitPass > 0` (respects `DiOniaVtxProbCut`) |
-| Common reco-vertex check | `DiOnia_commonRecVtxPass > 0` |
+**Configuration reference** (from `X_Config_Tree`):
+`TriggersForJpsi`, `FiltersForJpsi`, `TriggersForUpsilon`, `FiltersForUpsilon` —
+the configured trigger path substrings and filter labels against which matching
+was performed.
 
-This step combines the two J/ψ candidates into a common vertex. It requires both
-`Jpsi_1` and `Jpsi_2` branches from the full chain ntuple (Run B).
+**Trigger matching workflow:**
 
-Denominator: events passing HLT with at least one valid dimuon pair for each of
-the two J/ψ slots.
+1. Check `MatchJpsiTriggerNames` is non-empty — at least one J/ψ trigger fired.
+2. For each `Jpsi_1` / `Jpsi_2` candidate, use `Jpsi_1_mu_1_Idx` /
+   `Jpsi_1_mu_2_Idx` to look up the muon indices.
+3. Check `muJpsiMatchedTriggerIndices[muIdx]` — non-empty means this muon's
+   trigger objects matched a configured J/ψ trigger path.
+4. A candidate passes trigger matching when at least one of its daughter muons
+   has a non-empty `muJpsiMatchedTriggerIndices`.
 
-### 2.10 triOnia — final three-meson vertex + event-level cuts
+The `muIsJpsiTrigMatch` flag alone is NOT sufficient for trigger-object
+matching — it only indicates the trigger fired for the event, not that a
+specific muon was responsible. Use `muJpsiMatchedTriggerIndices` for the
+per-muon association.
 
-| Quantity | Branch |
-|----------|--------|
-| Primary vertex fit valid | `Pri_fitValid > 0` |
-| Primary vertex fit passes prob cut | `Pri_fitPass > 0` (respects `PriVtxProbCut`) |
-| Common PV association | `Pri_assocPVPass > 0` |
-| Track PV compatibility | `Pri_trackPVPass > 0` |
-| Final mass check | Internal (`CheckFinalMass` flag) |
+### 2.9 four-muon vertexing — ε_{4μvtx}
 
-The code produces four parallel quality flags for the primary vertex. The
-default endpoint for corrected-yield studies is `Pri_assocPVPass / four_muon_vtx`
-as noted in `Efficiency_scheme.md`.
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed HLT) | Events passing HLT trigger + trigger-object matching, with at least one valid dimuon pair for each of the two J/ψ slots |
+| Numerator (passes THIS step) | Denominator events where `DiOnia_fitValid > 0` AND `DiOnia_fitPass > 0` |
 
-Denominator: events passing four-muon vertexing, split by φ pT bins.
+This step combines two J/ψ candidates (`Jpsi_1` + `Jpsi_2`) into a common
+four-muon vertex (Run B). The baseline criterion is that the kinematic vertex
+fit converged and passes the vertex probability cut (`DiOniaVtxProbCut`).
+Alternative or additional criteria (e.g., `DiOnia_commonRecVtxPass`) may be
+applied depending on the analysis working point.
+
+### 2.10 triOnia — ε_{triOnia}
+
+| Role | Branch / logic |
+|------|----------------|
+| Denominator (passed four-muon vertexing) | Events passing four-muon vertexing (ε_{4μvtx} numerator), split by φ pT bins |
+| Numerator (passes THIS step) | Denominator events passing the chosen triOnia endpoint |
+
+The code produces four parallel quality flags for the three-meson primary vertex:
+
+| Flag | Meaning |
+|------|---------|
+| `Pri_fitValid > 0` | 3-body kinematic vertex fit converged |
+| `Pri_fitPass > 0` | Fit passes `PriVtxProbCut` |
+| `Pri_assocPVPass > 0` | Common PV association of daughter tracks |
+| `Pri_trackPVPass > 0` | Track-PV compatibility for daughter tracks |
+
+The default endpoint for corrected-yield studies is `Pri_assocPVPass` (per
+`Efficiency_scheme.md`). The denominator is four-muon-vertexing-passing events,
+split by φ pT bins. Alternative endpoints may use `Pri_fitPass` or
+`Pri_trackPVPass` depending on the analysis.
 
 ---
 
 ## 3. Configuration considerations
 
-### 3.1 Cuts that must be loose for denominator studies
-
-The following cuts are applied **before** single-object branches are filled and
-cannot be undone downstream. They must be set loosely for efficiency denominator
-evaluation:
-
-| Parameter | Tight default | Recommended loose |
-|-----------|--------------|-------------------|
-| `JpsiMassMin` / `JpsiMassMax` | 2.8 / 3.3 | 1.0 / 4.0 |
-| `PhiMassMin` / `PhiMassMax` | 0.97 / 1.07 | 0.8 / 1.2 |
-| `OniaDecayVtxProbCut` | 5e-4 | 0.0 (or keep) |
-| `JpsiDecayVtxProbCut` | 5e-4 | 0.0 (or keep) |
-| `PhiDecayVtxProbCut` | 5e-4 | 0.0 (or keep) |
-| `MuonSelection` | `pt > 2.5 && abs(eta) < 2.4` | Match your fiducial definition |
-| `TrackSelection` | `pt > 1.0 && abs(eta) < 2.5 && numberOfHits > 4` | Match your fiducial definition |
-
-These are hardcoded in `ConfFile_cfg.py` and not exposed via `VarParsing` (the
-`VarParsing` system only exposes the MC control switches, not the physics cut
-values). Maintain a separate loose-cut config file for efficiency studies, or
-override the values directly before `cmsRun`.
-
-### 3.2 Cuts you can tighten in post-processing
+### 3.1 Cuts you can tighten in post-processing
 
 | Parameter | Why post-processable |
 |-----------|---------------------|
@@ -234,15 +258,15 @@ override the values directly before `cmsRun`.
 | `MinTrackFromPV` | Recorded in `RecoKaonTrack_fromPV` and `SinglePhi_K*_fromPV`. |
 | Track `normalizedChi2`, `highPurity` | Recorded (indirectly) via `RecoKaonTrack_passTrackPV`. |
 
-### 3.3 MC control flags
+### 3.2 MC control flags
 
 | Flag | Effect on efficiency evaluation |
 |------|--------------------------------|
-| `keepAllSingleObjectCandsInMC=True` | **Required** — enables `SingleJpsi_*`, `SinglePhi_*`, `RecoKaonTrack_*` |
+| `keepAllSingleObjectCandsInMC=True` | **Required** — enables `SingleJpsi_*`, `SinglePhi_*` |
 | `skipCompositeCandBuildingWhenKeepingSingles=True` | Optional — skips `combineCandidates()` for a smaller, faster ntuple when only per-object steps are needed |
 | `requireAcceptedCandidatesForMonteCarloTree=False` | Recommended for efficiency — keeps every event even when no candidate passes |
 
-### 3.4 Vertex fit toggles
+### 3.3 Vertex fit toggles
 
 | Toggle | Default | Notes |
 |--------|---------|-------|
@@ -257,53 +281,63 @@ override the values directly before `cmsRun`.
 
 ### Step 1: Produce efficiency ntuples
 
-Run both Run A (singles-only) and Run B (full chain) with loose physics cuts on
-the full MC sample(s). Use `maxEvents=-1` to process all events.
+Run both Run A (singles-only) and Run B (full chain) on the full MC sample(s).
+Use `maxEvents=-1` to process all events.
 
 ### Step 2: Build per-object efficiency maps
 
+Each efficiency is conditional: ε_step = N(pass step) / N(pass previous step).
 For each J/ψ and φ kinematic bin `(pT, |y|)`:
 
-1. **Acceptance**: From `MC_GenPart_*`, count GEN J/ψ (or φ) in the bin.
-   Numerator: daughters in fiducial region. Denominator: all GEN J/ψ (or φ).
-   Output: `A_Jpsi(pT, |y|)`, `A_phi(pT, |y|)`.
+1. **Acceptance** — A_{J/ψ}, A_{φ}: From `MC_GenPart_*`.
+   - Denominator: all GEN J/ψ (or φ) in the kinematic bin.
+   - Numerator: denominator mesons where both GEN daughters are in the fiducial region.
 
-2. **muonRECO / kaonRECO**: From `SingleJpsi_*` / `SinglePhi_*` (Run A).
-   Numerator: candidates with both daughters `genMatchIdx >= 0`.
-   Denominator: candidates with both GEN daughters in fiducial acceptance.
-   Output: `eps_muReco(pT, |y|)`, `eps_kReco(pT, |y|)`.
+2. **muonRECO** — ε_{μReco|J/ψ}: From `SingleJpsi_*` (Run A).
+   - Denominator: `SingleJpsi` where both GEN daughters are in fiducial acceptance.
+   - Numerator: denominator candidates with both `mu*_genMatchIdx >= 0`.
 
-3. **muonID / kaonID**: From `SingleJpsi_*` + `mu*` / `SinglePhi_*` + `RecoKaonTrack_*`.
-   Numerator: RECO-passing candidates where both daughters pass ID.
-   Denominator: RECO-passing candidates.
-   Output: `eps_muID(pT, |y|)`, `eps_kID(pT, |y|)`.
+3. **kaonRECO** — ε_{KReco|φ}: From `SinglePhi_*` (Run A).
+   - Denominator: `SinglePhi` where both GEN daughters are in fiducial acceptance.
+   - Numerator: denominator candidates with both `K*_genMatchIdx >= 0`.
 
-4. **dimuon / dikaon**: From `SingleJpsi_*` / `SinglePhi_*`.
-   Numerator: candidates with `fitValid && fitPass`.
-   Denominator: ID-passing candidates.
-   Output: `eps_mumu(pT, |y|)`, `eps_KK(pT, |y|)`.
+4. **muonID** — ε_{μID|J/ψ}: From `SingleJpsi_*` + `mu*` (Run A).
+   - Denominator: `SingleJpsi` passing muonRECO (both muons GEN-matched).
+   - Numerator: denominator candidates where both daughter muons pass the chosen ID (baseline: `muIsPatSoftMuon`).
+
+5. **kaonID** — ε_{KID|φ}: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
+   - Denominator: `SinglePhi` passing kaonRECO (both kaons GEN-matched).
+   - Numerator: denominator candidates where both daughter kaons pass the chosen track-quality ID.
+
+6. **dimuon** — ε_{μμ|J/ψ}: From `SingleJpsi_*` (Run A).
+   - Denominator: `SingleJpsi` passing muonID.
+   - Numerator: denominator candidates with `SingleJpsi_fitValid && SingleJpsi_fitPass`.
+
+7. **dikaon** — ε_{KK|φ}: From `SinglePhi_*` (Run A).
+   - Denominator: `SinglePhi` passing kaonID.
+   - Numerator: denominator candidates with `SinglePhi_fitValid && SinglePhi_fitPass`.
 
 ### Step 3: Build event-level efficiency maps
 
 From the full chain ntuple (Run B):
 
-1. **HLT**: Count events where trigger fired + trigger-object match exists.
-   Denominator: events with ≥1 valid dimuon candidate.
+1. **HLT** — ε_{HLT}:
+   - Denominator: events with ≥1 valid dimuon candidate.
+   - Numerator: denominator events where `MatchJpsiTriggerNames` is non-empty AND at least one daughter muon of the candidate has non-empty `muJpsiMatchedTriggerIndices`.
 
-2. **four-muon vertexing** (`eps_4muVtx`): From `DiOnia_*`.
-   Numerator: `DiOnia_fitValid && DiOnia_fitPass`.
-   Denominator: HLT-passing events.
+2. **four-muon vertexing** — ε_{4μvtx}: From `DiOnia_*` (Run B).
+   - Denominator: events passing HLT + trigger matching, with valid dimuon pairs in both J/ψ slots.
+   - Numerator: denominator events with `DiOnia_fitValid && DiOnia_fitPass`.
 
-3. **triOnia** (`eps_triOnia`): From `Pri_*`, split by φ pT bins.
-   Numerator: `Pri_assocPVPass` (or chosen endpoint).
-   Denominator: four-muon-vertexing-passing events.
+3. **triOnia** — ε_{triOnia}: From `Pri_*` (Run B), split by φ pT bins.
+   - Denominator: events passing four-muon vertexing.
+   - Numerator: denominator events passing the chosen endpoint (default: `Pri_assocPVPass`).
 
 ### Step 4: Apply correction
 
 The per-event total efficiency weight is the product of all per-object and
 event-level factors evaluated at the event's kinematics, times the factorized
-acceptance. See `Efficiency_scheme.md` Section "Definitions" for the product
-formula.
+acceptance. See `Efficiency_scheme.md` for the product formula.
 
 ---
 
@@ -317,10 +351,17 @@ between the per-object steps that the factorized approach misses.
 
 ### 5.2 RecoKaonTrack coverage
 
+The `RecoKaonTrack_*` block is always populated with the union of:
+- GEN-matched quality kaons (MC with `keepAllSingleObjectCandsInMC=True`),
+- φ-candidate daughter tracks from `KPairCand_Meson_` (always).
+
+The `RecoKaonTrack_usedInSinglePhi` flag distinguishes the two sources
+(1 = φ-candidate daughter, 0 = GEN-matched only).
+
 Verify that every φ-candidate daughter has a `RecoKaonTrack_*` entry:
-`SinglePhi_K*_RecoKaonTrackIdx >= 0` for all `SinglePhi` candidates. A `-1`
-sentinel indicates a kaon track missing from the RecoKaonTrack block (should
-not happen when `KeepAllSingleObjectCandsInMC=True`).
+`SinglePhi_K*_RecoKaonTrackIdx >= 0` for all `SinglePhi` candidates, and
+`Phi_K_*_RecoKaonTrackIdx >= 0` for all composite φ candidates. A `-1`
+sentinel should never occur.
 
 ### 5.3 Bin-edge sensitivity
 
@@ -329,6 +370,13 @@ the corrected yield is stable within MC statistical uncertainties.
 
 ### 5.4 GEN-RECO daughter matching consistency
 
-For `SinglePhi` candidates, compare the direct GEN-match info
-(`SinglePhi_K1_genMatchIdx`) with the RecoKaonTrack-level match
-(`RecoKaonTrack_genMatchIdx[SinglePhi_K1_RecoKaonTrackIdx]`). They must agree.
+For `SinglePhi` candidates, the inline GEN-match info (`SinglePhi_K1_genMatchIdx`,
+`SinglePhi_K2_genMatchIdx`) should agree with the RecoKaonTrack-level match
+(`RecoKaonTrack_genMatchIdx[SinglePhi_K1_RecoKaonTrackIdx]`,
+`RecoKaonTrack_genMatchIdx[SinglePhi_K2_RecoKaonTrackIdx]`). They are derived
+from the same `buildPhiKaonDiagnostics` call and must be identical.
+
+For composite φ candidates (`Phi_K_1_*` / `Phi_K_2_*`), the inline
+`Phi_K_1_genMatchIdx` / `Phi_K_2_genMatchIdx` can similarly be verified against
+`RecoKaonTrack_genMatchIdx[Phi_K_1_RecoKaonTrackIdx]` /
+`RecoKaonTrack_genMatchIdx[Phi_K_2_RecoKaonTrackIdx]`.
