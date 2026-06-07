@@ -366,10 +366,10 @@ for i in range(tree.GetEntries()):
         summary["bad_single_jpsi_mu_indices"] += int(idx < 0 or idx >= tree.nMu)
     for idx in tree.SingleJpsi_mu2_Idx:
         summary["bad_single_jpsi_mu_indices"] += int(idx < 0 or idx >= tree.nMu)
-    for idx in tree.SinglePhi_K1_nonMuonTrackIdx:
-        summary["negative_single_phi_track_indices"] += int(idx < 0)
-    for idx in tree.SinglePhi_K2_nonMuonTrackIdx:
-        summary["negative_single_phi_track_indices"] += int(idx < 0)
+    for idx in tree.SinglePhi_K1_RecoKaonTrackIdx:
+        summary["negative_single_phi_reco_kaon_track_indices"] += int(idx < 0)
+    for idx in tree.SinglePhi_K2_RecoKaonTrackIdx:
+        summary["negative_single_phi_reco_kaon_track_indices"] += int(idx < 0)
 
     summary["single_jpsi_mu_gen_matches"] += sum(
         1 for x in tree.SingleJpsi_mu1_genMatchIdx if x >= 0)
@@ -771,7 +771,7 @@ Additional checks:
 | Max `nSingleJpsiCand` | 2 | 2 |
 | Max `nSinglePhiCand` | 8 | 8 |
 | Bad `SingleJpsi_mu*_Idx` values | 0 | 0 |
-| Negative `SinglePhi_K*_nonMuonTrackIdx` values | 0 | 0 |
+| Negative `SinglePhi_K*_RecoKaonTrackIdx` values | 0 | 0 |
 | Matched single-J/ψ daughter muons | 18 | 18 |
 | Matched single-φ daughter kaons | 4 | 4 |
 | Sentinel `Pri_mass` events | 0 | 0 |
@@ -803,7 +803,7 @@ Additional checks:
 | Max `nSinglePhiCand` | 10 | 10 |
 | Max `nSingleUpsCand` | 0 | 0 |
 | Bad `SingleJpsi_mu*_Idx` values | 0 | 0 |
-| Negative `SinglePhi_K*_nonMuonTrackIdx` values | 0 | 0 |
+| Negative `SinglePhi_K*_RecoKaonTrackIdx` values | 0 | 0 |
 | Matched single-J/psi daughter muons | 32 | 32 |
 | Matched single-phi daughter kaons | 6 | 6 |
 | Sentinel `Pri_mass` events | 0 | 0 |

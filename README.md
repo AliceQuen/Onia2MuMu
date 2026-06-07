@@ -101,7 +101,7 @@ For each φ candidate:
 ### Single-Object Candidates (MC only, `KeepAllSingleObjectCandsInMC=True`)
 - `SingleJpsi_*`: Per-candidate J/ψ kinematics, vertex fit, GEN-matching, muon daughter indices
 - `SingleUps_*`: Per-candidate Υ kinematics, vertex fit, GEN-matching, muon daughter indices
-- `SinglePhi_*`: Per-candidate φ kinematics, vertex fit, GEN-matching, kaon daughter indices (`nonMuonTrackIdx` + `RecoKaonTrackIdx`)
+- `SinglePhi_*`: Per-candidate φ kinematics, vertex fit, GEN-matching, kaon daughter indices (`RecoKaonTrackIdx`)
 - Counters: `nSingleJpsiCand`, `nSingleUpsCand`, `nSinglePhiCand`
 
 ### RecoKaonTrack Block (MC only, `KeepAllSingleObjectCandsInMC=True`)

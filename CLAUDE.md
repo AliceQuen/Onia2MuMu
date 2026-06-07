@@ -147,7 +147,6 @@ The main TTree (`X_One_Tree`) stores:
 ### Naming Conventions
 - Resonance candidates: `Jpsi_1_*`, `Jpsi_2_*`, `Ups_*`, `Phi_*` (suffixes: mass, ctau, px/py/pz, pt/eta/phi)
 - Muon indices: `Jpsi_1_mu_1_Idx`, `Jpsi_1_mu_2_Idx` (links muons to resonances)
-- Kaon indices: `Phi_K_1_Idx`, `Phi_K_2_Idx` (links kaons to φ, raw nonMuonTrack_ index)
 - Kaon RecoKaonTrack indices: `Phi_K_1_RecoKaonTrackIdx`, `SinglePhi_K1_RecoKaonTrackIdx` (links into `RecoKaonTrack_*` block)
 - Single-object candidates: `SingleJpsi_*`, `SingleUps_*`, `SinglePhi_*` (all-store MC efficiency branches)
 - Uncertainties: `*_pxErr`, `*_pyErr`, `*_pzErr`, `*_ptErr`
