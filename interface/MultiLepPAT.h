@@ -329,9 +329,9 @@ private:
     
     // Kinematics extraction (with and without uncertainties)
     static void getDynamics(const RefCountedKinematicParticle& arg_Part,
-                            double& res_pt, double& res_eta, double& res_phi);
+                            double& res_pt, double& res_eta, double& res_phi, double& res_y);
     static void getDynamics(double arg_mass, double arg_px, double arg_py, double arg_pz,
-                            double& res_pt, double& res_eta, double& res_phi);
+                            double& res_pt, double& res_eta, double& res_phi, double& res_y);
     // Momentum uncertainty extraction from kinematic fit covariance
     static void getMomentumErrors(const RefCountedKinematicParticle& arg_Part,
                                   double& res_pxErr, double& res_pyErr, double& res_pzErr,
@@ -449,6 +449,7 @@ private:
         vector<float>* br_Chi2, vector<float>* br_ndof, vector<float>* br_VtxProb,
         vector<float>* br_px, vector<float>* br_py, vector<float>* br_pz,
         vector<float>* br_phi, vector<float>* br_eta, vector<float>* br_pt,
+        vector<float>* br_y,
         vector<float>* br_pxErr, vector<float>* br_pyErr, vector<float>* br_pzErr,
         vector<float>* br_ptErr);
     std::pair<int, float> matchRecoMuonToStoredGenMuon(
@@ -774,9 +775,9 @@ private:
     vector<float> *Jpsi_2_ctau, *Jpsi_2_ctauErr, *Jpsi_2_Chi2, *Jpsi_2_ndof, *Jpsi_2_VtxProb;
     vector<float> *Phi_ctau, *Phi_ctauErr, *Phi_Chi2, *Phi_ndof, *Phi_VtxProb;
 
-    vector<float> *Jpsi_1_phi, *Jpsi_1_eta, *Jpsi_1_pt;
-    vector<float> *Jpsi_2_phi, *Jpsi_2_eta, *Jpsi_2_pt;
-    vector<float> *Phi_phi, *Phi_eta, *Phi_pt;
+    vector<float> *Jpsi_1_phi, *Jpsi_1_eta, *Jpsi_1_pt, *Jpsi_1_y;
+    vector<float> *Jpsi_2_phi, *Jpsi_2_eta, *Jpsi_2_pt, *Jpsi_2_y;
+    vector<float> *Phi_phi, *Phi_eta, *Phi_pt, *Phi_y;
 
     vector<float> *Jpsi_1_px, *Jpsi_1_py, *Jpsi_1_pz;
     vector<float> *Jpsi_2_px, *Jpsi_2_py, *Jpsi_2_pz;
@@ -795,7 +796,7 @@ private:
     vector<float> *SingleJpsi_ctau = nullptr, *SingleJpsi_ctauErr = nullptr;
     vector<float> *SingleJpsi_Chi2 = nullptr, *SingleJpsi_ndof = nullptr, *SingleJpsi_VtxProb = nullptr;
     vector<float> *SingleJpsi_px = nullptr, *SingleJpsi_py = nullptr, *SingleJpsi_pz = nullptr;
-    vector<float> *SingleJpsi_phi = nullptr, *SingleJpsi_eta = nullptr, *SingleJpsi_pt = nullptr;
+    vector<float> *SingleJpsi_phi = nullptr, *SingleJpsi_eta = nullptr, *SingleJpsi_pt = nullptr, *SingleJpsi_y = nullptr;
     vector<float> *SingleJpsi_pxErr = nullptr, *SingleJpsi_pyErr = nullptr;
     vector<float> *SingleJpsi_pzErr = nullptr, *SingleJpsi_ptErr = nullptr;
     vector<int>   *SingleJpsi_fitValid = nullptr, *SingleJpsi_fitPass = nullptr;
@@ -812,7 +813,7 @@ private:
     vector<float> *SingleUps_ctau = nullptr, *SingleUps_ctauErr = nullptr;
     vector<float> *SingleUps_Chi2 = nullptr, *SingleUps_ndof = nullptr, *SingleUps_VtxProb = nullptr;
     vector<float> *SingleUps_px = nullptr, *SingleUps_py = nullptr, *SingleUps_pz = nullptr;
-    vector<float> *SingleUps_phi = nullptr, *SingleUps_eta = nullptr, *SingleUps_pt = nullptr;
+    vector<float> *SingleUps_phi = nullptr, *SingleUps_eta = nullptr, *SingleUps_pt = nullptr, *SingleUps_y = nullptr;
     vector<float> *SingleUps_pxErr = nullptr, *SingleUps_pyErr = nullptr;
     vector<float> *SingleUps_pzErr = nullptr, *SingleUps_ptErr = nullptr;
     vector<int>   *SingleUps_fitValid = nullptr, *SingleUps_fitPass = nullptr;
@@ -830,7 +831,7 @@ private:
     vector<float> *SinglePhi_ctau = nullptr, *SinglePhi_ctauErr = nullptr;
     vector<float> *SinglePhi_Chi2 = nullptr, *SinglePhi_ndof = nullptr, *SinglePhi_VtxProb = nullptr;
     vector<float> *SinglePhi_px = nullptr, *SinglePhi_py = nullptr, *SinglePhi_pz = nullptr;
-    vector<float> *SinglePhi_phi = nullptr, *SinglePhi_eta = nullptr, *SinglePhi_pt = nullptr;
+    vector<float> *SinglePhi_phi = nullptr, *SinglePhi_eta = nullptr, *SinglePhi_pt = nullptr, *SinglePhi_y = nullptr;
     vector<float> *SinglePhi_pxErr = nullptr, *SinglePhi_pyErr = nullptr;
     vector<float> *SinglePhi_pzErr = nullptr, *SinglePhi_ptErr = nullptr;
     vector<int>   *SinglePhi_fitValid = nullptr, *SinglePhi_fitPass = nullptr;
@@ -874,7 +875,7 @@ private:
     vector<float> *Pri_mass, *Pri_massErr;
     vector<float> *Pri_ctau, *Pri_ctauErr, *Pri_Chi2, *Pri_ndof, *Pri_VtxProb;
     vector<float> *Pri_px, *Pri_py, *Pri_pz;
-    vector<float> *Pri_phi, *Pri_eta, *Pri_pt;
+    vector<float> *Pri_phi, *Pri_eta, *Pri_pt, *Pri_y;
     vector<float> *Pri_pxErr, *Pri_pyErr, *Pri_pzErr, *Pri_ptErr;
     vector<int>   *Pri_fitValid, *Pri_fitPass, *Pri_assocPVPass, *Pri_assocPVIdx, *Pri_trackPVPass, *Pri_passAny;
     vector<float> *Pri_maxAbsDzPV, *Pri_maxAbsDxyPV;
@@ -907,7 +908,7 @@ private:
     vector<float> *Ups_mass, *Ups_massErr, *Ups_massDiff;
     vector<float> *Ups_ctau, *Ups_ctauErr, *Ups_Chi2, *Ups_ndof, *Ups_VtxProb;
     vector<float> *Ups_px, *Ups_py, *Ups_pz;
-    vector<float> *Ups_phi, *Ups_eta, *Ups_pt;
+    vector<float> *Ups_phi, *Ups_eta, *Ups_pt, *Ups_y;
     vector<float> *Ups_pxErr, *Ups_pyErr, *Ups_pzErr, *Ups_ptErr;
 
     // ======================== MC gen-level branches ========================

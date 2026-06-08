@@ -427,9 +427,9 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Jpsi_2_ndof(nullptr), Jpsi_2_VtxProb(nullptr),
       Phi_ctau(nullptr), Phi_ctauErr(nullptr), Phi_Chi2(nullptr),
       Phi_ndof(nullptr), Phi_VtxProb(nullptr),
-      Jpsi_1_phi(nullptr), Jpsi_1_eta(nullptr), Jpsi_1_pt(nullptr),
-      Jpsi_2_phi(nullptr), Jpsi_2_eta(nullptr), Jpsi_2_pt(nullptr),
-      Phi_phi(nullptr), Phi_eta(nullptr), Phi_pt(nullptr),
+      Jpsi_1_phi(nullptr), Jpsi_1_eta(nullptr), Jpsi_1_pt(nullptr), Jpsi_1_y(nullptr),
+      Jpsi_2_phi(nullptr), Jpsi_2_eta(nullptr), Jpsi_2_pt(nullptr), Jpsi_2_y(nullptr),
+      Phi_phi(nullptr), Phi_eta(nullptr), Phi_pt(nullptr), Phi_y(nullptr),
       Jpsi_1_px(nullptr), Jpsi_1_py(nullptr), Jpsi_1_pz(nullptr),
       Jpsi_2_px(nullptr), Jpsi_2_py(nullptr), Jpsi_2_pz(nullptr),
       Phi_px(nullptr), Phi_py(nullptr), Phi_pz(nullptr),
@@ -457,7 +457,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Pri_ctau(nullptr), Pri_ctauErr(nullptr), Pri_Chi2(nullptr),
       Pri_ndof(nullptr), Pri_VtxProb(nullptr),
       Pri_px(nullptr), Pri_py(nullptr), Pri_pz(nullptr),
-      Pri_phi(nullptr), Pri_eta(nullptr), Pri_pt(nullptr),
+      Pri_phi(nullptr), Pri_eta(nullptr), Pri_pt(nullptr), Pri_y(nullptr),
       Pri_pxErr(nullptr), Pri_pyErr(nullptr), Pri_pzErr(nullptr), Pri_ptErr(nullptr),
       Pri_fitValid(nullptr), Pri_fitPass(nullptr), Pri_assocPVPass(nullptr),
       Pri_assocPVIdx(nullptr), Pri_trackPVPass(nullptr), Pri_passAny(nullptr),
@@ -487,7 +487,7 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Ups_ctau(nullptr), Ups_ctauErr(nullptr), Ups_Chi2(nullptr),
       Ups_ndof(nullptr), Ups_VtxProb(nullptr),
       Ups_px(nullptr), Ups_py(nullptr), Ups_pz(nullptr),
-      Ups_phi(nullptr), Ups_eta(nullptr), Ups_pt(nullptr),
+      Ups_phi(nullptr), Ups_eta(nullptr), Ups_pt(nullptr), Ups_y(nullptr),
       Ups_pxErr(nullptr), Ups_pyErr(nullptr), Ups_pzErr(nullptr), Ups_ptErr(nullptr),
       // MC gen-level (new)
       MC_GenPart_pdgId(nullptr), MC_GenPart_status(nullptr), MC_GenPart_motherPdgId(nullptr),
@@ -1963,6 +1963,7 @@ void MultiLepPAT::storeSingleJpsiCandidatesForMC(
         SingleJpsi_phi->push_back(sentinel);
         SingleJpsi_eta->push_back(sentinel);
         SingleJpsi_pt->push_back(sentinel);
+        SingleJpsi_y->push_back(sentinel);
         SingleJpsi_pxErr->push_back(sentinel);
         SingleJpsi_pyErr->push_back(sentinel);
         SingleJpsi_pzErr->push_back(sentinel);
@@ -2011,6 +2012,7 @@ void MultiLepPAT::storeSingleJpsiCandidatesForMC(
                 SingleJpsi_Chi2, SingleJpsi_ndof, SingleJpsi_VtxProb,
                 SingleJpsi_px, SingleJpsi_py, SingleJpsi_pz,
                 SingleJpsi_phi, SingleJpsi_eta, SingleJpsi_pt,
+                SingleJpsi_y,
                 SingleJpsi_pxErr, SingleJpsi_pyErr, SingleJpsi_pzErr, SingleJpsi_ptErr);
         } else {
             pushSentinelResonance();
@@ -2062,6 +2064,7 @@ void MultiLepPAT::storeSingleUpsCandidatesForMC(
         SingleUps_phi->push_back(sentinel);
         SingleUps_eta->push_back(sentinel);
         SingleUps_pt->push_back(sentinel);
+        SingleUps_y->push_back(sentinel);
         SingleUps_pxErr->push_back(sentinel);
         SingleUps_pyErr->push_back(sentinel);
         SingleUps_pzErr->push_back(sentinel);
@@ -2110,6 +2113,7 @@ void MultiLepPAT::storeSingleUpsCandidatesForMC(
                 SingleUps_Chi2, SingleUps_ndof, SingleUps_VtxProb,
                 SingleUps_px, SingleUps_py, SingleUps_pz,
                 SingleUps_phi, SingleUps_eta, SingleUps_pt,
+                SingleUps_y,
                 SingleUps_pxErr, SingleUps_pyErr, SingleUps_pzErr, SingleUps_ptErr);
         } else {
             pushSentinelResonance();
@@ -2161,6 +2165,7 @@ void MultiLepPAT::storeSinglePhiCandidatesForMC(
         SinglePhi_phi->push_back(sentinel);
         SinglePhi_eta->push_back(sentinel);
         SinglePhi_pt->push_back(sentinel);
+        SinglePhi_y->push_back(sentinel);
         SinglePhi_pxErr->push_back(sentinel);
         SinglePhi_pyErr->push_back(sentinel);
         SinglePhi_pzErr->push_back(sentinel);
@@ -2213,6 +2218,7 @@ void MultiLepPAT::storeSinglePhiCandidatesForMC(
                 SinglePhi_Chi2, SinglePhi_ndof, SinglePhi_VtxProb,
                 SinglePhi_px, SinglePhi_py, SinglePhi_pz,
                 SinglePhi_phi, SinglePhi_eta, SinglePhi_pt,
+                SinglePhi_y,
                 SinglePhi_pxErr, SinglePhi_pyErr, SinglePhi_pzErr, SinglePhi_ptErr);
         } else {
             pushSentinelResonance();
@@ -2557,6 +2563,7 @@ void MultiLepPAT::combineCandidates(
                         Pri_mass, Pri_massErr, nullptr, Pri_ctau, Pri_ctauErr,
                         Pri_Chi2, Pri_ndof, Pri_VtxProb,
                         Pri_px, Pri_py, Pri_pz, Pri_phi, Pri_eta, Pri_pt,
+                        Pri_y,
                         Pri_pxErr, Pri_pyErr, Pri_pzErr, Pri_ptErr);
                 }
                 storePriDiagnostics(priDiagnostics);
@@ -2569,6 +2576,7 @@ void MultiLepPAT::combineCandidates(
                     Jpsi_1_Chi2, Jpsi_1_ndof, Jpsi_1_VtxProb,
                     Jpsi_1_px, Jpsi_1_py, Jpsi_1_pz,
                     Jpsi_1_phi, Jpsi_1_eta, Jpsi_1_pt,
+                    Jpsi_1_y,
                     Jpsi_1_pxErr, Jpsi_1_pyErr, Jpsi_1_pzErr, Jpsi_1_ptErr);
                 Jpsi_1_mu_1_Idx->push_back(diOnia.onia1.second[0]);
                 Jpsi_1_mu_2_Idx->push_back(diOnia.onia1.second[1]);
@@ -2581,6 +2589,7 @@ void MultiLepPAT::combineCandidates(
                         Jpsi_2_Chi2, Jpsi_2_ndof, Jpsi_2_VtxProb,
                         Jpsi_2_px, Jpsi_2_py, Jpsi_2_pz,
                         Jpsi_2_phi, Jpsi_2_eta, Jpsi_2_pt,
+                        Jpsi_2_y,
                         Jpsi_2_pxErr, Jpsi_2_pyErr, Jpsi_2_pzErr, Jpsi_2_ptErr);
                     Jpsi_2_mu_1_Idx->push_back(diOnia.onia2.second[0]);
                     Jpsi_2_mu_2_Idx->push_back(diOnia.onia2.second[1]);
@@ -2594,6 +2603,7 @@ void MultiLepPAT::combineCandidates(
                         Ups_Chi2, Ups_ndof, Ups_VtxProb,
                         Ups_px, Ups_py, Ups_pz,
                         Ups_phi, Ups_eta, Ups_pt,
+                        Ups_y,
                         Ups_pxErr, Ups_pyErr, Ups_pzErr, Ups_ptErr);
                     Ups_mu_1_Idx->push_back(diOnia.onia2.second[0]);
                     Ups_mu_2_Idx->push_back(diOnia.onia2.second[1]);
@@ -2613,6 +2623,7 @@ void MultiLepPAT::combineCandidates(
                     Phi_Chi2, Phi_ndof, Phi_VtxProb,
                     Phi_px, Phi_py, Phi_pz,
                     Phi_phi, Phi_eta, Phi_pt,
+                    Phi_y,
                     Phi_pxErr, Phi_pyErr, Phi_pzErr, Phi_ptErr);
 
                 const auto kaon1Diagnostics = buildPhiKaonDiagnostics(
@@ -2778,6 +2789,7 @@ void MultiLepPAT::combineCandidates(
                         Pri_mass, Pri_massErr, nullptr, Pri_ctau, Pri_ctauErr,
                         Pri_Chi2, Pri_ndof, Pri_VtxProb,
                         Pri_px, Pri_py, Pri_pz, Pri_phi, Pri_eta, Pri_pt,
+                        Pri_y,
                         Pri_pxErr, Pri_pyErr, Pri_pzErr, Pri_ptErr);
                 }
                 storePriDiagnostics(priDiagnostics);
@@ -2790,6 +2802,7 @@ void MultiLepPAT::combineCandidates(
                     Jpsi_1_Chi2, Jpsi_1_ndof, Jpsi_1_VtxProb,
                     Jpsi_1_px, Jpsi_1_py, Jpsi_1_pz,
                     Jpsi_1_phi, Jpsi_1_eta, Jpsi_1_pt,
+                    Jpsi_1_y,
                     Jpsi_1_pxErr, Jpsi_1_pyErr, Jpsi_1_pzErr, Jpsi_1_ptErr);
 
                 // Store J/psi 2
@@ -2799,6 +2812,7 @@ void MultiLepPAT::combineCandidates(
                     Jpsi_2_Chi2, Jpsi_2_ndof, Jpsi_2_VtxProb,
                     Jpsi_2_px, Jpsi_2_py, Jpsi_2_pz,
                     Jpsi_2_phi, Jpsi_2_eta, Jpsi_2_pt,
+                    Jpsi_2_y,
                     Jpsi_2_pxErr, Jpsi_2_pyErr, Jpsi_2_pzErr, Jpsi_2_ptErr);
 
                 // Store Upsilon
@@ -2808,6 +2822,7 @@ void MultiLepPAT::combineCandidates(
                     Ups_Chi2, Ups_ndof, Ups_VtxProb,
                     Ups_px, Ups_py, Ups_pz,
                     Ups_phi, Ups_eta, Ups_pt,
+                    Ups_y,
                     Ups_pxErr, Ups_pyErr, Ups_pzErr, Ups_ptErr);
 
                 // Store muon indices
@@ -2841,6 +2856,7 @@ void MultiLepPAT::storeSentinelPri()
     Pri_phi->push_back(sentinel);
     Pri_eta->push_back(sentinel);
     Pri_pt->push_back(sentinel);
+    Pri_y->push_back(sentinel);
     Pri_pxErr->push_back(sentinel);
     Pri_pyErr->push_back(sentinel);
     Pri_pzErr->push_back(sentinel);
@@ -3100,11 +3116,12 @@ void MultiLepPAT::storeResonanceBranches(
     vector<float>* br_Chi2, vector<float>* br_ndof, vector<float>* br_VtxProb,
     vector<float>* br_px, vector<float>* br_py, vector<float>* br_pz,
     vector<float>* br_phi, vector<float>* br_eta, vector<float>* br_pt,
+    vector<float>* br_y,
     vector<float>* br_pxErr, vector<float>* br_pyErr, vector<float>* br_pzErr,
     vector<float>* br_ptErr)
 {
-    double tmp_pt, tmp_eta, tmp_phi;
-    getDynamics(fitPart, tmp_pt, tmp_eta, tmp_phi);
+    double tmp_pt, tmp_eta, tmp_phi, tmp_y;
+    getDynamics(fitPart, tmp_pt, tmp_eta, tmp_phi, tmp_y);
 
     double tmp_pxErr, tmp_pyErr, tmp_pzErr, tmp_ptErr;
     getMomentumErrors(fitPart, tmp_pxErr, tmp_pyErr, tmp_pzErr, tmp_ptErr);
@@ -3130,6 +3147,7 @@ void MultiLepPAT::storeResonanceBranches(
     br_phi->push_back(tmp_phi);
     br_eta->push_back(tmp_eta);
     br_pt->push_back(tmp_pt);
+    br_y->push_back(tmp_y);
 
     if (br_pxErr) br_pxErr->push_back(tmp_pxErr);
     if (br_pyErr) br_pyErr->push_back(tmp_pyErr);
@@ -3276,7 +3294,7 @@ void MultiLepPAT::clearEventData()
     Pri_ctau->clear(); Pri_ctauErr->clear();
     Pri_Chi2->clear(); Pri_ndof->clear(); Pri_VtxProb->clear();
     Pri_px->clear(); Pri_py->clear(); Pri_pz->clear();
-    Pri_phi->clear(); Pri_eta->clear(); Pri_pt->clear();
+    Pri_phi->clear(); Pri_eta->clear(); Pri_pt->clear(); Pri_y->clear();
     Pri_pxErr->clear(); Pri_pyErr->clear(); Pri_pzErr->clear(); Pri_ptErr->clear();
     Pri_fitValid->clear(); Pri_fitPass->clear(); Pri_assocPVPass->clear();
     Pri_assocPVIdx->clear(); Pri_trackPVPass->clear(); Pri_passAny->clear();
@@ -3289,7 +3307,7 @@ void MultiLepPAT::clearEventData()
     Jpsi_1_ctau->clear(); Jpsi_1_ctauErr->clear();
     Jpsi_1_Chi2->clear(); Jpsi_1_ndof->clear(); Jpsi_1_VtxProb->clear();
     Jpsi_1_px->clear(); Jpsi_1_py->clear(); Jpsi_1_pz->clear();
-    Jpsi_1_phi->clear(); Jpsi_1_eta->clear(); Jpsi_1_pt->clear();
+    Jpsi_1_phi->clear(); Jpsi_1_eta->clear(); Jpsi_1_pt->clear(); Jpsi_1_y->clear();
     Jpsi_1_mu_1_Idx->clear(); Jpsi_1_mu_2_Idx->clear();
     Jpsi_1_pxErr->clear(); Jpsi_1_pyErr->clear(); Jpsi_1_pzErr->clear(); Jpsi_1_ptErr->clear();
 
@@ -3297,7 +3315,7 @@ void MultiLepPAT::clearEventData()
     Jpsi_2_ctau->clear(); Jpsi_2_ctauErr->clear();
     Jpsi_2_Chi2->clear(); Jpsi_2_ndof->clear(); Jpsi_2_VtxProb->clear();
     Jpsi_2_px->clear(); Jpsi_2_py->clear(); Jpsi_2_pz->clear();
-    Jpsi_2_phi->clear(); Jpsi_2_eta->clear(); Jpsi_2_pt->clear();
+    Jpsi_2_phi->clear(); Jpsi_2_eta->clear(); Jpsi_2_pt->clear(); Jpsi_2_y->clear();
     Jpsi_2_mu_1_Idx->clear(); Jpsi_2_mu_2_Idx->clear();
     Jpsi_2_pxErr->clear(); Jpsi_2_pyErr->clear(); Jpsi_2_pzErr->clear(); Jpsi_2_ptErr->clear();
 
@@ -3305,7 +3323,7 @@ void MultiLepPAT::clearEventData()
     Phi_ctau->clear(); Phi_ctauErr->clear();
     Phi_Chi2->clear(); Phi_ndof->clear(); Phi_VtxProb->clear();
     Phi_px->clear(); Phi_py->clear(); Phi_pz->clear();
-    Phi_phi->clear(); Phi_eta->clear(); Phi_pt->clear();
+    Phi_phi->clear(); Phi_eta->clear(); Phi_pt->clear(); Phi_y->clear();
     Phi_pxErr->clear(); Phi_pyErr->clear(); Phi_pzErr->clear(); Phi_ptErr->clear();
     Phi_fitPass->clear(); Phi_commonAssocPVPass->clear(); Phi_commonAssocPVIdx->clear();
     Phi_trackPVPass->clear(); Phi_vertexCriteriaPass->clear();
@@ -3338,7 +3356,7 @@ void MultiLepPAT::clearEventData()
     SingleJpsi_ctau->clear(); SingleJpsi_ctauErr->clear();
     SingleJpsi_Chi2->clear(); SingleJpsi_ndof->clear(); SingleJpsi_VtxProb->clear();
     SingleJpsi_px->clear(); SingleJpsi_py->clear(); SingleJpsi_pz->clear();
-    SingleJpsi_phi->clear(); SingleJpsi_eta->clear(); SingleJpsi_pt->clear();
+    SingleJpsi_phi->clear(); SingleJpsi_eta->clear(); SingleJpsi_pt->clear(); SingleJpsi_y->clear();
     SingleJpsi_pxErr->clear(); SingleJpsi_pyErr->clear(); SingleJpsi_pzErr->clear(); SingleJpsi_ptErr->clear();
     SingleJpsi_fitValid->clear(); SingleJpsi_fitPass->clear();
     SingleJpsi_prefitMass->clear(); SingleJpsi_prefitPt->clear();
@@ -3354,7 +3372,7 @@ void MultiLepPAT::clearEventData()
     SingleUps_ctau->clear(); SingleUps_ctauErr->clear();
     SingleUps_Chi2->clear(); SingleUps_ndof->clear(); SingleUps_VtxProb->clear();
     SingleUps_px->clear(); SingleUps_py->clear(); SingleUps_pz->clear();
-    SingleUps_phi->clear(); SingleUps_eta->clear(); SingleUps_pt->clear();
+    SingleUps_phi->clear(); SingleUps_eta->clear(); SingleUps_pt->clear(); SingleUps_y->clear();
     SingleUps_pxErr->clear(); SingleUps_pyErr->clear(); SingleUps_pzErr->clear(); SingleUps_ptErr->clear();
     SingleUps_fitValid->clear(); SingleUps_fitPass->clear();
     SingleUps_prefitMass->clear(); SingleUps_prefitPt->clear();
@@ -3370,7 +3388,7 @@ void MultiLepPAT::clearEventData()
     SinglePhi_ctau->clear(); SinglePhi_ctauErr->clear();
     SinglePhi_Chi2->clear(); SinglePhi_ndof->clear(); SinglePhi_VtxProb->clear();
     SinglePhi_px->clear(); SinglePhi_py->clear(); SinglePhi_pz->clear();
-    SinglePhi_phi->clear(); SinglePhi_eta->clear(); SinglePhi_pt->clear();
+    SinglePhi_phi->clear(); SinglePhi_eta->clear(); SinglePhi_pt->clear(); SinglePhi_y->clear();
     SinglePhi_pxErr->clear(); SinglePhi_pyErr->clear(); SinglePhi_pzErr->clear(); SinglePhi_ptErr->clear();
     SinglePhi_fitValid->clear(); SinglePhi_fitPass->clear();
     SinglePhi_prefitMass->clear(); SinglePhi_prefitPt->clear();
@@ -3416,7 +3434,7 @@ void MultiLepPAT::clearEventData()
     Ups_ctau->clear(); Ups_ctauErr->clear();
     Ups_Chi2->clear(); Ups_ndof->clear(); Ups_VtxProb->clear();
     Ups_px->clear(); Ups_py->clear(); Ups_pz->clear();
-    Ups_phi->clear(); Ups_eta->clear(); Ups_pt->clear();
+    Ups_phi->clear(); Ups_eta->clear(); Ups_pt->clear(); Ups_y->clear();
     Ups_pxErr->clear(); Ups_pyErr->clear(); Ups_pzErr->clear(); Ups_ptErr->clear();
 
     // Clear intermediate storage
@@ -3470,21 +3488,22 @@ void MultiLepPAT::getMomentumErrors(const RefCountedKinematicParticle& arg_Part,
  *****************************************************************************/
 
 void MultiLepPAT::getDynamics(double arg_mass, double arg_px, double arg_py, double arg_pz,
-                              double& res_pt, double& res_eta, double& res_phi) {
+                              double& res_pt, double& res_eta, double& res_phi, double& res_y) {
     TLorentzVector myParticle;
     myParticle.SetXYZM(arg_px, arg_py, arg_pz, arg_mass);
     res_pt  = myParticle.Pt();
     res_eta = myParticle.Eta();
     res_phi = myParticle.Phi();
+    res_y   = myParticle.Rapidity();
 }
 
 void MultiLepPAT::getDynamics(const RefCountedKinematicParticle& arg_Part,
-                              double& res_pt, double& res_eta, double& res_phi) {
+                              double& res_pt, double& res_eta, double& res_phi, double& res_y) {
     getDynamics(arg_Part->currentState().mass(),
                 arg_Part->currentState().kinematicParameters().momentum().x(),
                 arg_Part->currentState().kinematicParameters().momentum().y(),
                 arg_Part->currentState().kinematicParameters().momentum().z(),
-                res_pt, res_eta, res_phi);
+                res_pt, res_eta, res_phi, res_y);
 }
 
 void MultiLepPAT::tracksToMuonPair(
@@ -4321,6 +4340,7 @@ void MultiLepPAT::beginJob()
                           vector<float>*& Chi2, vector<float>*& ndof, vector<float>*& VtxProb,
                           vector<float>*& px, vector<float>*& py, vector<float>*& pz,
                           vector<float>*& phi, vector<float>*& eta, vector<float>*& pt,
+                          vector<float>*& y,
                           vector<float>*& pxErr, vector<float>*& pyErr, vector<float>*& pzErr,
                           vector<float>*& ptErr) {
         X_One_Tree_->Branch((prefix + "_mass").c_str(), &mass);
@@ -4337,6 +4357,7 @@ void MultiLepPAT::beginJob()
         X_One_Tree_->Branch((prefix + "_phi").c_str(), &phi);
         X_One_Tree_->Branch((prefix + "_eta").c_str(), &eta);
         X_One_Tree_->Branch((prefix + "_pt").c_str(), &pt);
+        X_One_Tree_->Branch((prefix + "_y").c_str(), &y);
         X_One_Tree_->Branch((prefix + "_pxErr").c_str(), &pxErr);
         X_One_Tree_->Branch((prefix + "_pyErr").c_str(), &pyErr);
         X_One_Tree_->Branch((prefix + "_pzErr").c_str(), &pzErr);
@@ -4357,6 +4378,7 @@ void MultiLepPAT::beginJob()
     branchReso("Jpsi_1", Jpsi_1_mass, Jpsi_1_massErr, Jpsi_1_massDiff,
                Jpsi_1_ctau, Jpsi_1_ctauErr, Jpsi_1_Chi2, Jpsi_1_ndof, Jpsi_1_VtxProb,
                Jpsi_1_px, Jpsi_1_py, Jpsi_1_pz, Jpsi_1_phi, Jpsi_1_eta, Jpsi_1_pt,
+               Jpsi_1_y,
                Jpsi_1_pxErr, Jpsi_1_pyErr, Jpsi_1_pzErr, Jpsi_1_ptErr);
     X_One_Tree_->Branch("Jpsi_1_mu_1_Idx", &Jpsi_1_mu_1_Idx);
     X_One_Tree_->Branch("Jpsi_1_mu_2_Idx", &Jpsi_1_mu_2_Idx);
@@ -4364,6 +4386,7 @@ void MultiLepPAT::beginJob()
     branchReso("Jpsi_2", Jpsi_2_mass, Jpsi_2_massErr, Jpsi_2_massDiff,
                Jpsi_2_ctau, Jpsi_2_ctauErr, Jpsi_2_Chi2, Jpsi_2_ndof, Jpsi_2_VtxProb,
                Jpsi_2_px, Jpsi_2_py, Jpsi_2_pz, Jpsi_2_phi, Jpsi_2_eta, Jpsi_2_pt,
+               Jpsi_2_y,
                Jpsi_2_pxErr, Jpsi_2_pyErr, Jpsi_2_pzErr, Jpsi_2_ptErr);
     X_One_Tree_->Branch("Jpsi_2_mu_1_Idx", &Jpsi_2_mu_1_Idx);
     X_One_Tree_->Branch("Jpsi_2_mu_2_Idx", &Jpsi_2_mu_2_Idx);
@@ -4371,6 +4394,7 @@ void MultiLepPAT::beginJob()
     branchReso("Phi", Phi_mass, Phi_massErr, Phi_massDiff,
                Phi_ctau, Phi_ctauErr, Phi_Chi2, Phi_ndof, Phi_VtxProb,
                Phi_px, Phi_py, Phi_pz, Phi_phi, Phi_eta, Phi_pt,
+               Phi_y,
                Phi_pxErr, Phi_pyErr, Phi_pzErr, Phi_ptErr);
     X_One_Tree_->Branch("Phi_fitPass", &Phi_fitPass);
     X_One_Tree_->Branch("Phi_commonAssocPVPass", &Phi_commonAssocPVPass);
@@ -4389,6 +4413,7 @@ void MultiLepPAT::beginJob()
                SingleJpsi_Chi2, SingleJpsi_ndof, SingleJpsi_VtxProb,
                SingleJpsi_px, SingleJpsi_py, SingleJpsi_pz,
                SingleJpsi_phi, SingleJpsi_eta, SingleJpsi_pt,
+               SingleJpsi_y,
                SingleJpsi_pxErr, SingleJpsi_pyErr, SingleJpsi_pzErr, SingleJpsi_ptErr);
     X_One_Tree_->Branch("SingleJpsi_fitValid", &SingleJpsi_fitValid);
     X_One_Tree_->Branch("SingleJpsi_fitPass", &SingleJpsi_fitPass);
@@ -4412,6 +4437,7 @@ void MultiLepPAT::beginJob()
                SingleUps_Chi2, SingleUps_ndof, SingleUps_VtxProb,
                SingleUps_px, SingleUps_py, SingleUps_pz,
                SingleUps_phi, SingleUps_eta, SingleUps_pt,
+               SingleUps_y,
                SingleUps_pxErr, SingleUps_pyErr, SingleUps_pzErr, SingleUps_ptErr);
     X_One_Tree_->Branch("SingleUps_fitValid", &SingleUps_fitValid);
     X_One_Tree_->Branch("SingleUps_fitPass", &SingleUps_fitPass);
@@ -4435,6 +4461,7 @@ void MultiLepPAT::beginJob()
                SinglePhi_Chi2, SinglePhi_ndof, SinglePhi_VtxProb,
                SinglePhi_px, SinglePhi_py, SinglePhi_pz,
                SinglePhi_phi, SinglePhi_eta, SinglePhi_pt,
+               SinglePhi_y,
                SinglePhi_pxErr, SinglePhi_pyErr, SinglePhi_pzErr, SinglePhi_ptErr);
     X_One_Tree_->Branch("SinglePhi_fitValid", &SinglePhi_fitValid);
     X_One_Tree_->Branch("SinglePhi_fitPass", &SinglePhi_fitPass);
@@ -4509,6 +4536,7 @@ void MultiLepPAT::beginJob()
     branchReso("Pri", Pri_mass, Pri_massErr, nullDiff,
                Pri_ctau, Pri_ctauErr, Pri_Chi2, Pri_ndof, Pri_VtxProb,
                Pri_px, Pri_py, Pri_pz, Pri_phi, Pri_eta, Pri_pt,
+               Pri_y,
                Pri_pxErr, Pri_pyErr, Pri_pzErr, Pri_ptErr);
     X_One_Tree_->Branch("Pri_fitValid", &Pri_fitValid);
     X_One_Tree_->Branch("Pri_fitPass", &Pri_fitPass);
@@ -4567,6 +4595,7 @@ void MultiLepPAT::beginJob()
     branchReso("Ups", Ups_mass, Ups_massErr, Ups_massDiff,
                Ups_ctau, Ups_ctauErr, Ups_Chi2, Ups_ndof, Ups_VtxProb,
                Ups_px, Ups_py, Ups_pz, Ups_phi, Ups_eta, Ups_pt,
+               Ups_y,
                Ups_pxErr, Ups_pyErr, Ups_pzErr, Ups_ptErr);
     X_One_Tree_->Branch("Ups_mu_1_Idx", &Ups_mu_1_Idx);
     X_One_Tree_->Branch("Ups_mu_2_Idx", &Ups_mu_2_Idx);
