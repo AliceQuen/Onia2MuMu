@@ -450,6 +450,8 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       RecoKaonTrack_dzAssocPV(new vector<float>()), RecoKaonTrack_dxyAssocPV(new vector<float>()),
       RecoKaonTrack_passDzPV(new vector<int>()), RecoKaonTrack_passDxyPV(new vector<int>()),
       RecoKaonTrack_passTrackPV(new vector<int>()),
+      RecoKaonTrack_normalizedChi2(new vector<float>()),
+      RecoKaonTrack_numberOfHits(new vector<int>()), RecoKaonTrack_isHighPurity(new vector<int>()),
       RecoKaonTrack_genMatchIdx(new vector<int>()), RecoKaonTrack_genMatchSource(new vector<int>()),
       RecoKaonTrack_genMatchChi2(new vector<float>()),
       RecoKaonTrack_usedInSinglePhi(new vector<int>()),
@@ -1844,6 +1846,8 @@ void MultiLepPAT::fillRecoKaonTrackBlock(
     RecoKaonTrack_dzAssocPV->clear(); RecoKaonTrack_dxyAssocPV->clear();
     RecoKaonTrack_passDzPV->clear(); RecoKaonTrack_passDxyPV->clear();
     RecoKaonTrack_passTrackPV->clear();
+    RecoKaonTrack_normalizedChi2->clear();
+    RecoKaonTrack_numberOfHits->clear(); RecoKaonTrack_isHighPurity->clear();
     RecoKaonTrack_genMatchIdx->clear(); RecoKaonTrack_genMatchSource->clear();
     RecoKaonTrack_genMatchChi2->clear();
     RecoKaonTrack_usedInSinglePhi->clear();
@@ -1893,6 +1897,8 @@ void MultiLepPAT::fillRecoKaonTrackBlock(
         const auto diagnostics = (cacheIt != diagnosticsCache.end())
             ? cacheIt->second
             : buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
+        const reco::Track* bestTrack =
+            (cand.hasTrackDetails() && cand.bestTrack() != nullptr) ? cand.bestTrack() : nullptr;
 
         nonMuonTrackIdxToRecoKaonTrackIdx_[nonMuonIdx] = nRecoKaonTrack;
         RecoKaonTrack_pt->push_back(cand.pt());
@@ -1912,6 +1918,10 @@ void MultiLepPAT::fillRecoKaonTrackBlock(
         RecoKaonTrack_passDzPV->push_back(diagnostics.passDzPV ? 1 : 0);
         RecoKaonTrack_passDxyPV->push_back(diagnostics.passDxyPV ? 1 : 0);
         RecoKaonTrack_passTrackPV->push_back(diagnostics.passTrackPV ? 1 : 0);
+        RecoKaonTrack_normalizedChi2->push_back(bestTrack != nullptr ? bestTrack->normalizedChi2() : -1.f);
+        RecoKaonTrack_numberOfHits->push_back(bestTrack != nullptr ? bestTrack->numberOfValidHits() : -1);
+        RecoKaonTrack_isHighPurity->push_back(
+            bestTrack != nullptr && bestTrack->quality(reco::Track::highPurity) ? 1 : 0);
         RecoKaonTrack_genMatchIdx->push_back(diagnostics.genMatchIdx);
         RecoKaonTrack_genMatchSource->push_back(diagnostics.genMatchSource);
         RecoKaonTrack_genMatchChi2->push_back(diagnostics.genMatchChi2);
@@ -3423,6 +3433,8 @@ void MultiLepPAT::clearEventData()
     RecoKaonTrack_dzAssocPV->clear(); RecoKaonTrack_dxyAssocPV->clear();
     RecoKaonTrack_passDzPV->clear(); RecoKaonTrack_passDxyPV->clear();
     RecoKaonTrack_passTrackPV->clear();
+    RecoKaonTrack_normalizedChi2->clear();
+    RecoKaonTrack_numberOfHits->clear(); RecoKaonTrack_isHighPurity->clear();
     RecoKaonTrack_genMatchIdx->clear(); RecoKaonTrack_genMatchSource->clear();
     RecoKaonTrack_genMatchChi2->clear();
     RecoKaonTrack_usedInSinglePhi->clear();
@@ -4527,6 +4539,9 @@ void MultiLepPAT::beginJob()
     X_One_Tree_->Branch("RecoKaonTrack_passDzPV", &RecoKaonTrack_passDzPV);
     X_One_Tree_->Branch("RecoKaonTrack_passDxyPV", &RecoKaonTrack_passDxyPV);
     X_One_Tree_->Branch("RecoKaonTrack_passTrackPV", &RecoKaonTrack_passTrackPV);
+    X_One_Tree_->Branch("RecoKaonTrack_normalizedChi2", &RecoKaonTrack_normalizedChi2);
+    X_One_Tree_->Branch("RecoKaonTrack_numberOfHits", &RecoKaonTrack_numberOfHits);
+    X_One_Tree_->Branch("RecoKaonTrack_isHighPurity", &RecoKaonTrack_isHighPurity);
     X_One_Tree_->Branch("RecoKaonTrack_genMatchIdx", &RecoKaonTrack_genMatchIdx);
     X_One_Tree_->Branch("RecoKaonTrack_genMatchSource", &RecoKaonTrack_genMatchSource);
     X_One_Tree_->Branch("RecoKaonTrack_genMatchChi2", &RecoKaonTrack_genMatchChi2);

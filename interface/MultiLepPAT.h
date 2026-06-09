@@ -867,6 +867,8 @@ private:
     vector<float> *RecoKaonTrack_dzAssocPV = nullptr, *RecoKaonTrack_dxyAssocPV = nullptr;
     vector<int>   *RecoKaonTrack_passDzPV = nullptr, *RecoKaonTrack_passDxyPV = nullptr;
     vector<int>   *RecoKaonTrack_passTrackPV = nullptr;
+    vector<float> *RecoKaonTrack_normalizedChi2 = nullptr;
+    vector<int>   *RecoKaonTrack_numberOfHits = nullptr, *RecoKaonTrack_isHighPurity = nullptr;
     vector<int>   *RecoKaonTrack_genMatchIdx = nullptr, *RecoKaonTrack_genMatchSource = nullptr;
     vector<float> *RecoKaonTrack_genMatchChi2 = nullptr;
     vector<int>   *RecoKaonTrack_usedInSinglePhi = nullptr;
