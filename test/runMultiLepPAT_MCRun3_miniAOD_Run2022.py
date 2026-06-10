@@ -184,7 +184,9 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
 
     # ====== StringCutObjectSelector-based cuts ======
     MuonSelection  = cms.untracked.string("pt > 2.5 && abs(eta) < 2.4"),
-    TrackSelection = cms.untracked.string("pt > 2.0 && abs(eta) < 2.5 && numberOfHits > 4"),
+    TrackSelection = cms.untracked.string("pt > 2.0 && abs(eta) < 2.5"),
+    TrackQuality   = cms.untracked.string("normalizedChi2 < 8 && numberOfValidHits > 4"),
+    RequireRecoKaonTrackHighPurity = cms.untracked.bool(True),
 
     # ====== Primary vertex cuts ======
     PVNdofMin = cms.untracked.int32(5),

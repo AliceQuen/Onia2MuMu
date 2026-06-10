@@ -309,14 +309,14 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     PVMaxRho  = cms.untracked.double(2.0),
 
     # ====== Onia mass windows (GeV) ======
-    JpsiMassMin = cms.untracked.double(2.8),
-    JpsiMassMax = cms.untracked.double(3.3),
+    JpsiMassMin = cms.untracked.double(1.0),
+    JpsiMassMax = cms.untracked.double(4.0),
     UpsMassMin  = cms.untracked.double(8.0),
     UpsMassMax  = cms.untracked.double(12.0),
 
     # ====== Meson mass window (GeV) ======
-    PhiMassMin = cms.untracked.double(0.97),
-    PhiMassMax = cms.untracked.double(1.07),
+    PhiMassMin = cms.untracked.double(0.8),
+    PhiMassMax = cms.untracked.double(1.2),
 
     # ====== Track kinematics ======
     TrackPtMin = cms.untracked.double(1.0),
@@ -340,11 +340,11 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
     PriTrackDxyPVMax = cms.untracked.double(0.1),
 
     # ====== Per-resonance candidate pT/eta pre-cuts ======
-    JpsiCandPtMin  = cms.untracked.double(4.0),
+    JpsiCandPtMin  = cms.untracked.double(0.0),
     JpsiCandEtaMax = cms.untracked.double(999.0),
-    UpsCandPtMin   = cms.untracked.double(4.0),
+    UpsCandPtMin   = cms.untracked.double(0.0),
     UpsCandEtaMax  = cms.untracked.double(999.0),
-    PhiCandPtMin   = cms.untracked.double(2.0),
+    PhiCandPtMin   = cms.untracked.double(0.0),
     PhiCandEtaMax  = cms.untracked.double(999.0),
 
     # ====== PV selection mode ======

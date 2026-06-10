@@ -267,8 +267,14 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       muonSelector_(muonSelectionStr_),
       trackSelectionStr_(iConfig.getUntrackedParameter<std::string>(
           "TrackSelection",
-          "pt > 2.0 && abs(eta) < 2.5 && numberOfHits > 4")),
+          "pt > 2.0 && abs(eta) < 2.5")),
       trackSelector_(trackSelectionStr_),
+      trackQualityStr_(iConfig.getUntrackedParameter<std::string>(
+          "TrackQuality",
+          "normalizedChi2 < 8 && numberOfValidHits > 4")),
+      trackQualitySelector_(trackQualityStr_),
+      requireRecoKaonTrackHighPurity_(
+          iConfig.getUntrackedParameter<bool>("RequireRecoKaonTrackHighPurity", true)),
       // Primary vertex cuts
       pvNdofMin_(iConfig.getUntrackedParameter<int>("PVNdofMin", 5)),
       pvMaxAbsZ_(iConfig.getUntrackedParameter<double>("PVMaxAbsZ", 24.0)),
@@ -1783,8 +1789,9 @@ void MultiLepPAT::pairTracks(
         if (static_cast<int>(iTrack1->fromPV()) < minTrackFromPV_) continue;
         // Use StringCutObjectSelector for track cuts
         if (!trackSelector_(*iTrack1)) continue;
-        if (iTrack1->bestTrack()->normalizedChi2() > 8 ||
-            !iTrack1->bestTrack()->quality(reco::Track::highPurity)) continue;
+        if (!trackQualitySelector_(*iTrack1->bestTrack()) ||
+            (requireRecoKaonTrackHighPurity_ &&
+             !iTrack1->bestTrack()->quality(reco::Track::highPurity))) continue;
 
         TransientTrack trackTT1(*(iTrack1->bestTrack()), &bField);
         transTrackPair.push_back(PhiFactory.particle(trackTT1, KMass, chi2, ndof, KMassSigma));
@@ -1795,8 +1802,9 @@ void MultiLepPAT::pairTracks(
             if (!iTrack2->hasTrackDetails() || iTrack2->charge() == 0) continue;
             if (static_cast<int>(iTrack2->fromPV()) < minTrackFromPV_) continue;
             if (!trackSelector_(*iTrack2)) continue;
-            if (iTrack2->bestTrack()->normalizedChi2() > 8 ||
-                !iTrack2->bestTrack()->quality(reco::Track::highPurity)) continue;
+            if (!trackQualitySelector_(*iTrack2->bestTrack()) ||
+                (requireRecoKaonTrackHighPurity_ &&
+                 !iTrack2->bestTrack()->quality(reco::Track::highPurity))) continue;
             if ((iTrack1->charge() + iTrack2->charge()) != 0) continue;
 
             TLorentzVector P4_Track1, P4_Track2, P4_Meson;
@@ -1866,13 +1874,7 @@ void MultiLepPAT::fillRecoKaonTrackBlock(
             const auto diagnostics = buildPhiKaonDiagnostics(cand, thePrimaryV_, genParticles);
             diagnosticsCache[nonMuonIdx] = diagnostics;
 
-            const bool hasGoodTrack = cand.hasTrackDetails() &&
-                                      cand.bestTrack() != nullptr &&
-                                      cand.bestTrack()->normalizedChi2() <= 8.0 &&
-                                      cand.bestTrack()->quality(reco::Track::highPurity);
-            const bool passesTrackSel = static_cast<int>(cand.fromPV()) >= minTrackFromPV_ &&
-                                        hasGoodTrack &&
-                                        trackSelector_(cand);
+            const bool passesTrackSel = trackSelector_(cand);
             if (diagnostics.genMatchIdx >= 0 && passesTrackSel) {
                 selectedNonMuonTrackIdx.insert(nonMuonIdx);
             }
@@ -4138,6 +4140,9 @@ void MultiLepPAT::beginJob()
     X_Config_Tree_->Branch("TrackLabel", &configTrackLabelTag_);
     X_Config_Tree_->Branch("MuonSelection", &muonSelectionStr_);
     X_Config_Tree_->Branch("TrackSelection", &trackSelectionStr_);
+    X_Config_Tree_->Branch("TrackQuality", &trackQualityStr_);
+    X_Config_Tree_->Branch("RequireRecoKaonTrackHighPurity", &requireRecoKaonTrackHighPurity_,
+                           "RequireRecoKaonTrackHighPurity/O");
     X_Config_Tree_->Branch("PVNdofMin", &pvNdofMin_, "PVNdofMin/I");
     X_Config_Tree_->Branch("PVMaxAbsZ", &pvMaxAbsZ_, "PVMaxAbsZ/D");
     X_Config_Tree_->Branch("PVMaxRho", &pvMaxRho_, "PVMaxRho/D");

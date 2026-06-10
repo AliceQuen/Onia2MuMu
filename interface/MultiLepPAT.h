@@ -511,7 +511,12 @@ private:
     // -- Track (kaon/pion) selection (StringCutObjectSelector based) --
     std::string trackSelectionStr_;
     StringCutObjectSelector<pat::PackedCandidate> trackSelector_;
-    
+
+    // -- Track quality selection (applied to bestTrack() for phi reconstruction) --
+    std::string trackQualityStr_;
+    StringCutObjectSelector<reco::Track> trackQualitySelector_;
+    bool requireRecoKaonTrackHighPurity_;
+
     // -- Primary vertex quality cuts (configurable) --
     int    pvNdofMin_;
     double pvMaxAbsZ_;
