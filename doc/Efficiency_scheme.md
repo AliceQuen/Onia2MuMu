@@ -6,12 +6,20 @@
 | muonRECOinJpsi                              | $\epsilon_{\mu\mathrm{Reco}}^{J/\psi}$                  | per $J/\psi$             | $(p_T^{J/\psi}, y^{J/\psi})$                             | both daughter muons reconstructed and matched                |
 | kaonRECOinPhi                               | $\epsilon_{K\mathrm{Reco}}^{\phi}$                      | per $\phi$               | $(p_T^{\phi}, y^{\phi})$                                 | both kaons reconstructed and matched                         |
 | muonID                                      | $\epsilon_{\mu\mathrm{ID}}^{J/\psi}$                    | per $J/\psi$             | $(p_T^{J/\psi}, y^{J/\psi})$                             | both matched muons pass ID                                   |
-| kaonID                                      | $\epsilon_{K\mathrm{ID}}^{\phi}$                        | per $\phi$               | $(p_T^{\phi}, y^{\phi})$                                 | both matched kaons pass track/kaon selection                 |
+| kaonID                                      | $\epsilon_{K\mathrm{ID}}^{\phi}$                        | per $\phi$               | $(p_T^{\phi}, y^{\phi})$                                 | both matched kaons pass track quality selection (normalizedChi2, numberOfValidHits, isHighPurity) |
 | dimuon                                      | $\epsilon_{\mu\mu}^{J/\psi}$                            | per $J/\psi$             | $(p_T^{J/\psi}, y^{J/\psi})$                             | valid dimuon candidate                                       |
 | dikaon                                      | $\epsilon_{KK}^{\phi}$                                  | per $\phi$               | $(p_T^{\phi}, y^{\phi})$                                 | valid $K^+K^-$ candidate                                     |
 | HLT                                         | $\epsilon_{\mathrm{HLT}}$                               | event                    | nominally event-level                                    | trigger OR and trigger-object matching                       |
 | fourMuonVertexing                           | $\epsilon_{4\mu\mathrm{vtx}}$                           | per $J/\psi J/\psi$ pair | pair-level axes                                          | valid four-muon vertex                                       |
 | triOniaVertexingAndOtherEventLevelSelection | $\epsilon_{\mathrm{triOnia}}$                           | event                    | $(p_T^{J/\psi_1},p_T^{J/\psi_2})$, split by $p_T^{\phi}$ | three-meson vertex and remaining event-level cuts            |
+
+The kaon efficiency chain factorizes into three tiers:
+
+| Tier | Step | Selection | Config / branches |
+|------|------|-----------|-------------------|
+| Fiducial acceptance | via $A_{\phi}$ | $p_T$, $\eta$ phase-space only | `TrackSelection` (`pt > ... && abs(eta) < ...`) |
+| Reconstruction | $\epsilon_{K\mathrm{Reco}}^{\phi}$ | GEN-matched kaons (daughter-level) | `RecoGenKaonMatchChi2Max`, `SinglePhi_K*_genMatchIdx >= 0` |
+| KaonID | $\epsilon_{K\mathrm{ID}}^{\phi}$ | Track quality on reconstructed kaons | `TrackQuality` (`normalizedChi2`, `numberOfValidHits`) + `RequireRecoKaonTrackHighPurity` |
 
 ### Current implementation notes
 

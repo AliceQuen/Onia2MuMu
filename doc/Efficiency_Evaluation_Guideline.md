@@ -121,19 +121,45 @@ point is analysis-configurable and can be tightened in post-processing.
 
 ### 2.5 kaonID — $\varepsilon_{K\mathrm{ID}|\phi}$
 
+Track-quality identification applied to the reconstructed (GEN-matched) kaon tracks.
+This is the third tier of the kaon efficiency chain, after fiducial acceptance and
+reconstruction.
+
+The kaon efficiency factorizes into three sequential tiers:
+
+| Tier | Step | Selection | Config / branches |
+|------|------|-----------|-------------------|
+| Fiducial acceptance | via $A_{\phi}$ (Section 2.1) | Phase-space only: $p_T$, $\eta$ cuts on GEN kaons | `TrackSelection` (`"pt > 1.0 && abs(eta) < 2.5"`) |
+| kaonRECO | $\varepsilon_{K\mathrm{Reco}}^{\phi}$ (Section 2.3) | Both kaons GEN-matched | `SinglePhi_K*_genMatchIdx >= 0` |
+| kaonID | $\varepsilon_{K\mathrm{ID}}^{\phi}$ (this section) | Track quality on reconstructed kaons | `TrackQuality` + `RequireRecoKaonTrackHighPurity` |
+
+Note: pT/eta cuts are part of fiducial acceptance, NOT kaonID. The `TrackSelection`
+string configures the phase-space denominator (see Section 3.1).
+
 | Role | Branch / logic |
 |------|----------------|
 | Denominator (passed kaonRECO) | `SinglePhi` candidates with both kaons GEN-matched (kaonRECO numerator) |
-| Numerator (passes THIS step) | Denominator `SinglePhi` where both daughter kaons pass the chosen track-quality ID working point |
+| Numerator (passes THIS step) | Denominator `SinglePhi` where both daughter kaons pass track-quality ID |
 
 Use `SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` to look up
 the `RecoKaonTrack_*` block (always populated from φ-candidate daughters).
 
-The baseline kaon ID is the `TrackSelection` string cut applied at the input
-level (e.g., `pt > 1.0 && abs(eta) < 2.5 && numberOfHits > 4`). This is
-analysis-configurable. PV-compatibility flags (`RecoKaonTrack_passDzPV`,
-`RecoKaonTrack_passDxyPV`, `RecoKaonTrack_passTrackPV`, `RecoKaonTrack_fromPV`)
-are reserved for the dikaon and triOnia vertexing steps below.
+The baseline track-quality criteria are defined by two config parameters (stored
+in `X_Config_Tree`):
+
+| Parameter | Default | Branch equivalents |
+|-----------|---------|-------------------|
+| `TrackQuality` | `"normalizedChi2 < 8 && numberOfValidHits > 4"` | `RecoKaonTrack_normalizedChi2`, `RecoKaonTrack_numberOfHits` |
+| `RequireRecoKaonTrackHighPurity` | `True` | `RecoKaonTrack_isHighPurity == 1` |
+
+Both criteria must be satisfied for each daughter kaon to count as passing kaonID.
+The quality cuts are fully configurable at production time and can be varied in
+offline analysis without re-ntuplizing, since the raw quality values are stored
+per-track in the `RecoKaonTrack_*` block.
+
+PV-compatibility flags (`RecoKaonTrack_passDzPV`, `RecoKaonTrack_passDxyPV`,
+`RecoKaonTrack_passTrackPV`, `RecoKaonTrack_fromPV`) are reserved for the dikaon
+and triOnia vertexing steps below.
 
 ### 2.6 dimuon — $\varepsilon_{\mu\mu|J/\psi}$
 
@@ -255,8 +281,8 @@ split by φ pT bins. Alternative endpoints may use `Pri_fitPass` or
 |-----------|---------------------|
 | `JpsiCandPtMin`, `JpsiCandEtaMax` | These are applied in `pairMuons()` as pre-cuts on the composite candidate. The `SingleJpsi_pt` branch records the value; you can apply any pT cut in analysis. |
 | `PhiCandPtMin`, `PhiCandEtaMax` | Same reasoning — `SinglePhi_pt` records the value. |
+| Track quality (`normalizedChi2`, `numberOfValidHits`, `isHighPurity`) | Directly recorded in `RecoKaonTrack_normalizedChi2`, `RecoKaonTrack_numberOfHits`, `RecoKaonTrack_isHighPurity`. Configurable via `TrackQuality` string and `RequireRecoKaonTrackHighPurity` flag. |
 | `MinTrackFromPV` | Recorded in `RecoKaonTrack_fromPV` and `SinglePhi_K*_fromPV`. |
-| Track `normalizedChi2`, `highPurity` | Recorded (indirectly) via `RecoKaonTrack_passTrackPV`. |
 
 ### 3.2 MC control flags
 
@@ -307,7 +333,11 @@ For each J/ψ and φ kinematic bin `(pT, |y|)`:
 
 5. **kaonID** — $\varepsilon_{K\mathrm{ID}|\phi}$: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
    - Denominator: `SinglePhi` passing kaonRECO (both kaons GEN-matched).
-   - Numerator: denominator candidates where both daughter kaons pass the chosen track-quality ID.
+   - Numerator: denominator candidates where both daughter kaons satisfy the track-quality criteria:
+     - `RecoKaonTrack_normalizedChi2[idx] < 8 && RecoKaonTrack_numberOfHits[idx] > 4`
+     - `RecoKaonTrack_isHighPurity[idx] == 1`
+   - The exact criteria are documented in `X_Config_Tree::TrackQuality` and `X_Config_Tree::RequireRecoKaonTrackHighPurity`.
+   - Quality cuts can be varied offline without re-ntuplizing since the raw values are stored.
 
 6. **dimuon** — $\varepsilon_{\mu\mu|J/\psi}$: From `SingleJpsi_*` (Run A).
    - Denominator: `SingleJpsi` passing muonID.
@@ -352,7 +382,7 @@ between the per-object steps that the factorized approach misses.
 ### 5.2 RecoKaonTrack coverage
 
 The `RecoKaonTrack_*` block is always populated with the union of:
-- GEN-matched quality kaons (MC with `keepAllSingleObjectCandsInMC=True`),
+- GEN-matched fiducial kaons — all kaons passing phase-space `TrackSelection` (MC with `keepAllSingleObjectCandsInMC=True`), independent of track quality,
 - φ-candidate daughter tracks from `KPairCand_Meson_` (always).
 
 The `RecoKaonTrack_usedInSinglePhi` flag distinguishes the two sources
