@@ -400,8 +400,8 @@ process.mkcands = cms.EDAnalyzer('MultiLepPAT',
         "HLT_DoubleMu4_3_LowMass_v",
     ),
     FiltersForJpsi = cms.untracked.vstring(
-        "hltVertexmumuFilterJpsiMuon3p5",
-        "hltDisplacedmumuFilterDoubleMu43LowMass",
+        "hltJpsiMuonL3Filtered3p5",
+        "hltDoubleMu43LowMassL3Filtered",
     ),
     TriggersForUpsilon = cms.untracked.vstring(
         "HLT_Trimuon5_3p5_2_Upsilon_Muon_v",
