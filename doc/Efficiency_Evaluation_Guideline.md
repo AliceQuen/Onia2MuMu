@@ -73,46 +73,75 @@ work directly with the flat `MC_GenPart_*` vectors.
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed acceptance) | `SingleJpsi` candidates where both GEN daughter muons are in fiducial acceptance (cross-reference `MC_GenPart_*` via daughter PDG IDs) |
-| Numerator (passes THIS step) | Denominator `SingleJpsi` where `SingleJpsi_mu1_genMatchIdx >= 0` AND `SingleJpsi_mu2_genMatchIdx >= 0` |
+| Denominator (passed acceptance) | GEN J/ψ in acceptance (Section 2.1 numerator): direct J/ψ (`MC_GenPart_pdgId == 443`, `abs(MC_GenPart_motherPdgId) != 443`) with both GEN daughter muons in fiducial region |
+| Numerator (passes THIS step) | Denominator GEN J/ψ where both GEN daughter muons have a RECO-level match in the `mu*` branches |
 
-The `SingleJpsi_*` branches are filled **before** the final `JpsiCandPtMin` /
-`JpsiCandEtaMax` cuts in `pairMuons()`, so they capture all dimuon pairs that
-survive the mass window and vertex fit. `SingleJpsi_mu1_Idx` /
-`SingleJpsi_mu2_Idx` give indices into the `mu*` branches for the daughter
-muons; `SingleJpsi_mu1_genMatchIdx` / `SingleJpsi_mu2_genMatchIdx` are indices
-into `MC_GenPart_*`.
+This step is evaluated entirely at GEN level: start from each acceptance-passing
+GEN J/ψ, identify its two GEN daughter muons, and check whether both have a
+corresponding reconstructed muon.
 
-The RECO-level matching for muons uses the configurable `RecoGenMuonMatchChi2Max`
-(default 25.0). Muons without a valid GEN match have `genMatchIdx = -1`.
+**Finding GEN daughter muons.** For each GEN J/ψ at index `j` in `MC_GenPart_*`,
+its daughter muons are GEN particles where
+`abs(MC_GenPart_pdgId) == 13` AND `MC_GenPart_motherGenIdx == j`.
+Each direct J/ψ should have exactly two such daughters (μ⁺ and μ⁻).
+
+**RECO matching.** The `muGenMatchIdx` branch (populated in `fillMuonBlock()` for
+every RECO muon, regardless of whether it ends up in a `SingleJpsi` candidate)
+stores the `MC_GenPart_*` index of the matched GEN muon. It uses unrestricted
+matching — the GEN muon's mother PDG ID is NOT required to be 443. For each GEN
+daughter muon at index `g`, check whether any RECO muon has `muGenMatchIdx == g`.
+
+**Why not use `SingleJpsi` or `SingleJpsi_mu*_genMatchIdx`?** The `SingleJpsi`
+branches are populated from `muPairCand_Onia1_`, which only stores pairs that
+pass the J/ψ vertex fit (`onia1FitPass == true`, line 1643 of `MultiLepPAT.cc`).
+Using them as the RECO denominator would fold the dimuon vertexing efficiency
+into the RECO measurement. The inline `SingleJpsi_mu*_genMatchIdx` further
+restricts matches to GEN muons whose mother is PDG 443, which is unnecessarily
+narrow for the RECO step. The `muGenMatchIdx` branch has neither limitation.
 
 ### 2.3 kaonRECO — $\varepsilon_{K\mathrm{Reco}|\phi}$
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed acceptance) | `SinglePhi` candidates where both GEN daughter kaons are in fiducial acceptance |
-| Numerator (passes THIS step) | Denominator `SinglePhi` where `SinglePhi_K1_genMatchIdx >= 0` AND `SinglePhi_K2_genMatchIdx >= 0` |
+| Denominator (passed acceptance) | GEN φ in acceptance (Section 2.1 numerator): direct φ (`MC_GenPart_pdgId == 333`) with both GEN daughter kaons in fiducial region |
+| Numerator (passes THIS step) | Denominator GEN φ where both GEN daughter kaons have a RECO-level match in the `RecoKaonTrack_*` block |
+
+Same GEN-level approach as muonRECO. For each acceptance-passing GEN φ at
+index `j`, its daughter kaons are GEN particles where
+`abs(MC_GenPart_pdgId) == 321` AND `MC_GenPart_motherGenIdx == j`.
+
+**RECO matching via `RecoKaonTrack_genMatchIdx`.** The `RecoKaonTrack_*` block is
+populated independently of `SinglePhi` candidates — it contains the union of all
+GEN-matched fiducial kaons and all φ-candidate daughter tracks (see Section 6.3).
+For each GEN daughter kaon at index `g`, check whether any entry in the
+`RecoKaonTrack_*` block has `RecoKaonTrack_genMatchIdx == g`.
+
+**Why not use `SinglePhi` or `SinglePhi_K*_genMatchIdx`?** `SinglePhi` is
+populated from `KPairCand_Meson_`, which only stores pairs that pass the φ vertex
+fit (`particlesToVtx(... PhiDecayVtxProbCut_)`, line 1828 of `MultiLepPAT.cc`).
+The `SinglePhi_K*_genMatchIdx` values are mother-PDG-restricted (require PDG 333).
+The `RecoKaonTrack_genMatchIdx` is unrestricted and available for all
+reconstructed tracks, making it the correct source for the RECO denominator.
 
 `SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` give indices
-into the `RecoKaonTrack_*` block (always populated from φ-candidate daughters).
-The `RecoKaonTrack_genMatchIdx` field mirrors the inline `SinglePhi_K*_genMatchIdx`
-— they must agree (see Section 5.4).
-
-The RECO-level matching for kaons uses `RecoGenKaonMatchChi2Max` (default 25.0).
-Kaons without a valid GEN match have `genMatchIdx = -1`.
-
-Alternatively, work entirely through the `RecoKaonTrack` block: iterate
-`RecoKaonTrack_*` entries with `genMatchIdx >= 0`, group by event, and check
-whether both GEN-matched kaons from a given φ are present.
+into the `RecoKaonTrack_*` block for φ-candidate daughter tracks. The
+`RecoKaonTrack_genMatchIdx` field mirrors the inline `SinglePhi_K*_genMatchIdx`
+for candidates that exist — they must agree (see Section 6.5). But the
+`RecoKaonTrack` block covers additional tracks beyond φ candidates, which is
+essential for the RECO step.
 
 ### 2.4 muonID — $\varepsilon_{\mu\mathrm{ID}|J/\psi}$
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed muonRECO) | `SingleJpsi` candidates with both muons GEN-matched (muonRECO numerator) |
-| Numerator (passes THIS step) | Denominator `SingleJpsi` where both daughter muons pass the chosen ID working point |
+| Denominator (passed muonRECO) | GEN J/ψ in acceptance where both GEN daughter muons have a RECO match (muonRECO numerator) |
+| Numerator (passes THIS step) | Denominator GEN J/ψ where both RECO-matched daughter muons pass the chosen ID working point |
 
-Use `SingleJpsi_mu1_Idx` / `SingleJpsi_mu2_Idx` to look up the muon block.
+This step is evaluated on the same GEN J/ψ population as muonRECO, now checking
+the ID quality of the matched RECO muons. For each RECO-matched GEN daughter muon,
+find the RECO muon index `r` where `muGenMatchIdx[r] == gen_mu_idx`, then check
+the ID flag at that index.
+
 Available muon ID flags: `muIsGoodTightMuon`, `muIsPatTightMuon`, `muIsPatMediumMuon`,
 `muIsPatSoftMuon`, `muIsGlobalMuon`.
 
@@ -130,7 +159,7 @@ The kaon efficiency factorizes into three sequential tiers:
 | Tier | Step | Selection | Config / branches |
 |------|------|-----------|-------------------|
 | Fiducial acceptance | via $A_{\phi}$ (Section 2.1) | Phase-space only: $p_T$, $\eta$ cuts on GEN kaons | `TrackSelection` (`"pt > 1.0 && abs(eta) < 2.5"`) |
-| kaonRECO | $\varepsilon_{K\mathrm{Reco}}^{\phi}$ (Section 2.3) | Both kaons GEN-matched | `SinglePhi_K*_genMatchIdx >= 0` |
+| kaonRECO | $\varepsilon_{K\mathrm{Reco}}^{\phi}$ (Section 2.3) | Both GEN daughter kaons have RECO match | `RecoKaonTrack_genMatchIdx >= 0` |
 | kaonID | $\varepsilon_{K\mathrm{ID}}^{\phi}$ (this section) | Track quality on reconstructed kaons | `TrackQuality` + `RequireRecoKaonTrackHighPurity` |
 
 Note: pT/eta cuts are part of fiducial acceptance, NOT kaonID. The `TrackSelection`
@@ -138,11 +167,12 @@ string configures the phase-space denominator (see Section 3.1).
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed kaonRECO) | `SinglePhi` candidates with both kaons GEN-matched (kaonRECO numerator) |
-| Numerator (passes THIS step) | Denominator `SinglePhi` where both daughter kaons pass track-quality ID |
+| Denominator (passed kaonRECO) | GEN φ in acceptance where both GEN daughter kaons have a RECO match (kaonRECO numerator) |
+| Numerator (passes THIS step) | Denominator GEN φ where both RECO-matched daughter kaons pass track-quality ID |
 
-Use `SinglePhi_K1_RecoKaonTrackIdx` / `SinglePhi_K2_RecoKaonTrackIdx` to look up
-the `RecoKaonTrack_*` block (always populated from φ-candidate daughters).
+For each RECO-matched GEN daughter kaon, find the `RecoKaonTrack_*` entry index `k`
+where `RecoKaonTrack_genMatchIdx[k] == gen_k_idx`, then check the track-quality
+criteria at that index.
 
 The baseline track-quality criteria are defined by two config parameters (stored
 in `X_Config_Tree`):
@@ -165,8 +195,19 @@ and triOnia vertexing steps below.
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed muonID) | `SingleJpsi` candidates where both muons pass the chosen ID (muonID numerator) |
-| Numerator (passes THIS step) | Denominator `SingleJpsi` where `SingleJpsi_fitValid > 0` AND `SingleJpsi_fitPass > 0` |
+| Denominator (passed muonID) | GEN J/ψ in acceptance where both RECO-matched daughter muons pass ID (muonID numerator) |
+| Numerator (passes THIS step) | Denominator GEN J/ψ where the two RECO+ID muons form a valid `SingleJpsi` candidate |
+
+This step checks whether the pair of RECO+ID muons identified in the previous steps
+survive the full dimuon selection: opposite-charge pair, mass window, pT/η pre-cuts,
+and kinematic vertex fit. In the code, this corresponds to whether the pair appears
+in `muPairCand_Onia1_` (which requires `onia1FitPass == true`, line 1643 of
+`MultiLepPAT.cc`) and is stored in the `SingleJpsi_*` branches.
+
+**Implementation.** For each GEN J/ψ, identify the two RECO muon indices `r1`, `r2`
+(from the muonID step). Then check whether any `SingleJpsi` entry `j` satisfies:
+`({SingleJpsi_mu1_Idx[j], SingleJpsi_mu2_Idx[j]} == {r1, r2})` (order-independent)
+AND `SingleJpsi_fitValid[j] > 0` AND `SingleJpsi_fitPass[j] > 0`.
 
 The baseline criterion for a valid dimuon candidate is that the kinematic vertex
 fit converged and passes the vertex probability cut (`JpsiDecayVtxProbCut`). The
@@ -174,12 +215,24 @@ mass window is already applied in `pairMuons()`; `SingleJpsi_mass` is the
 post-fit mass. Alternative or additional vertexing criteria may be applied
 depending on the analysis working point.
 
+**Why `SingleJpsi` appears only here.** In the corrected chain, `SingleJpsi` is
+used for the FIRST time in this step. The RECO and ID steps operate directly on
+GEN particles and the `mu*` branches, without needing `SingleJpsi`. This avoids
+folding the dimuon vertexing/mass-window efficiency into the earlier steps.
+
 ### 2.7 dikaon — $\varepsilon_{KK|\phi}$
 
 | Role | Branch / logic |
 |------|----------------|
-| Denominator (passed kaonID) | `SinglePhi` candidates where both kaons pass track-quality ID (kaonID numerator) |
-| Numerator (passes THIS step) | Denominator `SinglePhi` where `SinglePhi_fitValid > 0` AND `SinglePhi_fitPass > 0` |
+| Denominator (passed kaonID) | GEN φ in acceptance where both RECO-matched daughter kaons pass ID (kaonID numerator) |
+| Numerator (passes THIS step) | Denominator GEN φ where the two RECO+ID kaons form a valid `SinglePhi` candidate |
+
+Analogous to dimuon. For each GEN φ, identify the two `RecoKaonTrack_*` indices
+`k1`, `k2` (from the kaonID step). Then check whether any `SinglePhi` entry `j`
+satisfies: the pair of `RecoKaonTrack` indices matches `{SinglePhi_K1_RecoKaonTrackIdx[j],
+SinglePhi_K2_RecoKaonTrackIdx[j]}` AND `SinglePhi_fitValid[j] > 0` AND
+`SinglePhi_fitPass[j] > 0`. This is the first step where `SinglePhi` appears
+in the efficiency chain.
 
 The baseline criterion for a valid dikaon candidate is that the kinematic vertex
 fit converged and passes the vertex probability cut (`PhiDecayVtxProbCut`). The
@@ -315,37 +368,66 @@ Use `maxEvents=-1` to process all events.
 Each efficiency is conditional: $\varepsilon_{\mathrm{step}} = N(\text{pass step}) \;/\; N(\text{pass previous step})$.
 For each J/ψ and φ kinematic bin `(pT, |y|)`:
 
-1. **Acceptance** — $A_{J/\psi}$, $A_{\phi}$: From `MC_GenPart_*`.
-   - Denominator: all GEN J/ψ (or φ) in the kinematic bin.
-   - Numerator: denominator mesons where both GEN daughters are in the fiducial region.
+**Prerequisite — Extract GEN mesons.** From `MC_GenPart_*`:
+- Identify direct J/ψ: `abs(MC_GenPart_pdgId) == 443` and `abs(MC_GenPart_motherPdgId) != 443`.
+  Compute rapidity `y` from `(px, py, pz, mass)` since no `MC_GenPart_y` branch exists.
+- Identify direct φ: `MC_GenPart_pdgId == 333` (or `-333`, though typically `333`).
+- For each such meson at index `m`, find its daughter muons (for J/ψ) or kaons (for φ)
+  by scanning for GEN particles `d` where `MC_GenPart_motherGenIdx[d] == m` AND
+  `abs(MC_GenPart_pdgId[d]) == 13` (muon) or `321` (kaon). Each direct J/ψ→μμ
+  or φ→KK should have exactly two such daughters.
 
-2. **muonRECO** — $\varepsilon_{\mu\mathrm{Reco}|J/\psi}$: From `SingleJpsi_*` (Run A).
-   - Denominator: `SingleJpsi` where both GEN daughters are in fiducial acceptance.
-   - Numerator: denominator candidates with both `mu*_genMatchIdx >= 0`.
+1. **Acceptance** — $A_{J/\psi}$, $A_{\phi}$: From `MC_GenPart_*` only.
+   - Denominator: all direct GEN J/ψ (or φ) in the kinematic bin $(p_T, |y|)$.
+   - Numerator: denominator mesons where both GEN daughter muons/kaons are in the
+     fiducial region (phase-space cuts on $p_T$, $\eta$ of the daughters).
 
-3. **kaonRECO** — $\varepsilon_{K\mathrm{Reco}|\phi}$: From `SinglePhi_*` (Run A).
-   - Denominator: `SinglePhi` where both GEN daughters are in fiducial acceptance.
-   - Numerator: denominator candidates with both `K*_genMatchIdx >= 0`.
+2. **muonRECO** — $\varepsilon_{\mu\mathrm{Reco}|J/\psi}$: From `mu*` + `MC_GenPart_*` (Run A).
+   - Denominator: GEN J/ψ passing acceptance (numerator of step 1).
+   - Numerator: denominator J/ψ where both GEN daughter muons have a RECO match:
+     for each GEN daughter index `g`, check `any(muGenMatchIdx[:] == g)`.
+   - **Do NOT** use `SingleJpsi` or `SingleJpsi_mu*_genMatchIdx` — those require the
+     vertex fit to have passed (line 1643 of `MultiLepPAT.cc`) and a J/ψ mother.
 
-4. **muonID** — $\varepsilon_{\mu\mathrm{ID}|J/\psi}$: From `SingleJpsi_*` + `mu*` (Run A).
-   - Denominator: `SingleJpsi` passing muonRECO (both muons GEN-matched).
-   - Numerator: denominator candidates where both daughter muons pass the chosen ID (baseline: `muIsPatSoftMuon`).
+3. **kaonRECO** — $\varepsilon_{K\mathrm{Reco}|\phi}$: From `RecoKaonTrack_*` + `MC_GenPart_*` (Run A).
+   - Denominator: GEN φ passing acceptance (numerator of step 1).
+   - Numerator: denominator φ where both GEN daughter kaons have a RECO match:
+     for each GEN daughter index `g`, check `any(RecoKaonTrack_genMatchIdx[:] == g)`.
+   - **Do NOT** use `SinglePhi` or `SinglePhi_K*_genMatchIdx` — those require the
+     φ vertex fit to have passed (line 1828).
 
-5. **kaonID** — $\varepsilon_{K\mathrm{ID}|\phi}$: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
-   - Denominator: `SinglePhi` passing kaonRECO (both kaons GEN-matched).
-   - Numerator: denominator candidates where both daughter kaons satisfy the track-quality criteria:
-     - `RecoKaonTrack_normalizedChi2[idx] < 8 && RecoKaonTrack_numberOfHits[idx] > 4`
-     - `RecoKaonTrack_isHighPurity[idx] == 1`
-   - The exact criteria are documented in `X_Config_Tree::TrackQuality` and `X_Config_Tree::RequireRecoKaonTrackHighPurity`.
-   - Quality cuts can be varied offline without re-ntuplizing since the raw values are stored.
+4. **muonID** — $\varepsilon_{\mu\mathrm{ID}|J/\psi}$: From `mu*` (Run A).
+   - Denominator: GEN J/ψ passing muonRECO.
+   - Numerator: denominator J/ψ where both RECO-matched muons pass the chosen ID:
+     find the RECO muon index `r` where `muGenMatchIdx[r] == g` for each GEN daughter `g`,
+     then check `muIsPatSoftMuon[r] == 1` (baseline working point).
 
-6. **dimuon** — $\varepsilon_{\mu\mu|J/\psi}$: From `SingleJpsi_*` (Run A).
-   - Denominator: `SingleJpsi` passing muonID.
-   - Numerator: denominator candidates with `SingleJpsi_fitValid && SingleJpsi_fitPass`.
+5. **kaonID** — $\varepsilon_{K\mathrm{ID}|\phi}$: From `RecoKaonTrack_*` (Run A).
+   - Denominator: GEN φ passing kaonRECO.
+   - Numerator: denominator φ where both RECO-matched kaons pass track-quality ID:
+     find the `RecoKaonTrack_*` index `k` where `RecoKaonTrack_genMatchIdx[k] == g`,
+     then check `RecoKaonTrack_normalizedChi2[k] < 8`,
+     `RecoKaonTrack_numberOfHits[k] > 4`, and `RecoKaonTrack_isHighPurity[k] == 1`.
+   - The exact criteria are documented in `X_Config_Tree::TrackQuality` and
+     `X_Config_Tree::RequireRecoKaonTrackHighPurity`.
+   - Quality cuts can be varied offline without re-ntuplizing since the raw values
+     are stored.
 
-7. **dikaon** — $\varepsilon_{KK|\phi}$: From `SinglePhi_*` (Run A).
-   - Denominator: `SinglePhi` passing kaonID.
-   - Numerator: denominator candidates with `SinglePhi_fitValid && SinglePhi_fitPass`.
+6. **dimuon** — $\varepsilon_{\mu\mu|J/\psi}$: From `SingleJpsi_*` + `mu*` (Run A).
+   - Denominator: GEN J/ψ passing muonID.
+   - Numerator: denominator J/ψ where the two RECO+ID muon indices `(r1, r2)` appear
+     together as a pair in `SingleJpsi` with `SingleJpsi_fitValid > 0` AND
+     `SingleJpsi_fitPass > 0`. Check both orderings: `{SingleJpsi_mu1_Idx[j],
+     SingleJpsi_mu2_Idx[j]} == {r1, r2}`.
+   - This is the **first** step where `SingleJpsi` branches are used. The RECO and
+     ID steps operate entirely from `MC_GenPart_*` and `mu*` branches.
+
+7. **dikaon** — $\varepsilon_{KK|\phi}$: From `SinglePhi_*` + `RecoKaonTrack_*` (Run A).
+   - Denominator: GEN φ passing kaonID.
+   - Numerator: denominator φ where the two RECO+ID RecoKaonTrack indices `(k1, k2)`
+     appear together as a pair in `SinglePhi` with `SinglePhi_fitValid > 0` AND
+     `SinglePhi_fitPass > 0`. Match via `SinglePhi_K1_RecoKaonTrackIdx` /
+     `SinglePhi_K2_RecoKaonTrackIdx`.
 
 ### Step 3: Build event-level efficiency maps
 
@@ -371,15 +453,218 @@ acceptance. See `Efficiency_scheme.md` for the product formula.
 
 ---
 
-## 5. Cross-checks
+## 5. Vectorized analysis with Awkward Arrays
 
-### 5.1 Factorized vs. cumulative comparison
+The corrected efficiency chain requires per-event GEN-to-RECO matching across
+flat vector branches. This section describes how to implement the matching
+efficiently using Awkward Arrays (loaded via uproot).
+
+### 5.1 Data model
+
+The ntuple stores flat variable-length arrays per event. Key branches:
+
+| Branch | Type | Shape |
+|--------|------|-------|
+| `MC_GenPart_pdgId` | `var * int32` | (ngen,) |
+| `MC_GenPart_motherPdgId` | `var * int32` | (ngen,) |
+| `MC_GenPart_motherGenIdx` | `var * int32` | (ngen,) — index in `MC_GenPart_*`, -1 if none |
+| `MC_GenPart_pt`, `_eta`, `_phi` | `var * float32` | (ngen,) |
+| `MC_GenPart_px`, `_py`, `_pz`, `_mass` | `var * float32` | (ngen,) |
+| `muGenMatchIdx` | `var * int32` | (nmu,) — index in `MC_GenPart_*`, -1 if unmatched |
+| `muIsPatSoftMuon` | `var * int32` | (nmu,) |
+| `RecoKaonTrack_genMatchIdx` | `var * int32` | (nk,) — index in `MC_GenPart_*`, -1 if unmatched |
+| `RecoKaonTrack_normalizedChi2` | `var * float32` | (nk,) |
+| `RecoKaonTrack_numberOfHits` | `var * int32` | (nk,) |
+| `RecoKaonTrack_isHighPurity` | `var * int32` | (nk,) |
+| `SingleJpsi_mu1_Idx`, `_mu2_Idx` | `var * int32` | (nsj,) — indices in `mu*` |
+| `SingleJpsi_fitValid`, `_fitPass` | `var * int32` | (nsj,) |
+| `SinglePhi_K1_RecoKaonTrackIdx`, `_K2_` | `var * int32` | (nsp,) — indices in `RecoKaonTrack_*` |
+| `SinglePhi_fitValid`, `_fitPass` | `var * int32` | (nsp,) |
+
+No `MC_GenPart_y` branch exists — compute it from `(E, pz)` where
+`E = sqrt(px² + py² + pz² + mass²)`.
+
+### 5.2 Finding GEN J/ψ and their daughter muons
+
+```python
+import awkward as ak
+import numpy as np
+
+# Load data — Run A (singles) is sufficient for per-object efficiencies
+# arrays = uproot.open("eff_singles.root:mkcands/X_data").arrays(library="ak")
+
+gen_pdg = arrays["MC_GenPart_pdgId"]
+gen_mother_pdg = arrays["MC_GenPart_motherPdgId"]
+gen_mother_idx = arrays["MC_GenPart_motherGenIdx"]
+
+# Select direct J/psi: pdgId == 443, mother is not also 443
+is_direct_jpsi = (abs(gen_pdg) == 443) & (abs(gen_mother_pdg) != 443)
+jpsi_idx = ak.local_index(gen_pdg)[is_direct_jpsi]           # (events, njpsi)
+
+# Find GEN daughter muons for each J/psi
+# Broadcast mother match: (events, njpsi, ngen)
+is_muon = (abs(gen_pdg) == 13)
+is_daughter = gen_mother_idx == jpsi_idx[:, :, np.newaxis]
+is_jpsi_mu = is_muon & is_daughter                           # (events, njpsi, ngen)
+daughter_mu = ak.local_index(gen_pdg)[is_jpsi_mu]           # (events, njpsi, 2+)
+# Each direct J/psi->mumu should have exactly 2 daughters
+```
+
+**Memory caveat.** The broadcast `gen_mother_idx == jpsi_idx[:, :, np.newaxis]`
+produces an intermediate array of shape `(events, njpsi, ngen)`. For events
+with many GEN particles (O(10³)) this can be large. Pre-filter the GEN table
+to interesting PDG IDs (443, 553, 333, 13, 321) to reduce `ngen`, or use
+Numba-accelerated loops for the daughter-finding step.
+
+### 5.3 RECO matching (muonRECO)
+
+```python
+mu_gen_match = arrays["muGenMatchIdx"]  # (events, nmu)
+
+# For each GEN daughter muon, check if any RECO muon matches it
+# Broadcast: (events, njpsi, 2, nmu)
+reco_ok = ak.any(mu_gen_match == daughter_mu, axis=-1)  # (events, njpsi, 2)
+passes_reco = ak.all(reco_ok, axis=-1)                   # (events, njpsi)
+```
+
+### 5.4 ID check (muonID)
+
+```python
+mu_soft = arrays["muIsPatSoftMuon"]
+
+# For each GEN daughter, find the RECO index r where muGenMatchIdx[r] == gen_dau
+match_pos = ak.local_index(mu_gen_match)                 # (events, nmu)
+is_match = mu_gen_match == daughter_mu                   # (events, njpsi, 2, nmu)
+# Take the best matching RECO index per daughter
+reco_for_dau = ak.max(ak.where(is_match, match_pos, -1), axis=-1)  # (events, njpsi, 2)
+
+valid = reco_for_dau >= 0
+safe_idx = ak.where(valid, reco_for_dau, 0)
+id_pass = ak.where(valid, mu_soft[safe_idx] == 1, False)
+passes_id = ak.all(id_pass, axis=-1)                     # (events, njpsi)
+```
+
+### 5.5 Dimuon check
+
+```python
+sj_mu1 = arrays["SingleJpsi_mu1_Idx"]       # (events, nsj)
+sj_mu2 = arrays["SingleJpsi_mu2_Idx"]       # (events, nsj)
+sj_fit_ok = (arrays["SingleJpsi_fitValid"] > 0) & (arrays["SingleJpsi_fitPass"] > 0)
+
+# reco_for_dau has shape (events, njpsi, 2) — the RECO indices for each daughter
+# valid has shape (events, njpsi, 2) — True if that daughter had a RECO match
+
+# We need both daughters valid, so we can reconstruct r1, r2
+r1 = reco_for_dau[:, :, 0]  # (events, njpsi)
+r2 = reco_for_dau[:, :, 1]  # (events, njpsi)
+
+# Check ordered and reversed against SingleJpsi entries
+match_ordered = (sj_mu1[:, np.newaxis, :] == r1[:, :, np.newaxis]) & \
+                (sj_mu2[:, np.newaxis, :] == r2[:, :, np.newaxis])
+match_reversed = (sj_mu1[:, np.newaxis, :] == r2[:, :, np.newaxis]) & \
+                 (sj_mu2[:, np.newaxis, :] == r1[:, :, np.newaxis])
+pair_match = match_ordered | match_reversed              # (events, njpsi, nsj)
+
+passes_dimuon = ak.any(pair_match & sj_fit_ok[:, np.newaxis, :], axis=-1)
+passes_dimuon = passes_dimuon & passes_id                # only where ID also passed
+```
+
+### 5.6 Kaon-side matching
+
+Analogous patterns using `RecoKaonTrack_*` branches:
+
+```python
+# kaonRECO
+k_gen_match = arrays["RecoKaonTrack_genMatchIdx"]
+reco_k_ok = ak.any(k_gen_match == daughter_k, axis=-1)
+passes_k_reco = ak.all(reco_k_ok, axis=-1)
+
+# kaonID — find RecoKaonTrack index, then check quality
+k_match_pos = ak.local_index(k_gen_match)
+k_is_match = k_gen_match == daughter_k
+k_reco_idx = ak.max(ak.where(k_is_match, k_match_pos, -1), axis=-1)
+valid_k = k_reco_idx >= 0
+safe_k = ak.where(valid_k, k_reco_idx, 0)
+
+k_chi2 = arrays["RecoKaonTrack_normalizedChi2"][safe_k]
+k_nhits = arrays["RecoKaonTrack_numberOfHits"][safe_k]
+k_hp = arrays["RecoKaonTrack_isHighPurity"][safe_k]
+k_id_ok = ak.where(valid_k, (k_chi2 < 8) & (k_nhits > 4) & (k_hp == 1), False)
+passes_k_id = ak.all(k_id_ok, axis=-1) & ak.all(valid_k, axis=-1)
+
+# dikaon — check pair in SinglePhi
+sp_k1 = arrays["SinglePhi_K1_RecoKaonTrackIdx"]
+sp_k2 = arrays["SinglePhi_K2_RecoKaonTrackIdx"]
+sp_fit_ok = (arrays["SinglePhi_fitValid"] > 0) & (arrays["SinglePhi_fitPass"] > 0)
+
+kr1 = k_reco_idx[:, :, 0]
+kr2 = k_reco_idx[:, :, 1]
+phi_ordered = (sp_k1[:, np.newaxis, :] == kr1[:, :, np.newaxis]) & \
+              (sp_k2[:, np.newaxis, :] == kr2[:, :, np.newaxis])
+phi_reversed = (sp_k1[:, np.newaxis, :] == kr2[:, :, np.newaxis]) & \
+               (sp_k2[:, np.newaxis, :] == kr1[:, :, np.newaxis])
+phi_pair_match = phi_ordered | phi_reversed
+passes_dikaon = ak.any(phi_pair_match & sp_fit_ok[:, np.newaxis, :], axis=-1)
+passes_dikaon = passes_dikaon & passes_k_id
+```
+
+### 5.7 Building per-bin efficiency maps
+
+Flatten the nested arrays to build per-object DataFrames for binning:
+
+```python
+import pandas as pd
+
+# GEN J/psi kinematics — compute rapidity
+gen_px = arrays["MC_GenPart_px"][jpsi_idx]
+gen_py = arrays["MC_GenPart_py"][jpsi_idx]
+gen_pz = arrays["MC_GenPart_pz"][jpsi_idx]
+gen_mass = arrays["MC_GenPart_mass"][jpsi_idx]
+gen_e = np.sqrt(gen_px**2 + gen_py**2 + gen_pz**2 + gen_mass**2)
+gen_y = 0.5 * np.log((gen_e + gen_pz) / (gen_e - gen_pz + 1e-15))
+gen_pt = arrays["MC_GenPart_pt"][jpsi_idx]
+
+# Build flat DataFrames for histogram-based efficiency binning
+df_muon_reco = pd.DataFrame({
+    "pt": ak.to_numpy(ak.flatten(gen_pt)),
+    "abs_y": ak.to_numpy(np.abs(ak.flatten(gen_y))),
+    "pass": ak.to_numpy(ak.flatten(passes_reco)),
+})
+# Then: efficiency = df.groupby(pT_bins, y_bins)["pass"].mean()
+```
+
+---
+
+## 6. Cross-checks
+
+### 6.1 Factorized vs. cumulative comparison
 
 Compare the factorized efficiency product against a direct "all steps pass"
-count on the full chain ntuple. Significant disagreement indicates correlations
+count on the full chain ntuple. In the factorized approach, each step's
+denominator is the previous step's numerator at GEN level; in the cumulative
+approach, count GEN mesons that pass ALL steps (acceptance → RECO → ID →
+vertexing) in one pass. Significant disagreement indicates correlations
 between the per-object steps that the factorized approach misses.
 
-### 5.2 RecoKaonTrack coverage
+### 6.2 muGenMatchIdx vs SingleJpsi_mu*_genMatchIdx consistency
+
+The `muGenMatchIdx` branch (unrestricted, matches any GEN muon) and
+`SingleJpsi_mu*_genMatchIdx` (requires mother PDG == 443) serve different
+purposes in the corrected chain:
+
+- `muGenMatchIdx` is used for the RECO step — it answers "does this GEN muon
+  (regardless of origin) have a RECO counterpart?"
+- `SingleJpsi_mu*_genMatchIdx` is used for the dimuon step — it identifies the
+  specific GEN J/ψ mother.
+
+For a GEN muon that IS from a J/ψ decay and appears in a `SingleJpsi` candidate,
+the two should agree: `muGenMatchIdx[r] == SingleJpsi_mu*_genMatchIdx[j]` where
+`r == SingleJpsi_mu*_Idx[j]`. Verify this equality for all `SingleJpsi` entries.
+A discrepancy indicates the chi2-based matching in `fillMuonBlock()` found a
+different best match than the mother-restricted matching in
+`storeSingleJpsiCandidatesForMC()`.
+
+### 6.3 RecoKaonTrack coverage
 
 The `RecoKaonTrack_*` block is always populated with the union of:
 - GEN-matched fiducial kaons — all kaons passing phase-space `TrackSelection` (MC with `keepAllSingleObjectCandsInMC=True`), independent of track quality,
@@ -393,12 +678,17 @@ Verify that every φ-candidate daughter has a `RecoKaonTrack_*` entry:
 `Phi_K_*_RecoKaonTrackIdx >= 0` for all composite φ candidates. A `-1`
 sentinel should never occur.
 
-### 5.3 Bin-edge sensitivity
+### 6.4 Bin-edge sensitivity
 
 Vary the fine/coarse bin thresholds (`N_min_fine`, `N_min_coarse`) and confirm
 the corrected yield is stable within MC statistical uncertainties.
 
-### 5.4 GEN-RECO daughter matching consistency
+### 6.5 GEN-RECO daughter matching consistency
+
+This cross-check is **diagnostic only** — it verifies internal consistency of
+the ntuple, not the efficiency calculation itself. The efficiency chain uses
+`muGenMatchIdx` and `RecoKaonTrack_genMatchIdx` directly, not the inline match
+indices on the candidate branches.
 
 For `SinglePhi` candidates, the inline GEN-match info (`SinglePhi_K1_genMatchIdx`,
 `SinglePhi_K2_genMatchIdx`) should agree with the RecoKaonTrack-level match
@@ -410,3 +700,10 @@ For composite φ candidates (`Phi_K_1_*` / `Phi_K_2_*`), the inline
 `Phi_K_1_genMatchIdx` / `Phi_K_2_genMatchIdx` can similarly be verified against
 `RecoKaonTrack_genMatchIdx[Phi_K_1_RecoKaonTrackIdx]` /
 `RecoKaonTrack_genMatchIdx[Phi_K_2_RecoKaonTrackIdx]`.
+
+Similarly for muons: verify that for each `SingleJpsi` entry `j`,
+`muGenMatchIdx[SingleJpsi_mu1_Idx[j]] == SingleJpsi_mu1_genMatchIdx[j]` and
+`muGenMatchIdx[SingleJpsi_mu2_Idx[j]] == SingleJpsi_mu2_genMatchIdx[j]`.
+Any disagreement indicates that the unrestricted chi2 matching in
+`fillMuonBlock()` selected a different GEN match than the mother-restricted
+matching in `storeSingleJpsiCandidatesForMC()`.
