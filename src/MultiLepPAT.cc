@@ -21,6 +21,7 @@
 //
 ///////////////////////////////////////////////////////////
 
+#include <Math/GenVector/VectorUtil.h>
 #include <limits>
 #include <Math/Vector4D.h>
 #include <mutex>
@@ -32,85 +33,46 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
-#include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 
 #include "CommonTools/Statistics/interface/ChiSquaredProbability.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
-#include "DataFormats/CLHEP/interface/AlgebraicObjects.h"
-#include "DataFormats/CLHEP/interface/Migration.h"
-#include "DataFormats/Candidate/interface/CandMatchMap.h"
-#include "DataFormats/Candidate/interface/ShallowCloneCandidate.h"
-#include "DataFormats/Candidate/interface/VertexCompositeCandidate.h"
 #include "DataFormats/Common/interface/Handle.h"
 #include "DataFormats/Common/interface/RefToBase.h"
 #include "DataFormats/Common/interface/TriggerResults.h"
-#include "DataFormats/Common/interface/ValueMap.h"
-#include "DataFormats/GeometryCommonDetAlgo/interface/DeepCopyPointer.h"
-#include "DataFormats/GeometryVector/interface/GlobalPoint.h"
 #include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerReadoutRecord.h"
-#include "DataFormats/L1GlobalTrigger/interface/L1GtFdlWord.h"
 #include "DataFormats/Math/interface/Error.h"
-#include "DataFormats/Math/interface/LorentzVector.h"
-#include "DataFormats/Math/interface/Point3D.h"
-#include "DataFormats/Math/interface/Vector3D.h"
 #include "DataFormats/MuonReco/interface/MuonSelectors.h"
-#include "DataFormats/PatCandidates/interface/GenericParticle.h"
 #include "DataFormats/PatCandidates/interface/Muon.h"
-#include "DataFormats/TrackReco/interface/DeDxData.h"
 
-#include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
-#include "RecoVertex/AdaptiveVertexFit/interface/AdaptiveVertexFitter.h"
-#include "RecoVertex/KinematicFit/interface/KinematicConstrainedVertexFitter.h"
-#include "RecoVertex/KinematicFit/interface/TwoTrackMassKinematicConstraint.h"
-#include "RecoVertex/KinematicFit/interface/CombinedKinematicConstraint.h"
 #include "RecoVertex/KinematicFit/interface/KinematicParticleFitter.h"
+#include "RecoVertex/KinematicFit/interface/KinematicParticleVertexFitter.h"
 #include "RecoVertex/KinematicFit/interface/MassKinematicConstraint.h"
-#include "RecoVertex/KinematicFitPrimitives/interface/MultiTrackKinematicConstraint.h"
-#include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
 
-#include "TrackingTools/Records/interface/TransientTrackRecord.h"
+#include "RecoVertex/KinematicFitPrimitives/interface/KinematicParticleFactoryFromTransientTrack.h"
 #include "TrackingTools/TransientTrack/interface/TransientTrack.h"
-#include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
 
 #include "MagneticField/Engine/interface/MagneticField.h"
 
 // ============================================================
 //                    亮度计算相关头文件
 // ============================================================
-#include "DataFormats/Luminosity/interface/LumiDetails.h"
-#include "DataFormats/Luminosity/interface/LumiSummary.h"
-#include "FWCore/Framework/interface/LuminosityBlock.h"
-#include "RecoLuminosity/LumiProducer/interface/LumiCorrectionParam.h"
-#include "RecoLuminosity/LumiProducer/interface/LumiCorrectionParamRcd.h"
 
-#include "PhysicsTools/RecoUtils/interface/CheckHitPattern.h"
 
-#include "TFile.h"
 #include "TTree.h"
-#include "TVector3.h"
 
 #include <iostream>
 #include <string>
 
 #include "DataFormats/MuonReco/interface/MuonSelectors.h"
 
-#include "CLHEP/Matrix/Matrix.h"
-#include "CLHEP/Matrix/SymMatrix.h"
-#include "CLHEP/Matrix/Vector.h"
 
-#include "TrackingTools/IPTools/interface/IPTools.h"
 
 // ============================================================
 //                    光子相关头文件（预留）
 // ============================================================
-#include "DataFormats/EgammaCandidates/interface/Conversion.h"
-#include "DataFormats/EgammaCandidates/interface/Photon.h"
-#include "DataFormats/EgammaCandidates/interface/PhotonFwd.h"
-#include "DataFormats/ParticleFlowCandidate/interface/PFCandidate.h"
-#include "DataFormats/PatCandidates/interface/CompositeCandidate.h"
 #include "DataFormats/VertexReco/interface/Vertex.h"
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
 #include <boost/foreach.hpp>
@@ -238,64 +200,65 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
 
       X_PJ_mass(0), X_PJ_VtxProb(0), X_PJ_massErr(0), X_PJ_massErrNorm(0),
-      X_PJ_pt(0), X_PJ_pz(0), X_PJ_absPz(0), X_PJ_absEta(0),
-      X_PJ_px(0), X_PJ_py(0),
+      X_PJ_pt(0), X_PJ_pz(0), X_PJ_absPz(0), X_PJ_eta(0), X_PJ_absEta(0),
+      X_PJ_rapidity(0), X_PJ_absRapidity(0), X_PJ_px(0), X_PJ_py(0),
 
       X_XJ_mass(0), X_XJ_VtxProb(0), X_XJ_massErr(0), X_XJ_massErrNorm(0),
-      X_XJ_pt(0), X_XJ_pz(0), X_XJ_absPz(0), X_XJ_absEta(0),
-      X_XJ_px(0), X_XJ_py(0),
+      X_XJ_pt(0), X_XJ_pz(0), X_XJ_absPz(0), X_XJ_eta(0), X_XJ_absEta(0),
+      X_XJ_rapidity(0), X_XJ_absRapidity(0), X_XJ_px(0), X_XJ_py(0),
 
       X_PP_mass(0), X_PP_VtxProb(0), X_PP_massErr(0), X_PP_massErrNorm(0),
-      X_PP_pt(0), X_PP_pz(0), X_PP_absPz(0), X_PP_absEta(0),
-      X_PP_px(0), X_PP_py(0),
+      X_PP_pt(0), X_PP_pz(0), X_PP_absPz(0), X_PP_eta(0), X_PP_absEta(0),
+      X_PP_rapidity(0), X_PP_absRapidity(0), X_PP_px(0), X_PP_py(0),
 
       Psi2S_mass(0), Psi2S_massDiff(0), Psi2S_VtxProb(0), Psi2S_massErr(0), Psi2S_massErrNorm(0),
-      Psi2S_pt(0), Psi2S_pz(0), Psi2S_absPz(0), Psi2S_absEta(0),
-      Psi2S_px(0), Psi2S_py(0),
+      Psi2S_pt(0), Psi2S_pz(0), Psi2S_absPz(0), Psi2S_eta(0), Psi2S_absEta(0),
+      Psi2S_rapidity(0), Psi2S_absRapidity(0), Psi2S_px(0), Psi2S_py(0),
 
       Jpsi1_mass(0), Jpsi1_VtxProb(0), Jpsi1_massErr(0), Jpsi1_massErrNorm(0),
-      Jpsi1_pt(0), Jpsi1_pz(0), Jpsi1_absPz(0), Jpsi1_absEta(0),
-      Jpsi1_px(0), Jpsi1_py(0),
+      Jpsi1_pt(0), Jpsi1_pz(0), Jpsi1_absPz(0), Jpsi1_eta(0), Jpsi1_absEta(0),
+      Jpsi1_rapidity(0), Jpsi1_absRapidity(0), Jpsi1_px(0), Jpsi1_py(0),
 
       Jpsi2_mass(0), Jpsi2_hasJConstraintFit(false), Jpsi2_hasPConstraintFit(false),
       Jpsi2_VtxProb(0), Jpsi2_massErr(0), Jpsi2_massErrNorm(0),
-      Jpsi2_pt(0), Jpsi2_pz(0), Jpsi2_absPz(0), Jpsi2_absEta(0),
-      Jpsi2_px(0), Jpsi2_py(0),
+      Jpsi2_pt(0), Jpsi2_pz(0), Jpsi2_absPz(0), Jpsi2_eta(0), Jpsi2_absEta(0),
+      Jpsi2_rapidity(0), Jpsi2_absRapidity(0), Jpsi2_px(0), Jpsi2_py(0),
 
-      mu1_pt(0), mu1_pz(0), mu1_absPz(0), mu1_absEta(0),
-      mu1_px(0), mu1_py(0), mu1_trackIso(0),
-      mu1_d0BS(0), mu1_absd0BS(0), mu1_d0BSNorm(0), mu1_d0BSErr(0),
-      mu1_d3dBS(0), mu1_absd3dBS(0), mu1_d3dBSNorm(0), mu1_d3dBSErr(0),
-      mu1_d0PV(0), mu1_absd0PV(0), mu1_d0PVNorm(0), mu1_d0PVErr(0),
-      mu1_dzPV(0), mu1_absdzPV(0), mu1_dzPVNorm(0), mu1_dzPVErr(0),
+      mu1_index(-1), mu1_pt(0), mu1_pz(0), mu1_absPz(0), mu1_eta(0), mu1_absEta(0),
+      mu1_rapidity(0), mu1_absRapidity(0), mu1_px(0), mu1_py(0), mu1_trackIso(0),
+      mu1_d0BS(0), mu1_absd0BS(0), mu1_d0BSNorm(0), mu1_absd0BSNorm(0), mu1_d0BSErr(0),
+      mu1_d3dBS(0), mu1_absd3dBS(0), mu1_d3dBSNorm(0), mu1_absd3dBSNorm(0), mu1_d3dBSErr(0),
+      mu1_d0PV(0), mu1_absd0PV(0), mu1_d0PVNorm(0), mu1_absd0PVNorm(0), mu1_d0PVErr(0),
+      mu1_dzPV(0), mu1_absdzPV(0), mu1_dzPVNorm(0), mu1_absdzPVNorm(0), mu1_dzPVErr(0),
 
-      mu2_pt(0), mu2_pz(0), mu2_absPz(0), mu2_absEta(0),
-      mu2_px(0), mu2_py(0), mu2_trackIso(0),
-      mu2_d0BS(0), mu2_absd0BS(0), mu2_d0BSNorm(0), mu2_d0BSErr(0),
-      mu2_d3dBS(0), mu2_absd3dBS(0), mu2_d3dBSNorm(0), mu2_d3dBSErr(0),
-      mu2_d0PV(0), mu2_absd0PV(0), mu2_d0PVNorm(0), mu2_d0PVErr(0),
-      mu2_dzPV(0), mu2_absdzPV(0), mu2_dzPVNorm(0), mu2_dzPVErr(0),
+      mu2_index(-1), mu2_pt(0), mu2_pz(0), mu2_absPz(0), mu2_eta(0), mu2_absEta(0),
+      mu2_rapidity(0), mu2_absRapidity(0), mu2_px(0), mu2_py(0), mu2_trackIso(0),
+      mu2_d0BS(0), mu2_absd0BS(0), mu2_d0BSNorm(0), mu2_absd0BSNorm(0), mu2_d0BSErr(0),
+      mu2_d3dBS(0), mu2_absd3dBS(0), mu2_d3dBSNorm(0), mu2_absd3dBSNorm(0), mu2_d3dBSErr(0),
+      mu2_d0PV(0), mu2_absd0PV(0), mu2_d0PVNorm(0), mu2_absd0PVNorm(0), mu2_d0PVErr(0),
+      mu2_dzPV(0), mu2_absdzPV(0), mu2_dzPVNorm(0), mu2_absdzPVNorm(0), mu2_dzPVErr(0),
 
-      mu3_pt(0), mu3_pz(0), mu3_absPz(0), mu3_absEta(0),
-      mu3_px(0), mu3_py(0), mu3_trackIso(0),
-      mu3_d0BS(0), mu3_absd0BS(0), mu3_d0BSNorm(0), mu3_d0BSErr(0),
-      mu3_d3dBS(0), mu3_absd3dBS(0), mu3_d3dBSNorm(0), mu3_d3dBSErr(0),
-      mu3_d0PV(0), mu3_absd0PV(0), mu3_d0PVNorm(0), mu3_d0PVErr(0),
-      mu3_dzPV(0), mu3_absdzPV(0), mu3_dzPVNorm(0), mu3_dzPVErr(0),
+      mu3_index(-1), mu3_pt(0), mu3_pz(0), mu3_absPz(0), mu3_eta(0), mu3_absEta(0),
+      mu3_rapidity(0), mu3_absRapidity(0), mu3_px(0), mu3_py(0), mu3_trackIso(0),
+      mu3_d0BS(0), mu3_absd0BS(0), mu3_d0BSNorm(0), mu3_absd0BSNorm(0), mu3_d0BSErr(0),
+      mu3_d3dBS(0), mu3_absd3dBS(0), mu3_d3dBSNorm(0), mu3_absd3dBSNorm(0), mu3_d3dBSErr(0),
+      mu3_d0PV(0), mu3_absd0PV(0), mu3_d0PVNorm(0), mu3_absd0PVNorm(0), mu3_d0PVErr(0),
+      mu3_dzPV(0), mu3_absdzPV(0), mu3_dzPVNorm(0), mu3_absdzPVNorm(0), mu3_dzPVErr(0),
 
-      mu4_pt(0), mu4_pz(0), mu4_absPz(0), mu4_absEta(0),
-      mu4_px(0), mu4_py(0), mu4_trackIso(0),
-      mu4_d0BS(0), mu4_absd0BS(0), mu4_d0BSNorm(0), mu4_d0BSErr(0),
-      mu4_d3dBS(0), mu4_absd3dBS(0), mu4_d3dBSNorm(0), mu4_d3dBSErr(0),
-      mu4_d0PV(0), mu4_absd0PV(0), mu4_d0PVNorm(0), mu4_d0PVErr(0),
-      mu4_dzPV(0), mu4_absdzPV(0), mu4_dzPVNorm(0), mu4_dzPVErr(0),
+      mu4_index(-1), mu4_pt(0), mu4_pz(0), mu4_absPz(0), mu4_eta(0), mu4_absEta(0),
+      mu4_rapidity(0), mu4_absRapidity(0), mu4_px(0), mu4_py(0), mu4_trackIso(0),
+      mu4_d0BS(0), mu4_absd0BS(0), mu4_d0BSNorm(0), mu4_absd0BSNorm(0), mu4_d0BSErr(0),
+      mu4_d3dBS(0), mu4_absd3dBS(0), mu4_d3dBSNorm(0), mu4_absd3dBSNorm(0), mu4_d3dBSErr(0),
+      mu4_d0PV(0), mu4_absd0PV(0), mu4_d0PVNorm(0), mu4_absd0PVNorm(0), mu4_d0PVErr(0),
+      mu4_dzPV(0), mu4_absdzPV(0), mu4_dzPVNorm(0), mu4_absdzPVNorm(0), mu4_dzPVErr(0),
 
       nLooseMuons(0), nTightMuons(0), nSoftMuons(0), nMediumMuons(0),
 
-      pipi_mass(0), pi1_pt(0), pi1_pz(0), pi1_absPz(0), pi1_absEta(0),
-      pi1_px(0), pi1_py(0),
-      pi2_pt(0), pi2_pz(0), pi2_absPz(0), pi2_absEta(0),
-      pi2_px(0), pi2_py(0),
+      pipi_mass(0), pi1_index(-1), pi1_pt(0), pi1_pz(0), pi1_absPz(0), pi1_eta(0), pi1_absEta(0),
+      pi1_rapidity(0), pi1_absRapidity(0), pi1_px(0), pi1_py(0),
+      pi2_index(-1), pi2_pt(0), pi2_pz(0), pi2_absPz(0), pi2_eta(0), pi2_absEta(0),
+      pi2_rapidity(0), pi2_absRapidity(0), pi2_px(0), pi2_py(0),
+      Q(0),
 
       dR_mu1_mu2(0), dR_mu3_mu4(0), dR_pi1_pi2(0),
       dR_Psi2S_Jpsi1(0), dR_Psi2S_Jpsi2(0),
@@ -523,6 +486,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   trackPlus.reserve(theTrackHandle->size() / 2 + 10);
   trackMinus.reserve(theTrackHandle->size() / 2 + 10);
 
+  // 0. hasTrackDetails && charge != 0
   // 1. highPurity
   // 2. pt > 0.5 && absEta < 2.4
   // 3. sigma_pt / pt < 0.1
@@ -532,8 +496,12 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   for (edm::View<pat::PackedCandidate>::const_iterator iTrackc = theTrackHandle->begin();
        iTrackc != theTrackHandle->end(); ++iTrackc) {
     // Apply track pre-selection criteria
+    // 0. hasTrackDetails && charge != 0
     const reco::Track* track = iTrackc->bestTrack();
     if (!track) {
+      continue;
+    }
+    if (!iTrackc->hasTrackDetails() || track->charge() == 0) {
       continue;
     }
 
@@ -760,6 +728,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
       JpsiCandidate candidate;
       candidate.muPlus = muPlusIter;
       candidate.muMinus = muMinusIter;
+      candidate.muPlusIndex = std::distance(thePATMuonHandle->begin(), muPlusIter);
+      candidate.muMinusIndex = std::distance(thePATMuonHandle->begin(), muMinusIter);
       candidate.mass = Jpsi_mass;
       candidate.vtxProb = Jpsi_VtxProb;
       if (mumuFittedParticle->currentState().kinematicParametersError().matrix()(6, 6) > 0){
@@ -768,12 +738,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
       }else{
         continue;
       }
-      candidate.p4 = ROOT::Math::PxPyPzMVector(
-          muPlusIter->track()->px(), muPlusIter->track()->py(), 
-          muPlusIter->track()->pz(), MU_MASS);
-      candidate.p4 += ROOT::Math::PxPyPzMVector(
-          muMinusIter->track()->px(), muMinusIter->track()->py(), 
-          muMinusIter->track()->pz(), MU_MASS);
+      auto mom = mumuFittedParticle->currentState().kinematicParameters().momentum();
+      candidate.p4 = ROOT::Math::PxPyPzMVector(mom.x(), mom.y(), mom.z(), Jpsi_mass);
       candidate.filterMatchPlus = matchPlus;
       candidate.filterMatchMinus = matchMinus;
       candidate.isJpsiCandidate = isJpsiCandidate;
@@ -856,8 +822,8 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
         continue;
       }
       // 检查是否使用了相同的muon
-      if (Jpsi1.muPlus == Jpsi2.muPlus || Jpsi1.muPlus == Jpsi2.muMinus ||
-          Jpsi1.muMinus == Jpsi2.muPlus || Jpsi1.muMinus == Jpsi2.muMinus) {
+      if (Jpsi1.muPlus == Jpsi2.muPlus || Jpsi1.muMinus == Jpsi2.muMinus 
+        || Jpsi1.muPlus == Jpsi2.muMinus || Jpsi1.muMinus == Jpsi2.muPlus) {
         continue;
       }
       
@@ -870,9 +836,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 
       // ========== 阶段3: 与Track组合 ==========
       for (const auto& trackPlusIter : trackPlus) {
-        if (!trackPlusIter->hasTrackDetails() || trackPlusIter->charge() == 0) {
-          continue;
-        }
         const reco::Track* track1 = trackPlusIter->bestTrack();
         if (!track1) {
           continue;
@@ -880,9 +843,6 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
         ROOT::Math::PxPyPzMVector track1_vec(trackPlusIter->px(), trackPlusIter->py(), 
                                                trackPlusIter->pz(), PI_MASS);
         for (const auto& trackMinusIter : trackMinus) {
-          if (!trackMinusIter->hasTrackDetails() || trackMinusIter->charge() == 0) {
-            continue;
-          }
           const reco::Track* track2 = trackMinusIter->bestTrack();
           if (!track2) {
             continue;
@@ -986,7 +946,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
 
           ROOT::Math::PxPyPzMVector Psi2S_vec(Psi2S_px, Psi2S_py, Psi2S_pz, Psi2S_mass);
           Psi2S_pt = Psi2S_vec.Pt();
-          Psi2S_absEta = fabs(Psi2S_vec.Eta());
+          Psi2S_eta = Psi2S_vec.Eta();
+          Psi2S_absEta = fabs(Psi2S_eta);
+          Psi2S_rapidity = Psi2S_vec.Rapidity();
+          Psi2S_absRapidity = fabs(Psi2S_rapidity);
 
           // ========== 六粒子三种假设拟合 ==========
           // ========== 假设PJ: Jpipi(Psi2S约束后) + Jpsi2(Jpsi约束后) ==========
@@ -1049,7 +1012,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
                 }
                 ROOT::Math::PxPyPzMVector PJ_vec(X_PJ_px, X_PJ_py, X_PJ_pz, X_PJ_mass);
                 X_PJ_pt = PJ_vec.Pt();
-                X_PJ_absEta = fabs(PJ_vec.Eta());
+                X_PJ_eta = PJ_vec.Eta();
+                X_PJ_absEta = fabs(X_PJ_eta);
+                X_PJ_rapidity = PJ_vec.Rapidity();
+                X_PJ_absRapidity = fabs(X_PJ_rapidity);
               }
             }
           }
@@ -1114,7 +1080,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
                 }
                 ROOT::Math::PxPyPzMVector XJ_vec(X_XJ_px, X_XJ_py, X_XJ_pz, X_XJ_mass);
                 X_XJ_pt = XJ_vec.Pt();
-                X_XJ_absEta = fabs(XJ_vec.Eta());
+                X_XJ_eta = XJ_vec.Eta();
+                X_XJ_absEta = fabs(X_XJ_eta);
+                X_XJ_rapidity = XJ_vec.Rapidity();
+                X_XJ_absRapidity = fabs(X_XJ_rapidity);
               }
             }
           }
@@ -1179,7 +1148,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
                 }
                 ROOT::Math::PxPyPzMVector PP_vec(X_PP_px, X_PP_py, X_PP_pz, X_PP_mass);
                 X_PP_pt = PP_vec.Pt();
-                X_PP_absEta = fabs(PP_vec.Eta());
+                X_PP_eta = PP_vec.Eta();
+                X_PP_absEta = fabs(X_PP_eta);
+                X_PP_rapidity = PP_vec.Rapidity();
+                X_PP_absRapidity = fabs(X_PP_rapidity);
               }
             }
           }
@@ -1197,10 +1169,12 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           Jpsi1_pz = Jpsi1.p4.Pz();
           Jpsi1_px = Jpsi1.p4.Px();
           Jpsi1_py = Jpsi1.p4.Py();
-          ROOT::Math::PxPyPzMVector Jpsi1_vec(Jpsi1_px, Jpsi1_py, Jpsi1_pz,  Jpsi1.mass);
-          Jpsi1_pt = Jpsi1_vec.Pt();
+          Jpsi1_pt = Jpsi1.p4.Pt();
           Jpsi1_absPz = fabs(Jpsi1_pz);
-          Jpsi1_absEta = fabs(Jpsi1_vec.Eta());
+          Jpsi1_eta = Jpsi1.p4.Eta();
+          Jpsi1_absEta = fabs(Jpsi1_eta);
+          Jpsi1_rapidity = Jpsi1.p4.Rapidity();
+          Jpsi1_absRapidity = fabs(Jpsi1_rapidity);
 
           Jpsi2_mass = Jpsi2.mass;
           Jpsi2_hasJConstraintFit = Jpsi2.hasConstraintFit && Jpsi2.isJpsiCandidate;
@@ -1211,10 +1185,12 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           Jpsi2_pz = Jpsi2.p4.Pz();
           Jpsi2_px = Jpsi2.p4.Px();
           Jpsi2_py = Jpsi2.p4.Py();
-          ROOT::Math::PxPyPzMVector Jpsi2_vec(Jpsi2_px, Jpsi2_py, Jpsi2_pz,  Jpsi2.mass);
-          Jpsi2_pt = Jpsi2_vec.Pt();
+          Jpsi2_pt = Jpsi2.p4.Pt();
           Jpsi2_absPz = fabs(Jpsi2_pz);
-          Jpsi2_absEta = fabs(Jpsi2_vec.Eta());
+          Jpsi2_eta = Jpsi2.p4.Eta();
+          Jpsi2_absEta = fabs(Jpsi2_eta);
+          Jpsi2_rapidity = Jpsi2.p4.Rapidity();
+          Jpsi2_absRapidity = fabs(Jpsi2_rapidity);
 
           // ========== 保存muon变量 ==========
           const auto& iMuon1 = *Jpsi1.muPlus;
@@ -1222,106 +1198,138 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           const auto& iMuon3 = *Jpsi2.muPlus;
           const auto& iMuon4 = *Jpsi2.muMinus;
 
-          mu1_hasFilterMatch = Jpsi1.filterMatchPlus ? 1 : 0;
-          mu2_hasFilterMatch = Jpsi1.filterMatchMinus ? 1 : 0;
-          mu3_hasFilterMatch = Jpsi2.filterMatchPlus ? 1 : 0;
-          mu4_hasFilterMatch = Jpsi2.filterMatchMinus ? 1 : 0;
+          mu1_index = Jpsi1.muPlusIndex;
+          mu2_index = Jpsi1.muMinusIndex;
+          mu3_index = Jpsi2.muPlusIndex;
+          mu4_index = Jpsi2.muMinusIndex;
 
           mu1_px = iMuon1.px();
           mu1_py = iMuon1.py();
           mu1_pz = iMuon1.pz();
           mu1_absPz = fabs(mu1_pz);
-          mu1_pt = iMuon1.pt();
-          mu1_absEta = fabs(iMuon1.eta());
+          ROOT::Math::PxPyPzMVector mu1_vec(mu1_px, mu1_py, mu1_pz, MU_MASS);
+          mu1_pt = mu1_vec.pt();
+          mu1_eta = mu1_vec.eta();
+          mu1_absEta = fabs(mu1_eta);
+          mu1_rapidity = mu1_vec.Rapidity();
+          mu1_absRapidity = fabs(mu1_rapidity);
           mu1_trackIso = iMuon1.trackIso();
           mu1_d0BS = iMuon1.dB(pat::Muon::BS2D);
           mu1_absd0BS = fabs(mu1_d0BS);
           mu1_d0BSErr = iMuon1.edB(pat::Muon::BS2D);
           mu1_d0BSNorm = (mu1_d0BSErr != 0) ? (mu1_absd0BS / mu1_d0BSErr) : -9;
+          mu1_absd0BSNorm = fabs(mu1_d0BSNorm);
           mu1_d3dBS = iMuon1.dB(pat::Muon::BS3D);
           mu1_absd3dBS = fabs(mu1_d3dBS);
           mu1_d3dBSErr = iMuon1.edB(pat::Muon::BS3D);
           mu1_d3dBSNorm = (mu1_d3dBSErr != 0) ? (mu1_absd3dBS / mu1_d3dBSErr) : -9;
+          mu1_absd3dBSNorm = fabs(mu1_d3dBSNorm);
           mu1_d0PV = iMuon1.dB(pat::Muon::PV2D);
           mu1_absd0PV = fabs(mu1_d0PV);
           mu1_d0PVErr = iMuon1.edB(pat::Muon::PV2D);
           mu1_d0PVNorm = (mu1_d0PVErr != 0) ? (mu1_absd0PV / mu1_d0PVErr) : -9;
+          mu1_absd0PVNorm = fabs(mu1_d0PVNorm);
           mu1_dzPV = iMuon1.dB(pat::Muon::PVDZ);
           mu1_absdzPV = fabs(mu1_dzPV);
           mu1_dzPVErr = iMuon1.edB(pat::Muon::PVDZ);
           mu1_dzPVNorm = (mu1_dzPVErr != 0) ? (mu1_absdzPV / mu1_dzPVErr) : -9;
+          mu1_absdzPVNorm = fabs(mu1_dzPVNorm);
 
           mu2_px = iMuon2.px();
           mu2_py = iMuon2.py();
           mu2_pz = iMuon2.pz();
           mu2_absPz = fabs(mu2_pz);
-          mu2_pt = iMuon2.pt();
-          mu2_absEta = fabs(iMuon2.eta());
+          ROOT::Math::PxPyPzMVector mu2_vec(mu2_px, mu2_py, mu2_pz, MU_MASS);
+          mu2_pt = mu2_vec.pt();
+          mu2_eta = mu2_vec.eta();
+          mu2_absEta = fabs(mu2_eta);
+          mu2_rapidity = mu2_vec.Rapidity();
+          mu2_absRapidity = fabs(mu2_rapidity);
           mu2_trackIso = iMuon2.trackIso();
           mu2_d0BS = iMuon2.dB(pat::Muon::BS2D);
           mu2_absd0BS = fabs(mu2_d0BS);
           mu2_d0BSErr = iMuon2.edB(pat::Muon::BS2D);
           mu2_d0BSNorm = (mu2_d0BSErr != 0) ? (mu2_absd0BS / mu2_d0BSErr) : -9;
+          mu2_absd0BSNorm = fabs(mu2_d0BSNorm);
           mu2_d3dBS = iMuon2.dB(pat::Muon::BS3D);
           mu2_absd3dBS = fabs(mu2_d3dBS);
           mu2_d3dBSErr = iMuon2.edB(pat::Muon::BS3D);
           mu2_d3dBSNorm = (mu2_d3dBSErr != 0) ? (mu2_absd3dBS / mu2_d3dBSErr) : -9;
+          mu2_absd3dBSNorm = fabs(mu2_d3dBSNorm);
           mu2_d0PV = iMuon2.dB(pat::Muon::PV2D);
           mu2_absd0PV = fabs(mu2_d0PV);
           mu2_d0PVErr = iMuon2.edB(pat::Muon::PV2D);
           mu2_d0PVNorm = (mu2_d0PVErr != 0) ? (mu2_absd0PV / mu2_d0PVErr) : -9;
+          mu2_absd0PVNorm = fabs(mu2_d0PVNorm);
           mu2_dzPV = iMuon2.dB(pat::Muon::PVDZ);
           mu2_absdzPV = fabs(mu2_dzPV);
           mu2_dzPVErr = iMuon2.edB(pat::Muon::PVDZ);
           mu2_dzPVNorm = (mu2_dzPVErr != 0) ? (mu2_absdzPV / mu2_dzPVErr) : -9;
+          mu2_absdzPVNorm = fabs(mu2_dzPVNorm);
 
           mu3_px = iMuon3.px();
           mu3_py = iMuon3.py();
           mu3_pz = iMuon3.pz();
           mu3_absPz = fabs(mu3_pz);
-          mu3_pt = iMuon3.pt();
-          mu3_absEta = fabs(iMuon3.eta());
+          ROOT::Math::PxPyPzMVector mu3_vec(mu3_px, mu3_py, mu3_pz, MU_MASS);
+          mu3_pt = mu3_vec.pt();
+          mu3_eta = mu3_vec.eta();
+          mu3_absEta = fabs(mu3_eta);
+          mu3_rapidity = mu3_vec.Rapidity();
+          mu3_absRapidity = fabs(mu3_rapidity);
           mu3_trackIso = iMuon3.trackIso();
           mu3_d0BS = iMuon3.dB(pat::Muon::BS2D);
           mu3_absd0BS = fabs(mu3_d0BS);
           mu3_d0BSErr = iMuon3.edB(pat::Muon::BS2D);
           mu3_d0BSNorm = (mu3_d0BSErr != 0) ? (mu3_absd0BS / mu3_d0BSErr) : -9;
+          mu3_absd0BSNorm = fabs(mu3_d0BSNorm);
           mu3_d3dBS = iMuon3.dB(pat::Muon::BS3D);
           mu3_absd3dBS = fabs(mu3_d3dBS);
           mu3_d3dBSErr = iMuon3.edB(pat::Muon::BS3D);
           mu3_d3dBSNorm = (mu3_d3dBSErr != 0) ? (mu3_absd3dBS / mu3_d3dBSErr) : -9;
+          mu3_absd3dBSNorm = fabs(mu3_d3dBSNorm);
           mu3_d0PV = iMuon3.dB(pat::Muon::PV2D);
           mu3_absd0PV = fabs(mu3_d0PV);
           mu3_d0PVErr = iMuon3.edB(pat::Muon::PV2D);
           mu3_d0PVNorm = (mu3_d0PVErr != 0) ? (mu3_absd0PV / mu3_d0PVErr) : -9;
+          mu3_absd0PVNorm = fabs(mu3_d0PVNorm);
           mu3_dzPV = iMuon3.dB(pat::Muon::PVDZ);
           mu3_absdzPV = fabs(mu3_dzPV);
           mu3_dzPVErr = iMuon3.edB(pat::Muon::PVDZ);
           mu3_dzPVNorm = (mu3_dzPVErr != 0) ? (mu3_absdzPV / mu3_dzPVErr) : -9;
+          mu3_absdzPVNorm = fabs(mu3_dzPVNorm);
 
           mu4_px = iMuon4.px();
           mu4_py = iMuon4.py();
           mu4_pz = iMuon4.pz();
           mu4_absPz = fabs(mu4_pz);
-          mu4_pt = iMuon4.pt();
-          mu4_absEta = fabs(iMuon4.eta());
+          ROOT::Math::PxPyPzMVector mu4_vec(mu4_px, mu4_py, mu4_pz, MU_MASS);
+          mu4_pt = mu4_vec.pt();
+          mu4_eta = mu4_vec.eta();
+          mu4_absEta = fabs(mu4_eta);
+          mu4_rapidity = mu4_vec.Rapidity();
+          mu4_absRapidity = fabs(mu4_rapidity);
           mu4_trackIso = iMuon4.trackIso();
           mu4_d0BS = iMuon4.dB(pat::Muon::BS2D);
           mu4_absd0BS = fabs(mu4_d0BS);
           mu4_d0BSErr = iMuon4.edB(pat::Muon::BS2D);
           mu4_d0BSNorm = (mu4_d0BSErr != 0) ? (mu4_absd0BS / mu4_d0BSErr) : -9;
+          mu4_absd0BSNorm = fabs(mu4_d0BSNorm);
           mu4_d3dBS = iMuon4.dB(pat::Muon::BS3D);
           mu4_absd3dBS = fabs(mu4_d3dBS);
           mu4_d3dBSErr = iMuon4.edB(pat::Muon::BS3D);
           mu4_d3dBSNorm = (mu4_d3dBSErr != 0) ? (mu4_absd3dBS / mu4_d3dBSErr) : -9;
+          mu4_absd3dBSNorm = fabs(mu4_d3dBSNorm);
           mu4_d0PV = iMuon4.dB(pat::Muon::PV2D);
           mu4_absd0PV = fabs(mu4_d0PV);
           mu4_d0PVErr = iMuon4.edB(pat::Muon::PV2D);
           mu4_d0PVNorm = (mu4_d0PVErr != 0) ? (mu4_absd0PV / mu4_d0PVErr) : -9;
+          mu4_absd0PVNorm = fabs(mu4_d0PVNorm);
           mu4_dzPV = iMuon4.dB(pat::Muon::PVDZ);
           mu4_absdzPV = fabs(mu4_dzPV);
           mu4_dzPVErr = iMuon4.edB(pat::Muon::PVDZ);
           mu4_dzPVNorm = (mu4_dzPVErr != 0) ? (mu4_absdzPV / mu4_dzPVErr) : -9;
+          mu4_absdzPVNorm = fabs(mu4_dzPVNorm);
 
           // 计算Muon ID
           nLooseMuons = 0;
@@ -1350,55 +1358,61 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           if (iMuon4.isMediumMuon()) nMediumMuons++;
 
           // ========== 保存pion变量 ==========
+          pi1_index = std::distance(theTrackHandle->begin(), trackPlusIter);
           pi1_px = trackPlusIter->px();
           pi1_py = trackPlusIter->py();
           pi1_pz = trackPlusIter->pz();
           pi1_absPz = fabs(pi1_pz);
           ROOT::Math::PxPyPzMVector pi1_vec(pi1_px, pi1_py, pi1_pz, PI_MASS);
           pi1_pt = pi1_vec.Pt();
-          pi1_absEta = fabs(pi1_vec.Eta());
+          pi1_eta = pi1_vec.Eta();
+          pi1_absEta = fabs(pi1_eta);
+          pi1_rapidity = pi1_vec.Rapidity();
+          pi1_absRapidity = fabs(pi1_rapidity);
 
 
+          pi2_index = std::distance(theTrackHandle->begin(), trackMinusIter);
           pi2_px = trackMinusIter->px();
           pi2_py = trackMinusIter->py();
           pi2_pz = trackMinusIter->pz();
           pi2_absPz = fabs(pi2_pz);
           ROOT::Math::PxPyPzMVector pi2_vec(pi2_px, pi2_py, pi2_pz, PI_MASS);
           pi2_pt = pi2_vec.Pt();
-          pi2_absEta = fabs(pi2_vec.Eta());
+          pi2_eta = pi2_vec.Eta();
+          pi2_absEta = fabs(pi2_eta);
+          pi2_rapidity = pi2_vec.Rapidity();
+          pi2_absRapidity = fabs(pi2_rapidity);
 
           pipi_mass = (pi1_vec + pi2_vec).M();
 
+          Q = Psi2S_mass - JPSI_MASS_NOMINAL - pipi_mass;
+
           // ========== 计算DeltaR变量 ==========
-          ROOT::Math::PxPyPzMVector mu1_vec(mu1_px, mu1_py, mu1_pz, MU_MASS);
-          ROOT::Math::PxPyPzMVector mu2_vec(mu2_px, mu2_py, mu2_pz, MU_MASS);
-          ROOT::Math::PxPyPzMVector mu3_vec(mu3_px, mu3_py, mu3_pz, MU_MASS);
-          ROOT::Math::PxPyPzMVector mu4_vec(mu4_px, mu4_py, mu4_pz, MU_MASS);
 
           dR_mu1_mu2 = ROOT::Math::VectorUtil::DeltaR(mu1_vec, mu2_vec);
           dR_mu3_mu4 = ROOT::Math::VectorUtil::DeltaR(mu3_vec, mu4_vec);
           dR_pi1_pi2 = ROOT::Math::VectorUtil::DeltaR(pi1_vec, pi2_vec);
-          dR_Psi2S_Jpsi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi1_vec);
-          dR_Psi2S_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi2_vec);
+          dR_Psi2S_Jpsi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi1.p4);
+          dR_Psi2S_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, Jpsi2.p4);
           dR_Psi2S_pi1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi1_vec);
           dR_Psi2S_pi2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, pi2_vec);
           dR_Psi2S_mu1 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, mu1_vec);
           dR_Psi2S_mu2 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, mu2_vec);
           dR_Psi2S_mu3 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, mu3_vec);
           dR_Psi2S_mu4 = ROOT::Math::VectorUtil::DeltaR(Psi2S_vec, mu4_vec);
-          dR_Jpsi1_mu1 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, mu1_vec);
-          dR_Jpsi1_mu2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, mu2_vec);
-          dR_Jpsi1_mu3 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, mu3_vec);
-          dR_Jpsi1_mu4 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, mu4_vec);
-          dR_Jpsi1_pi1 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, pi1_vec);
-          dR_Jpsi1_pi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, pi2_vec);
-          dR_Jpsi1_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1_vec, Jpsi2_vec);
-          dR_Jpsi2_mu1 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, mu1_vec);
-          dR_Jpsi2_mu2 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, mu2_vec);
-          dR_Jpsi2_mu3 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, mu3_vec);
-          dR_Jpsi2_mu4 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, mu4_vec);
-          dR_Jpsi2_pi1 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, pi1_vec);
-          dR_Jpsi2_pi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi2_vec, pi2_vec);
+          dR_Jpsi1_mu1 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, mu1_vec);
+          dR_Jpsi1_mu2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, mu2_vec);
+          dR_Jpsi1_mu3 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, mu3_vec);
+          dR_Jpsi1_mu4 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, mu4_vec);
+          dR_Jpsi1_pi1 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, pi1_vec);
+          dR_Jpsi1_pi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, pi2_vec);
+          dR_Jpsi1_Jpsi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi1.p4, Jpsi2.p4);
+          dR_Jpsi2_mu1 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, mu1_vec);
+          dR_Jpsi2_mu2 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, mu2_vec);
+          dR_Jpsi2_mu3 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, mu3_vec);
+          dR_Jpsi2_mu4 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, mu4_vec);
+          dR_Jpsi2_pi1 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, pi1_vec);
+          dR_Jpsi2_pi2 = ROOT::Math::VectorUtil::DeltaR(Jpsi2.p4, pi2_vec);
           dR_mu1_pi1 = ROOT::Math::VectorUtil::DeltaR(mu1_vec, pi1_vec);
           dR_mu1_pi2 = ROOT::Math::VectorUtil::DeltaR(mu1_vec, pi2_vec);
           dR_mu2_pi1 = ROOT::Math::VectorUtil::DeltaR(mu2_vec, pi1_vec);
@@ -1446,7 +1460,10 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("X_PJ_px", &X_PJ_px, "X_PJ_px/F");
   X_One_Tree_->Branch("X_PJ_py", &X_PJ_py, "X_PJ_py/F");
   X_One_Tree_->Branch("X_PJ_absPz", &X_PJ_absPz, "X_PJ_absPz/F");
+  X_One_Tree_->Branch("X_PJ_eta", &X_PJ_eta, "X_PJ_eta/F");
   X_One_Tree_->Branch("X_PJ_absEta", &X_PJ_absEta, "X_PJ_absEta/F");
+  X_One_Tree_->Branch("X_PJ_rapidity", &X_PJ_rapidity, "X_PJ_rapidity/F");
+  X_One_Tree_->Branch("X_PJ_absRapidity", &X_PJ_absRapidity, "X_PJ_absRapidity/F");
 
   // 假设 XJ: mumupipi (X(3872) 约束) + mumu (J/psi 约束)
   X_One_Tree_->Branch("X_XJ_mass", &X_XJ_mass, "X_XJ_mass/F");
@@ -1458,7 +1475,10 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("X_XJ_px", &X_XJ_px, "X_XJ_px/F");
   X_One_Tree_->Branch("X_XJ_py", &X_XJ_py, "X_XJ_py/F");
   X_One_Tree_->Branch("X_XJ_absPz", &X_XJ_absPz, "X_XJ_absPz/F");
+  X_One_Tree_->Branch("X_XJ_eta", &X_XJ_eta, "X_XJ_eta/F");
   X_One_Tree_->Branch("X_XJ_absEta", &X_XJ_absEta, "X_XJ_absEta/F");
+  X_One_Tree_->Branch("X_XJ_rapidity", &X_XJ_rapidity, "X_XJ_rapidity/F");
+  X_One_Tree_->Branch("X_XJ_absRapidity", &X_XJ_absRapidity, "X_XJ_absRapidity/F");
 
   // 假设 PP: mumupipi (psi(2S) 约束) + mumu (psi(2S) 约束)
   X_One_Tree_->Branch("X_PP_mass", &X_PP_mass, "X_PP_mass/F");
@@ -1470,11 +1490,14 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("X_PP_px", &X_PP_px, "X_PP_px/F");
   X_One_Tree_->Branch("X_PP_py", &X_PP_py, "X_PP_py/F");
   X_One_Tree_->Branch("X_PP_absPz", &X_PP_absPz, "X_PP_absPz/F");
+  X_One_Tree_->Branch("X_PP_eta", &X_PP_eta, "X_PP_eta/F");
   X_One_Tree_->Branch("X_PP_absEta", &X_PP_absEta, "X_PP_absEta/F");
+  X_One_Tree_->Branch("X_PP_rapidity", &X_PP_rapidity, "X_PP_rapidity/F");
+  X_One_Tree_->Branch("X_PP_absRapidity", &X_PP_absRapidity, "X_PP_absRapidity/F");
 
   // Psi(2S) 带 J/psi 约束: mumupipi system
   X_One_Tree_->Branch("Psi2S_mass", &Psi2S_mass, "Psi2S_mass/F");
-  X_One_Tree_->Branch("Psi2S_mass", &Psi2S_massDiff, "Psi2S_massDiff/F"); 
+  X_One_Tree_->Branch("Psi2S_massDiff", &Psi2S_massDiff, "Psi2S_massDiff/F"); 
   X_One_Tree_->Branch("Psi2S_VtxProb", &Psi2S_VtxProb, "Psi2S_VtxProb/F");
   X_One_Tree_->Branch("Psi2S_massErr", &Psi2S_massErr, "Psi2S_massErr/F");
   X_One_Tree_->Branch("Psi2S_massErrNorm", &Psi2S_massErrNorm, "Psi2S_massErrNorm/F");
@@ -1483,7 +1506,10 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("Psi2S_pz", &Psi2S_pz, "Psi2S_pz/F");
   X_One_Tree_->Branch("Psi2S_px", &Psi2S_px, "Psi2S_px/F");
   X_One_Tree_->Branch("Psi2S_py", &Psi2S_py, "Psi2S_py/F");
+  X_One_Tree_->Branch("Psi2S_eta", &Psi2S_eta, "Psi2S_eta/F");
   X_One_Tree_->Branch("Psi2S_absEta", &Psi2S_absEta, "Psi2S_absEta/F");
+  X_One_Tree_->Branch("Psi2S_rapidity", &Psi2S_rapidity, "Psi2S_rapidity/F");
+  X_One_Tree_->Branch("Psi2S_absRapidity", &Psi2S_absRapidity, "Psi2S_absRapidity/F");
 
   X_One_Tree_->Branch("Jpsi1_mass", &Jpsi1_mass, "Jpsi1_mass/F");
   X_One_Tree_->Branch("Jpsi1_VtxProb", &Jpsi1_VtxProb, "Jpsi1_VtxProb/F");
@@ -1494,7 +1520,10 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("Jpsi1_pz", &Jpsi1_pz, "Jpsi1_pz/F");
   X_One_Tree_->Branch("Jpsi1_px", &Jpsi1_px, "Jpsi1_px/F");
   X_One_Tree_->Branch("Jpsi1_py", &Jpsi1_py, "Jpsi1_py/F");
+  X_One_Tree_->Branch("Jpsi1_eta", &Jpsi1_eta, "Jpsi1_eta/F");
   X_One_Tree_->Branch("Jpsi1_absEta", &Jpsi1_absEta, "Jpsi1_absEta/F");
+  X_One_Tree_->Branch("Jpsi1_rapidity", &Jpsi1_rapidity, "Jpsi1_rapidity/F");
+  X_One_Tree_->Branch("Jpsi1_absRapidity", &Jpsi1_absRapidity, "Jpsi1_absRapidity/F");
 
   X_One_Tree_->Branch("Jpsi2_mass", &Jpsi2_mass, "Jpsi2_mass/F");
   X_One_Tree_->Branch("Jpsi2_hasJConstraintFit", &Jpsi2_hasJConstraintFit, "Jpsi2_hasJConstraintFit/O");
@@ -1507,99 +1536,137 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("Jpsi2_pz", &Jpsi2_pz, "Jpsi2_pz/F");
   X_One_Tree_->Branch("Jpsi2_px", &Jpsi2_px, "Jpsi2_px/F");
   X_One_Tree_->Branch("Jpsi2_py", &Jpsi2_py, "Jpsi2_py/F");
+  X_One_Tree_->Branch("Jpsi2_eta", &Jpsi2_eta, "Jpsi2_eta/F");
   X_One_Tree_->Branch("Jpsi2_absEta", &Jpsi2_absEta, "Jpsi2_absEta/F");
+  X_One_Tree_->Branch("Jpsi2_rapidity", &Jpsi2_rapidity, "Jpsi2_rapidity/F");
+  X_One_Tree_->Branch("Jpsi2_absRapidity", &Jpsi2_absRapidity, "Jpsi2_absRapidity/F");
 
+  X_One_Tree_->Branch("mu1_index", &mu1_index, "mu1_index/I");
   X_One_Tree_->Branch("mu1_pt", &mu1_pt, "mu1_pt/F");
   X_One_Tree_->Branch("mu1_pz", &mu1_pz, "mu1_pz/F");
   X_One_Tree_->Branch("mu1_px", &mu1_px, "mu1_px/F");
   X_One_Tree_->Branch("mu1_py", &mu1_py, "mu1_py/F");
   X_One_Tree_->Branch("mu1_absPz", &mu1_absPz, "mu1_absPz/F");
+  X_One_Tree_->Branch("mu1_eta", &mu1_eta, "mu1_eta/F");
   X_One_Tree_->Branch("mu1_absEta", &mu1_absEta, "mu1_absEta/F");
+  X_One_Tree_->Branch("mu1_rapidity", &mu1_rapidity, "mu1_rapidity/F");
+  X_One_Tree_->Branch("mu1_absRapidity", &mu1_absRapidity, "mu1_absRapidity/F");
   X_One_Tree_->Branch("mu1_trackIso", &mu1_trackIso, "mu1_trackIso/F");
   X_One_Tree_->Branch("mu1_d0BS", &mu1_d0BS, "mu1_d0BS/F");
   X_One_Tree_->Branch("mu1_absd0BS", &mu1_absd0BS, "mu1_absd0BS/F");
   X_One_Tree_->Branch("mu1_d0BSNorm", &mu1_d0BSNorm, "mu1_d0BSNorm/F");
+  X_One_Tree_->Branch("mu1_absd0BSNorm", &mu1_absd0BSNorm, "mu1_absd0BSNorm/F");
   X_One_Tree_->Branch("mu1_d0BSErr", &mu1_d0BSErr, "mu1_d0BSErr/F");
   X_One_Tree_->Branch("mu1_d3dBS", &mu1_d3dBS, "mu1_d3dBS/F");
   X_One_Tree_->Branch("mu1_absd3dBS", &mu1_absd3dBS, "mu1_absd3dBS/F");
   X_One_Tree_->Branch("mu1_d3dBSNorm", &mu1_d3dBSNorm, "mu1_d3dBSNorm/F");
+  X_One_Tree_->Branch("mu1_absd3dBSNorm", &mu1_absd3dBSNorm, "mu1_absd3dBSNorm/F");
   X_One_Tree_->Branch("mu1_d3dBSErr", &mu1_d3dBSErr, "mu1_d3dBSErr/F");
   X_One_Tree_->Branch("mu1_d0PV", &mu1_d0PV, "mu1_d0PV/F");
   X_One_Tree_->Branch("mu1_absd0PV", &mu1_absd0PV, "mu1_absd0PV/F");
   X_One_Tree_->Branch("mu1_d0PVNorm", &mu1_d0PVNorm, "mu1_d0PVNorm/F");
+  X_One_Tree_->Branch("mu1_absd0PVNorm", &mu1_absd0PVNorm, "mu1_absd0PVNorm/F");
   X_One_Tree_->Branch("mu1_d0PVErr", &mu1_d0PVErr, "mu1_d0PVErr/F");
   X_One_Tree_->Branch("mu1_dzPV", &mu1_dzPV, "mu1_dzPV/F");
   X_One_Tree_->Branch("mu1_absdzPV", &mu1_absdzPV, "mu1_absdzPV/F");
   X_One_Tree_->Branch("mu1_dzPVNorm", &mu1_dzPVNorm, "mu1_dzPVNorm/F");
+  X_One_Tree_->Branch("mu1_absdzPVNorm", &mu1_absdzPVNorm, "mu1_absdzPVNorm/F");
   X_One_Tree_->Branch("mu1_dzPVErr", &mu1_dzPVErr, "mu1_dzPVErr/F");
 
+  X_One_Tree_->Branch("mu2_index", &mu2_index, "mu2_index/I");
   X_One_Tree_->Branch("mu2_pt", &mu2_pt, "mu2_pt/F");
   X_One_Tree_->Branch("mu2_pz", &mu2_pz, "mu2_pz/F");
   X_One_Tree_->Branch("mu2_px", &mu2_px, "mu2_px/F");
   X_One_Tree_->Branch("mu2_py", &mu2_py, "mu2_py/F");
+  X_One_Tree_->Branch("mu2_absPz", &mu2_absPz, "mu2_absPz/F");
+  X_One_Tree_->Branch("mu2_eta", &mu2_eta, "mu2_eta/F");
   X_One_Tree_->Branch("mu2_absEta", &mu2_absEta, "mu2_absEta/F");
+  X_One_Tree_->Branch("mu2_rapidity", &mu2_rapidity, "mu2_rapidity/F");
+  X_One_Tree_->Branch("mu2_absRapidity", &mu2_absRapidity, "mu2_absRapidity/F");
   X_One_Tree_->Branch("mu2_trackIso", &mu2_trackIso, "mu2_trackIso/F");
   X_One_Tree_->Branch("mu2_d0BS", &mu2_d0BS, "mu2_d0BS/F");
   X_One_Tree_->Branch("mu2_absd0BS", &mu2_absd0BS, "mu2_absd0BS/F");
   X_One_Tree_->Branch("mu2_d0BSNorm", &mu2_d0BSNorm, "mu2_d0BSNorm/F");
+  X_One_Tree_->Branch("mu2_absd0BSNorm", &mu2_absd0BSNorm, "mu2_absd0BSNorm/F");
   X_One_Tree_->Branch("mu2_d0BSErr", &mu2_d0BSErr, "mu2_d0BSErr/F");
   X_One_Tree_->Branch("mu2_d3dBS", &mu2_d3dBS, "mu2_d3dBS/F");
   X_One_Tree_->Branch("mu2_absd3dBS", &mu2_absd3dBS, "mu2_absd3dBS/F");
   X_One_Tree_->Branch("mu2_d3dBSNorm", &mu2_d3dBSNorm, "mu2_d3dBSNorm/F");
+  X_One_Tree_->Branch("mu2_absd3dBSNorm", &mu2_absd3dBSNorm, "mu2_absd3dBSNorm/F");
   X_One_Tree_->Branch("mu2_d3dBSErr", &mu2_d3dBSErr, "mu2_d3dBSErr/F");
   X_One_Tree_->Branch("mu2_d0PV", &mu2_d0PV, "mu2_d0PV/F");
   X_One_Tree_->Branch("mu2_absd0PV", &mu2_absd0PV, "mu2_absd0PV/F");
   X_One_Tree_->Branch("mu2_d0PVNorm", &mu2_d0PVNorm, "mu2_d0PVNorm/F");
+  X_One_Tree_->Branch("mu2_absd0PVNorm", &mu2_absd0PVNorm, "mu2_absd0PVNorm/F");
   X_One_Tree_->Branch("mu2_d0PVErr", &mu2_d0PVErr, "mu2_d0PVErr/F");
   X_One_Tree_->Branch("mu2_dzPV", &mu2_dzPV, "mu2_dzPV/F");
   X_One_Tree_->Branch("mu2_absdzPV", &mu2_absdzPV, "mu2_absdzPV/F");
   X_One_Tree_->Branch("mu2_dzPVNorm", &mu2_dzPVNorm, "mu2_dzPVNorm/F");
+  X_One_Tree_->Branch("mu2_absdzPVNorm", &mu2_absdzPVNorm, "mu2_absdzPVNorm/F");
   X_One_Tree_->Branch("mu2_dzPVErr", &mu2_dzPVErr, "mu2_dzPVErr/F");
 
+  X_One_Tree_->Branch("mu3_index", &mu3_index, "mu3_index/I");
   X_One_Tree_->Branch("mu3_pt", &mu3_pt, "mu3_pt/F");
   X_One_Tree_->Branch("mu3_pz", &mu3_pz, "mu3_pz/F");
   X_One_Tree_->Branch("mu3_px", &mu3_px, "mu3_px/F");
   X_One_Tree_->Branch("mu3_py", &mu3_py, "mu3_py/F");
+  X_One_Tree_->Branch("mu3_absPz", &mu3_absPz, "mu3_absPz/F");
+  X_One_Tree_->Branch("mu3_eta", &mu3_eta, "mu3_eta/F");
   X_One_Tree_->Branch("mu3_absEta", &mu3_absEta, "mu3_absEta/F");
+  X_One_Tree_->Branch("mu3_rapidity", &mu3_rapidity, "mu3_rapidity/F");
+  X_One_Tree_->Branch("mu3_absRapidity", &mu3_absRapidity, "mu3_absRapidity/F");
   X_One_Tree_->Branch("mu3_trackIso", &mu3_trackIso, "mu3_trackIso/F");
   X_One_Tree_->Branch("mu3_d0BS", &mu3_d0BS, "mu3_d0BS/F");
   X_One_Tree_->Branch("mu3_absd0BS", &mu3_absd0BS, "mu3_absd0BS/F");
   X_One_Tree_->Branch("mu3_d0BSNorm", &mu3_d0BSNorm, "mu3_d0BSNorm/F");
+  X_One_Tree_->Branch("mu3_absd0BSNorm", &mu3_absd0BSNorm, "mu3_absd0BSNorm/F");
   X_One_Tree_->Branch("mu3_d0BSErr", &mu3_d0BSErr, "mu3_d0BSErr/F");
   X_One_Tree_->Branch("mu3_d3dBS", &mu3_d3dBS, "mu3_d3dBS/F");
   X_One_Tree_->Branch("mu3_absd3dBS", &mu3_absd3dBS, "mu3_absd3dBS/F");
   X_One_Tree_->Branch("mu3_d3dBSNorm", &mu3_d3dBSNorm, "mu3_d3dBSNorm/F");
+  X_One_Tree_->Branch("mu3_absd3dBSNorm", &mu3_absd3dBSNorm, "mu3_absd3dBSNorm/F");
   X_One_Tree_->Branch("mu3_d3dBSErr", &mu3_d3dBSErr, "mu3_d3dBSErr/F");
   X_One_Tree_->Branch("mu3_d0PV", &mu3_d0PV, "mu3_d0PV/F");
   X_One_Tree_->Branch("mu3_absd0PV", &mu3_absd0PV, "mu3_absd0PV/F");
   X_One_Tree_->Branch("mu3_d0PVNorm", &mu3_d0PVNorm, "mu3_d0PVNorm/F");
+  X_One_Tree_->Branch("mu3_absd0PVNorm", &mu3_absd0PVNorm, "mu3_absd0PVNorm/F");
   X_One_Tree_->Branch("mu3_d0PVErr", &mu3_d0PVErr, "mu3_d0PVErr/F");
   X_One_Tree_->Branch("mu3_dzPV", &mu3_dzPV, "mu3_dzPV/F");
   X_One_Tree_->Branch("mu3_absdzPV", &mu3_absdzPV, "mu3_absdzPV/F");
   X_One_Tree_->Branch("mu3_dzPVNorm", &mu3_dzPVNorm, "mu3_dzPVNorm/F");
+  X_One_Tree_->Branch("mu3_absdzPVNorm", &mu3_absdzPVNorm, "mu3_absdzPVNorm/F");
   X_One_Tree_->Branch("mu3_dzPVErr", &mu3_dzPVErr, "mu3_dzPVErr/F");
 
+  X_One_Tree_->Branch("mu4_index", &mu4_index, "mu4_index/I");
   X_One_Tree_->Branch("mu4_pt", &mu4_pt, "mu4_pt/F");
   X_One_Tree_->Branch("mu4_pz", &mu4_pz, "mu4_pz/F");
   X_One_Tree_->Branch("mu4_px", &mu4_px, "mu4_px/F");
   X_One_Tree_->Branch("mu4_py", &mu4_py, "mu4_py/F");
+  X_One_Tree_->Branch("mu4_absPz", &mu4_absPz, "mu4_absPz/F");
+  X_One_Tree_->Branch("mu4_eta", &mu4_eta, "mu4_eta/F");
   X_One_Tree_->Branch("mu4_absEta", &mu4_absEta, "mu4_absEta/F");
+  X_One_Tree_->Branch("mu4_rapidity", &mu4_rapidity, "mu4_rapidity/F");
+  X_One_Tree_->Branch("mu4_absRapidity", &mu4_absRapidity, "mu4_absRapidity/F");
   X_One_Tree_->Branch("mu4_trackIso", &mu4_trackIso, "mu4_trackIso/F");
   X_One_Tree_->Branch("mu4_d0BS", &mu4_d0BS, "mu4_d0BS/F");
   X_One_Tree_->Branch("mu4_absd0BS", &mu4_absd0BS, "mu4_absd0BS/F");
   X_One_Tree_->Branch("mu4_d0BSNorm", &mu4_d0BSNorm, "mu4_d0BSNorm/F");
+  X_One_Tree_->Branch("mu4_absd0BSNorm", &mu4_absd0BSNorm, "mu4_absd0BSNorm/F");
   X_One_Tree_->Branch("mu4_d0BSErr", &mu4_d0BSErr, "mu4_d0BSErr/F");
   X_One_Tree_->Branch("mu4_d3dBS", &mu4_d3dBS, "mu4_d3dBS/F");
   X_One_Tree_->Branch("mu4_absd3dBS", &mu4_absd3dBS, "mu4_absd3dBS/F");
   X_One_Tree_->Branch("mu4_d3dBSNorm", &mu4_d3dBSNorm, "mu4_d3dBSNorm/F");
+  X_One_Tree_->Branch("mu4_absd3dBSNorm", &mu4_absd3dBSNorm, "mu4_absd3dBSNorm/F");
   X_One_Tree_->Branch("mu4_d3dBSErr", &mu4_d3dBSErr, "mu4_d3dBSErr/F");
   X_One_Tree_->Branch("mu4_d0PV", &mu4_d0PV, "mu4_d0PV/F");
   X_One_Tree_->Branch("mu4_absd0PV", &mu4_absd0PV, "mu4_absd0PV/F");
   X_One_Tree_->Branch("mu4_d0PVNorm", &mu4_d0PVNorm, "mu4_d0PVNorm/F");
+  X_One_Tree_->Branch("mu4_absd0PVNorm", &mu4_absd0PVNorm, "mu4_absd0PVNorm/F");
   X_One_Tree_->Branch("mu4_d0PVErr", &mu4_d0PVErr, "mu4_d0PVErr/F");
   X_One_Tree_->Branch("mu4_dzPV", &mu4_dzPV, "mu4_dzPV/F");
   X_One_Tree_->Branch("mu4_absdzPV", &mu4_absdzPV, "mu4_absdzPV/F");
   X_One_Tree_->Branch("mu4_dzPVNorm", &mu4_dzPVNorm, "mu4_dzPVNorm/F");
+  X_One_Tree_->Branch("mu4_absdzPVNorm", &mu4_absdzPVNorm, "mu4_absdzPVNorm/F");
   X_One_Tree_->Branch("mu4_dzPVErr", &mu4_dzPVErr, "mu4_dzPVErr/F");
   X_One_Tree_->Branch("mu4_absPz", &mu4_absPz, "mu4_absPz/F");
 
@@ -1609,19 +1676,29 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("nMediumMuons", &nMediumMuons, "nMediumMuons/I");
 
   X_One_Tree_->Branch("pipi_mass", &pipi_mass, "pipi_mass/F");
+  X_One_Tree_->Branch("pi1_index", &pi1_index, "pi1_index/I");
   X_One_Tree_->Branch("pi1_pt", &pi1_pt, "pi1_pt/F");
   X_One_Tree_->Branch("pi1_pz", &pi1_pz, "pi1_pz/F");
   X_One_Tree_->Branch("pi1_px", &pi1_px, "pi1_px/F");
   X_One_Tree_->Branch("pi1_py", &pi1_py, "pi1_py/F");
   X_One_Tree_->Branch("pi1_absPz", &pi1_absPz, "pi1_absPz/F");
+  X_One_Tree_->Branch("pi1_eta", &pi1_eta, "pi1_eta/F");
   X_One_Tree_->Branch("pi1_absEta", &pi1_absEta, "pi1_absEta/F");
+  X_One_Tree_->Branch("pi1_rapidity", &pi1_rapidity, "pi1_rapidity/F");
+  X_One_Tree_->Branch("pi1_absRapidity", &pi1_absRapidity, "pi1_absRapidity/F");
 
+  X_One_Tree_->Branch("pi2_index", &pi2_index, "pi2_index/I");
   X_One_Tree_->Branch("pi2_pt", &pi2_pt, "pi2_pt/F");
   X_One_Tree_->Branch("pi2_pz", &pi2_pz, "pi2_pz/F");
   X_One_Tree_->Branch("pi2_px", &pi2_px, "pi2_px/F");
   X_One_Tree_->Branch("pi2_py", &pi2_py, "pi2_py/F");
   X_One_Tree_->Branch("pi2_absPz", &pi2_absPz, "pi2_absPz/F");
+  X_One_Tree_->Branch("pi2_eta", &pi2_eta, "pi2_eta/F");
   X_One_Tree_->Branch("pi2_absEta", &pi2_absEta, "pi2_absEta/F");
+  X_One_Tree_->Branch("pi2_rapidity", &pi2_rapidity, "pi2_rapidity/F");
+  X_One_Tree_->Branch("pi2_absRapidity", &pi2_absRapidity, "pi2_absRapidity/F");
+
+  X_One_Tree_->Branch("Q", &Q, "Q/F");
 
   X_One_Tree_->Branch("dR_mu1_mu2", &dR_mu1_mu2, "dR_mu1_mu2/F");
   X_One_Tree_->Branch("dR_mu3_mu4", &dR_mu3_mu4, "dR_mu3_mu4/F");
@@ -1680,7 +1757,10 @@ void MultiLepPAT::resetVariables() {
   X_PJ_pt = -999.0;
   X_PJ_pz = -999.0;
   X_PJ_absPz = -999.0;
+  X_PJ_eta = -999.0;
   X_PJ_absEta = -999.0;
+  X_PJ_rapidity = -999.0;
+  X_PJ_absRapidity = -999.0;
   X_PJ_px = -999.0;
   X_PJ_py = -999.0;
 
@@ -1692,7 +1772,10 @@ void MultiLepPAT::resetVariables() {
   X_XJ_pt = -999.0;
   X_XJ_pz = -999.0;
   X_XJ_absPz = -999.0;
+  X_XJ_eta = -999.0;
   X_XJ_absEta = -999.0;
+  X_XJ_rapidity = -999.0;
+  X_XJ_absRapidity = -999.0;
   X_XJ_px = -999.0;
   X_XJ_py = -999.0;
 
@@ -1704,7 +1787,10 @@ void MultiLepPAT::resetVariables() {
   X_PP_pt = -999.0;
   X_PP_pz = -999.0;
   X_PP_absPz = -999.0;
+  X_PP_eta = -999.0;
   X_PP_absEta = -999.0;
+  X_PP_rapidity = -999.0;
+  X_PP_absRapidity = -999.0;
   X_PP_px = -999.0;
   X_PP_py = -999.0;
   
@@ -1719,7 +1805,10 @@ void MultiLepPAT::resetVariables() {
   Psi2S_pt = -999.0;
   Psi2S_pz = -999.0;
   Psi2S_absPz = -999.0;
+  Psi2S_eta = -999.0;
   Psi2S_absEta = -999.0;
+  Psi2S_rapidity = -999.0;
+  Psi2S_absRapidity = -999.0;
   Psi2S_px = -999.0;
   Psi2S_py = -999.0;
 
@@ -1734,7 +1823,10 @@ void MultiLepPAT::resetVariables() {
   Jpsi1_pt = -999.0;
   Jpsi1_pz = -999.0;
   Jpsi1_absPz = -999.0;
+  Jpsi1_eta = -999.0;
   Jpsi1_absEta = -999.0;
+  Jpsi1_rapidity = -999.0;
+  Jpsi1_absRapidity = -999.0;
   Jpsi1_px = -999.0;
   Jpsi1_py = -999.0;
 
@@ -1742,13 +1834,16 @@ void MultiLepPAT::resetVariables() {
   Jpsi2_mass = -999.0;
   Jpsi2_VtxProb = -999.0;
   Jpsi2_hasJConstraintFit = false;
-  Jpsi2_hasJConstraintFit = false;
+  Jpsi2_hasPConstraintFit = false;
   Jpsi2_massErr = -999.0;
   Jpsi2_massErrNorm = -999.0;
   Jpsi2_pt = -999.0;
   Jpsi2_pz = -999.0;
   Jpsi2_absPz = -999.0;
+  Jpsi2_eta = -999.0;
   Jpsi2_absEta = -999.0;
+  Jpsi2_rapidity = -999.0;
+  Jpsi2_absRapidity = -999.0;
   Jpsi2_px = -999.0;
   Jpsi2_py = -999.0;
   
@@ -1756,103 +1851,135 @@ void MultiLepPAT::resetVariables() {
   //                    重置 μ子变量 (4 个 μ 子)
   // ============================================================
   // μ子1 - J/ψ1 的正 μ 子
+  mu1_index = -1;
   mu1_pt = -999.0;
   mu1_pz = -999.0;
   mu1_absPz = -999.0;
+  mu1_eta = -999.0;
   mu1_absEta = -999.0;
+  mu1_rapidity = -999.0;
+  mu1_absRapidity = -999.0;
   mu1_px = -999.0;
   mu1_py = -999.0;
   mu1_trackIso = -999.0;
   mu1_d0BS = -999.0;
   mu1_absd0BS = -999.0;
   mu1_d0BSNorm = -999.0;
+  mu1_absd0BSNorm = -999.0;
   mu1_d0BSErr = -999.0;
   mu1_d3dBS = -999.0;
   mu1_absd3dBS = -999.0;
   mu1_d3dBSNorm = -999.0;
+  mu1_absd3dBSNorm = -999.0;
   mu1_d3dBSErr = -999.0;
   mu1_d0PV = -999.0;
   mu1_absd0PV = -999.0;
   mu1_d0PVNorm = -999.0;
+  mu1_absd0PVNorm = -999.0;
   mu1_d0PVErr = -999.0;
   mu1_dzPV = -999.0;
   mu1_absdzPV = -999.0;
   mu1_dzPVNorm = -999.0;
+  mu1_absdzPVNorm = -999.0;
   mu1_dzPVErr = -999.0;
 
   // μ子2 - J/ψ1 的负 μ 子
+  mu2_index = -1;
   mu2_pt = -999.0;
   mu2_pz = -999.0;
   mu2_absPz = -999.0;
+  mu2_eta = -999.0;
   mu2_absEta = -999.0;
+  mu2_rapidity = -999.0;
+  mu2_absRapidity = -999.0;
   mu2_px = -999.0;
   mu2_py = -999.0;
   mu2_trackIso = -999.0;
   mu2_d0BS = -999.0;
   mu2_absd0BS = -999.0;
   mu2_d0BSNorm = -999.0;
+  mu2_absd0BSNorm = -999.0;
   mu2_d0BSErr = -999.0;
   mu2_d3dBS = -999.0;
   mu2_absd3dBS = -999.0;
   mu2_d3dBSNorm = -999.0;
+  mu2_absd3dBSNorm = -999.0;
   mu2_d3dBSErr = -999.0;
   mu2_d0PV = -999.0;
   mu2_absd0PV = -999.0;
   mu2_d0PVNorm = -999.0;
+  mu2_absd0PVNorm = -999.0;
   mu2_d0PVErr = -999.0;
   mu2_dzPV = -999.0;
   mu2_absdzPV = -999.0;
   mu2_dzPVNorm = -999.0;
+  mu2_absdzPVNorm = -999.0;
   mu2_dzPVErr = -999.0;
 
   // μ子3 - J/ψ2 的正 μ 子
+  mu3_index = -1;
   mu3_pt = -999.0;
   mu3_pz = -999.0;
   mu3_absPz = -999.0;
+  mu3_eta = -999.0;
   mu3_absEta = -999.0;
+  mu3_rapidity = -999.0;
+  mu3_absRapidity = -999.0;
   mu3_px = -999.0;
   mu3_py = -999.0;
   mu3_trackIso = -999.0;
   mu3_d0BS = -999.0;
   mu3_absd0BS = -999.0;
   mu3_d0BSNorm = -999.0;
+  mu3_absd0BSNorm = -999.0;
   mu3_d0BSErr = -999.0;
   mu3_d3dBS = -999.0;
   mu3_absd3dBS = -999.0;
   mu3_d3dBSNorm = -999.0;
+  mu3_absd3dBSNorm = -999.0;
   mu3_d3dBSErr = -999.0;
   mu3_d0PV = -999.0;
   mu3_absd0PV = -999.0;
   mu3_d0PVNorm = -999.0;
+  mu3_absd0PVNorm = -999.0;
   mu3_d0PVErr = -999.0;
   mu3_dzPV = -999.0;
   mu3_absdzPV = -999.0;
   mu3_dzPVNorm = -999.0;
+  mu3_absdzPVNorm = -999.0;
   mu3_dzPVErr = -999.0;
   
   // μ子4 - J/ψ2 的负 μ 子
+  mu4_index = -1;
   mu4_pt = -999.0;
   mu4_pz = -999.0;
   mu4_absPz = -999.0;
+  mu4_eta = -999.0;
   mu4_absEta = -999.0;
+  mu4_rapidity = -999.0;
+  mu4_absRapidity = -999.0;
   mu4_px = -999.0;
   mu4_py = -999.0;
   mu4_trackIso = -999.0;
   mu4_d0BS = -999.0;
   mu4_absd0BS = -999.0;
   mu4_d0BSNorm = -999.0;
+  mu4_absd0BSNorm = -999.0;
   mu4_d0BSErr = -999.0;
   mu4_d3dBS = -999.0;
   mu4_absd3dBS = -999.0;
   mu4_d3dBSNorm = -999.0;
+  mu4_absd3dBSNorm = -999.0;
   mu4_d3dBSErr = -999.0;
   mu4_d0PV = -999.0;
   mu4_absd0PV = -999.0;
   mu4_d0PVNorm = -999.0;
+  mu4_absd0PVNorm = -999.0;
   mu4_d0PVErr = -999.0;
   mu4_dzPV = -999.0;
   mu4_absdzPV = -999.0;
   mu4_dzPVNorm = -999.0;
+  mu4_absdzPVNorm = -999.0;
   mu4_dzPVErr = -999.0;
   
   // ============================================================
@@ -1864,33 +1991,38 @@ void MultiLepPAT::resetVariables() {
   nMediumMuons = 0;
   
   // ============================================================
-  //                    重置 μ子触发匹配标志
-  // ============================================================
-  mu1_hasFilterMatch = 0;
-  mu2_hasFilterMatch = 0;
-  mu3_hasFilterMatch = 0;
-  mu4_hasFilterMatch = 0;
-  
-  // ============================================================
   //                    重置 π 子变量 (2 个 π 子)
   // ============================================================
   pipi_mass = -999.0;
 
   // π子1 - 正 π 子
+  pi1_index = -1;
   pi1_pt = -999.0;
   pi1_pz = -999.0;
   pi1_absPz = -999.0;
+  pi1_eta = -999.0;
   pi1_absEta = -999.0;
+  pi1_rapidity = -999.0;
+  pi1_absRapidity = -999.0;
   pi1_px = -999.0;
   pi1_py = -999.0;
 
   // π子2 - 负 π 子
+  pi2_index = -1;
   pi2_pt = -999.0;
   pi2_pz = -999.0;
   pi2_absPz = -999.0;
+  pi2_eta = -999.0;
   pi2_absEta = -999.0;
+  pi2_rapidity = -999.0;
+  pi2_absRapidity = -999.0;
   pi2_px = -999.0;
   pi2_py = -999.0;
+  
+  // ============================================================
+  //                    重置派生量 Q
+  // ============================================================
+  Q = -999.0;
 
   // ============================================================
   //                    重置 δR 关联变量
@@ -1942,7 +2074,9 @@ bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 X_PJ 变量
   if (!std::isfinite(X_PJ_mass) || !std::isfinite(X_PJ_VtxProb) ||
       !std::isfinite(X_PJ_massErr) || !std::isfinite(X_PJ_pt) ||
-      !std::isfinite(X_PJ_pz) || !std::isfinite(X_PJ_absPz) || !std::isfinite(X_PJ_absEta) ||
+      !std::isfinite(X_PJ_pz) || !std::isfinite(X_PJ_absPz) ||
+      !std::isfinite(X_PJ_eta) || !std::isfinite(X_PJ_absEta) ||
+      !std::isfinite(X_PJ_rapidity) || !std::isfinite(X_PJ_absRapidity) ||
       !std::isfinite(X_PJ_px) || !std::isfinite(X_PJ_py)) {
     return false;
   }
@@ -1950,7 +2084,9 @@ bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 X_XJ 变量
   if (!std::isfinite(X_XJ_mass) || !std::isfinite(X_XJ_VtxProb) ||
       !std::isfinite(X_XJ_massErr) || !std::isfinite(X_XJ_pt) ||
-      !std::isfinite(X_XJ_pz) || !std::isfinite(X_XJ_absPz) || !std::isfinite(X_XJ_absEta) ||
+      !std::isfinite(X_XJ_pz) || !std::isfinite(X_XJ_absPz) ||
+      !std::isfinite(X_XJ_eta) || !std::isfinite(X_XJ_absEta) ||
+      !std::isfinite(X_XJ_rapidity) || !std::isfinite(X_XJ_absRapidity) ||
       !std::isfinite(X_XJ_px) || !std::isfinite(X_XJ_py)) {
     return false;
   }
@@ -1958,7 +2094,9 @@ bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 X_PP 变量
   if (!std::isfinite(X_PP_mass) || !std::isfinite(X_PP_VtxProb) ||
       !std::isfinite(X_PP_massErr) || !std::isfinite(X_PP_pt) ||
-      !std::isfinite(X_PP_pz) || !std::isfinite(X_PP_absPz) || !std::isfinite(X_PP_absEta) ||
+      !std::isfinite(X_PP_pz) || !std::isfinite(X_PP_absPz) ||
+      !std::isfinite(X_PP_eta) || !std::isfinite(X_PP_absEta) ||
+      !std::isfinite(X_PP_rapidity) || !std::isfinite(X_PP_absRapidity) ||
       !std::isfinite(X_PP_px) || !std::isfinite(X_PP_py)) {
     return false;
   }
@@ -1966,7 +2104,8 @@ bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 Psi2S 变量
   if (!std::isfinite(Psi2S_mass) || !std::isfinite(Psi2S_VtxProb) ||
       !std::isfinite(Psi2S_massErr) || !std::isfinite(Psi2S_pt) ||
-      !std::isfinite(Psi2S_pz) || !std::isfinite(Psi2S_absEta) ||
+      !std::isfinite(Psi2S_pz) || !std::isfinite(Psi2S_eta) || !std::isfinite(Psi2S_absEta) ||
+      !std::isfinite(Psi2S_rapidity) || !std::isfinite(Psi2S_absRapidity) ||
       !std::isfinite(Psi2S_px) || !std::isfinite(Psi2S_py)) {
     return false;
   }
@@ -1974,93 +2113,116 @@ bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 Jpsi1 变量
   if (!std::isfinite(Jpsi1_mass) || !std::isfinite(Jpsi1_VtxProb) ||
       !std::isfinite(Jpsi1_massErr) || !std::isfinite(Jpsi1_pt) ||
-      !std::isfinite(Jpsi1_pz) || !std::isfinite(Jpsi1_px) || !std::isfinite(Jpsi1_py) ||
-      !std::isfinite(Jpsi1_absEta)) {
+      !std::isfinite(Jpsi1_pz) || !std::isfinite(Jpsi1_eta) || !std::isfinite(Jpsi1_absEta) ||
+      !std::isfinite(Jpsi1_rapidity) || !std::isfinite(Jpsi1_absRapidity) ||
+      !std::isfinite(Jpsi1_px) || !std::isfinite(Jpsi1_py)) {
     return false;
   }
 
   // 检查 Jpsi2 变量
   if (!std::isfinite(Jpsi2_mass) || !std::isfinite(Jpsi2_VtxProb) ||
       !std::isfinite(Jpsi2_massErr) || !std::isfinite(Jpsi2_pt) ||
-      !std::isfinite(Jpsi2_pz) || !std::isfinite(Jpsi2_px) || !std::isfinite(Jpsi2_py) ||
-      !std::isfinite(Jpsi2_absEta)) {
+      !std::isfinite(Jpsi2_pz) || !std::isfinite(Jpsi2_eta) || !std::isfinite(Jpsi2_absEta) ||
+      !std::isfinite(Jpsi2_rapidity) || !std::isfinite(Jpsi2_absRapidity) ||
+      !std::isfinite(Jpsi2_px) || !std::isfinite(Jpsi2_py)) {
     return false;
   }
 
   // 检查 μ1 变量
   if (!std::isfinite(mu1_pt) || !std::isfinite(mu1_pz) ||
       !std::isfinite(mu1_px) || !std::isfinite(mu1_py) ||
-      !std::isfinite(mu1_absEta) || !std::isfinite(mu1_trackIso) ||
-      !std::isfinite(mu1_d0BS) || !std::isfinite(mu1_absd0BS) ||
-      !std::isfinite(mu1_d0BSNorm) || !std::isfinite(mu1_d0BSErr) ||
+      !std::isfinite(mu1_eta) || !std::isfinite(mu1_absEta) ||
+      !std::isfinite(mu1_rapidity) || !std::isfinite(mu1_absRapidity) ||
+      !std::isfinite(mu1_trackIso) || !std::isfinite(mu1_d0BS) ||
+      !std::isfinite(mu1_absd0BS) || !std::isfinite(mu1_d0BSNorm) ||
+      !std::isfinite(mu1_absd0BSNorm) || !std::isfinite(mu1_d0BSErr) ||
       !std::isfinite(mu1_d3dBS) || !std::isfinite(mu1_absd3dBS) ||
-      !std::isfinite(mu1_d3dBSNorm) || !std::isfinite(mu1_d3dBSErr) ||
-      !std::isfinite(mu1_d0PV) || !std::isfinite(mu1_absd0PV) ||
-      !std::isfinite(mu1_d0PVNorm) || !std::isfinite(mu1_d0PVErr) ||
+      !std::isfinite(mu1_d3dBSNorm) || !std::isfinite(mu1_absd3dBSNorm) ||
+      !std::isfinite(mu1_d3dBSErr) || !std::isfinite(mu1_d0PV) ||
+      !std::isfinite(mu1_absd0PV) || !std::isfinite(mu1_d0PVNorm) ||
+      !std::isfinite(mu1_absd0PVNorm) || !std::isfinite(mu1_d0PVErr) ||
       !std::isfinite(mu1_dzPV) || !std::isfinite(mu1_absdzPV) ||
-      !std::isfinite(mu1_dzPVNorm) || !std::isfinite(mu1_dzPVErr)) {
+      !std::isfinite(mu1_dzPVNorm) || !std::isfinite(mu1_absdzPVNorm) ||
+      !std::isfinite(mu1_dzPVErr)) {
     return false;
   }
 
   // 检查 μ2 变量
   if (!std::isfinite(mu2_pt) || !std::isfinite(mu2_pz) ||
       !std::isfinite(mu2_px) || !std::isfinite(mu2_py) ||
-      !std::isfinite(mu2_absEta) || !std::isfinite(mu2_trackIso) ||
-      !std::isfinite(mu2_d0BS) || !std::isfinite(mu2_absd0BS) ||
-      !std::isfinite(mu2_d0BSNorm) || !std::isfinite(mu2_d0BSErr) ||
+      !std::isfinite(mu2_eta) || !std::isfinite(mu2_absEta) ||
+      !std::isfinite(mu2_rapidity) || !std::isfinite(mu2_absRapidity) ||
+      !std::isfinite(mu2_trackIso) || !std::isfinite(mu2_d0BS) ||
+      !std::isfinite(mu2_absd0BS) || !std::isfinite(mu2_d0BSNorm) ||
+      !std::isfinite(mu2_absd0BSNorm) || !std::isfinite(mu2_d0BSErr) ||
       !std::isfinite(mu2_d3dBS) || !std::isfinite(mu2_absd3dBS) ||
-      !std::isfinite(mu2_d3dBSNorm) || !std::isfinite(mu2_d3dBSErr) ||
-      !std::isfinite(mu2_d0PV) || !std::isfinite(mu2_absd0PV) ||
-      !std::isfinite(mu2_d0PVNorm) || !std::isfinite(mu2_d0PVErr) ||
+      !std::isfinite(mu2_d3dBSNorm) || !std::isfinite(mu2_absd3dBSNorm) ||
+      !std::isfinite(mu2_d3dBSErr) || !std::isfinite(mu2_d0PV) ||
+      !std::isfinite(mu2_absd0PV) || !std::isfinite(mu2_d0PVNorm) ||
+      !std::isfinite(mu2_absd0PVNorm) || !std::isfinite(mu2_d0PVErr) ||
       !std::isfinite(mu2_dzPV) || !std::isfinite(mu2_absdzPV) ||
-      !std::isfinite(mu2_dzPVNorm) || !std::isfinite(mu2_dzPVErr)) {
+      !std::isfinite(mu2_dzPVNorm) || !std::isfinite(mu2_absdzPVNorm) ||
+      !std::isfinite(mu2_dzPVErr)) {
     return false;
   }
 
   // 检查 μ3 变量
   if (!std::isfinite(mu3_pt) || !std::isfinite(mu3_pz) ||
       !std::isfinite(mu3_px) || !std::isfinite(mu3_py) ||
-      !std::isfinite(mu3_absEta) || !std::isfinite(mu3_trackIso) ||
-      !std::isfinite(mu3_d0BS) || !std::isfinite(mu3_absd0BS) ||
-      !std::isfinite(mu3_d0BSNorm) || !std::isfinite(mu3_d0BSErr) ||
+      !std::isfinite(mu3_eta) || !std::isfinite(mu3_absEta) ||
+      !std::isfinite(mu3_rapidity) || !std::isfinite(mu3_absRapidity) ||
+      !std::isfinite(mu3_trackIso) || !std::isfinite(mu3_d0BS) ||
+      !std::isfinite(mu3_absd0BS) || !std::isfinite(mu3_d0BSNorm) ||
+      !std::isfinite(mu3_absd0BSNorm) || !std::isfinite(mu3_d0BSErr) ||
       !std::isfinite(mu3_d3dBS) || !std::isfinite(mu3_absd3dBS) ||
-      !std::isfinite(mu3_d3dBSNorm) || !std::isfinite(mu3_d3dBSErr) ||
-      !std::isfinite(mu3_d0PV) || !std::isfinite(mu3_absd0PV) ||
-      !std::isfinite(mu3_d0PVNorm) || !std::isfinite(mu3_d0PVErr) ||
+      !std::isfinite(mu3_d3dBSNorm) || !std::isfinite(mu3_absd3dBSNorm) ||
+      !std::isfinite(mu3_d3dBSErr) || !std::isfinite(mu3_d0PV) ||
+      !std::isfinite(mu3_absd0PV) || !std::isfinite(mu3_d0PVNorm) ||
+      !std::isfinite(mu3_absd0PVNorm) || !std::isfinite(mu3_d0PVErr) ||
       !std::isfinite(mu3_dzPV) || !std::isfinite(mu3_absdzPV) ||
-      !std::isfinite(mu3_dzPVNorm) || !std::isfinite(mu3_dzPVErr)) {
+      !std::isfinite(mu3_dzPVNorm) || !std::isfinite(mu3_absdzPVNorm) ||
+      !std::isfinite(mu3_dzPVErr)) {
     return false;
   }
 
   // 检查 μ4 变量
   if (!std::isfinite(mu4_pt) || !std::isfinite(mu4_pz) ||
       !std::isfinite(mu4_px) || !std::isfinite(mu4_py) ||
-      !std::isfinite(mu4_absEta) || !std::isfinite(mu4_trackIso) ||
-      !std::isfinite(mu4_d0BS) || !std::isfinite(mu4_absd0BS) ||
-      !std::isfinite(mu4_d0BSNorm) || !std::isfinite(mu4_d0BSErr) ||
+      !std::isfinite(mu4_eta) || !std::isfinite(mu4_absEta) ||
+      !std::isfinite(mu4_rapidity) || !std::isfinite(mu4_absRapidity) ||
+      !std::isfinite(mu4_trackIso) || !std::isfinite(mu4_d0BS) ||
+      !std::isfinite(mu4_absd0BS) || !std::isfinite(mu4_d0BSNorm) ||
+      !std::isfinite(mu4_absd0BSNorm) || !std::isfinite(mu4_d0BSErr) ||
       !std::isfinite(mu4_d3dBS) || !std::isfinite(mu4_absd3dBS) ||
-      !std::isfinite(mu4_d3dBSNorm) || !std::isfinite(mu4_d3dBSErr) ||
-      !std::isfinite(mu4_d0PV) || !std::isfinite(mu4_absd0PV) ||
-      !std::isfinite(mu4_d0PVNorm) || !std::isfinite(mu4_d0PVErr) ||
+      !std::isfinite(mu4_d3dBSNorm) || !std::isfinite(mu4_absd3dBSNorm) ||
+      !std::isfinite(mu4_d3dBSErr) || !std::isfinite(mu4_d0PV) ||
+      !std::isfinite(mu4_absd0PV) || !std::isfinite(mu4_d0PVNorm) ||
+      !std::isfinite(mu4_absd0PVNorm) || !std::isfinite(mu4_d0PVErr) ||
       !std::isfinite(mu4_dzPV) || !std::isfinite(mu4_absdzPV) ||
-      !std::isfinite(mu4_dzPVNorm) || !std::isfinite(mu4_dzPVErr)) {
+      !std::isfinite(mu4_dzPVNorm) || !std::isfinite(mu4_absdzPVNorm) ||
+      !std::isfinite(mu4_dzPVErr)) {
     return false;
   }
 
   // 检查 π1 变量
   if (!std::isfinite(pi1_pt) || !std::isfinite(pi1_pz) ||
       !std::isfinite(pi1_px) || !std::isfinite(pi1_py) ||
-      !std::isfinite(pi1_absEta)) {
+      !std::isfinite(pi1_eta) || !std::isfinite(pi1_absEta) ||
+      !std::isfinite(pi1_rapidity) || !std::isfinite(pi1_absRapidity)) {
     return false;
   }
 
   // 检查 π2 变量
   if (!std::isfinite(pi2_pt) || !std::isfinite(pi2_pz) ||
       !std::isfinite(pi2_px) || !std::isfinite(pi2_py) ||
-      !std::isfinite(pi2_absEta)) {
+      !std::isfinite(pi2_eta) || !std::isfinite(pi2_absEta) ||
+      !std::isfinite(pi2_rapidity) || !std::isfinite(pi2_absRapidity)) {
     return false;
   }
-
+  // 检查派生量 Q
+  if (!std::isfinite(Q)) {
+    return false;
+  }
   // 检查 DeltaR 变量
   if (!std::isfinite(dR_mu1_mu2) || !std::isfinite(dR_mu3_mu4) ||
       !std::isfinite(dR_pi1_pi2) || !std::isfinite(dR_Psi2S_Jpsi1) ||

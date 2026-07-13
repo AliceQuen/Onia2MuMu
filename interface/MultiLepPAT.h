@@ -27,6 +27,7 @@
 
 // 质量约束拟合的精度 (GeV)
 // 过小: 拟合不稳定; 过大: 失去约束效果
+#include <Math/Vector4Dfwd.h>
 #define MASS_CONSTRAINT_PRECISION 0.001
 
 // 粒子标称质量 (GeV) - 定义于 MultiLepPAT.cc
@@ -38,84 +39,36 @@
 // system include files
 #include <memory>
 #include "DataFormats/PatCandidates/interface/Muon.h"
-#include "DataFormats/MuonReco/interface/MuonSelectors.h"
 #include "DataFormats/PatCandidates/interface/PackedCandidate.h"
 
 // user include files
 #include "FWCore/Framework/interface/Frameworkfwd.h"
 #include "FWCore/Framework/interface/one/EDAnalyzer.h"
 #include "FWCore/Framework/interface/Event.h"
-#include "FWCore/Framework/interface/MakerMacros.h"
 
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "FWCore/Framework/interface/EventSetup.h"
-#include "FWCore/Framework/interface/ESHandle.h"
-#include "DataFormats/Common/interface/Handle.h"
-#include "DataFormats/Math/interface/Error.h"
-#include "DataFormats/Math/interface/LorentzVector.h"
-#include "DataFormats/Math/interface/Point3D.h"
-#include "DataFormats/Math/interface/Vector3D.h"
-#include "Math/VectorUtil.h"
 
 #include "Geometry/CommonDetUnit/interface/GeomDet.h"
 
-#include "SimDataFormats/GeneratorProducts/interface/HepMCProduct.h"
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
-#include "TrackingTools/TransientTrack/interface/TransientTrackBuilder.h"
-#include "TrackingTools/Records/interface/TransientTrackRecord.h"
-#include "RecoVertex/KinematicFit/interface/KinematicParticleVertexFitter.h"
-#include "RecoVertex/KinematicFit/interface/KinematicParticleFitter.h"
-#include "RecoVertex/KinematicFit/interface/MassKinematicConstraint.h"
 #include "RecoVertex/KinematicFitPrimitives/interface/KinematicParticle.h"
 #include "RecoVertex/KinematicFitPrimitives/interface/RefCountedKinematicParticle.h"
-#include "RecoVertex/KinematicFitPrimitives/interface/TransientTrackKinematicParticle.h"
-#include "RecoVertex/KinematicFitPrimitives/interface/KinematicParticleFactoryFromTransientTrack.h"
-#include "TrackingTools/TransientTrack/interface/TransientTrackFromFTSFactory.h"
 
-#include "DataFormats/TrackReco/interface/Track.h"
-#include "DataFormats/VertexReco/interface/Vertex.h"
 #include "DataFormats/VertexReco/interface/VertexFwd.h"
-#include "DataFormats/Candidate/interface/Candidate.h"
-#include "DataFormats/Candidate/interface/CompositeCandidate.h"
-#include "DataFormats/Candidate/interface/VertexCompositeCandidate.h"
-#include "DataFormats/V0Candidate/interface/V0Candidate.h"
-#include "RecoVertex/VertexTools/interface/VertexDistanceXY.h"
 
-#include "Geometry/Records/interface/TrackerDigiGeometryRecord.h"
 
-#include "CondFormats/L1TObjects/interface/L1GtTriggerMenu.h"
-#include "CondFormats/DataRecord/interface/L1GtTriggerMenuRcd.h"
-#include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerReadoutSetupFwd.h"
-#include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerObjectMapRecord.h"
-#include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerReadoutSetup.h"
-#include "DataFormats/L1GlobalTrigger/interface/L1GlobalTriggerReadoutRecord.h"
 
-#include "DataFormats/MuonReco/interface/Muon.h"
-#include "DataFormats/MuonReco/interface/MuonFwd.h"
 
-#include "HLTrigger/HLTcore/interface/HLTConfigProvider.h"
 
-#include "DataFormats/Common/interface/ValueMap.h"
-#include "DataFormats/TrackReco/interface/DeDxData.h"
 
-#include "DataFormats/Luminosity/interface/LumiSummary.h"
-#include "DataFormats/Luminosity/interface/LumiDetails.h"
-#include "PhysicsTools/RecoUtils/interface/CheckHitPattern.h"
 
-#include "TFile.h"
 #include "TTree.h"
-#include "TVector3.h"
 
 #include <vector>
-#include <utility>
-#include <map>
 #include <string>
 
-#include "CLHEP/Matrix/Vector.h"
-#include "CLHEP/Matrix/Matrix.h"
-#include "CLHEP/Matrix/SymMatrix.h"
 
-#include "DataFormats/MuonReco/interface/MuonSelectors.h"
 
 // ============================================================
 //                    类型定义
@@ -144,11 +97,17 @@ struct JpsiCandidate {
     edm::View<pat::Muon>::const_iterator muMinus;  ///< 负 μ 子迭代器
 
     // ============================================================
+    //                    粒子索引
+    // ============================================================
+    int muPlusIndex{-1};                             ///< 正 μ 子在 PATMuonHandle 中的索引
+    int muMinusIndex{-1};                            ///< 负 μ 子在 PATMuonHandle 中的索引
+
+    // ============================================================
     //             普通顶点拟合结果 (无质量约束)
     // ============================================================
-    double mass;                                    ///< 拟合不变质量 [GeV]
-    double vtxProb;                                 ///< 顶点概率 (χ² 概率)
-    double massErr;                                 ///< 质量误差 [GeV]
+    double mass{};                                    ///< 拟合不变质量 [GeV]
+    double vtxProb{};                                 ///< 顶点概率 (χ² 概率)
+    double massErr{};                                 ///< 质量误差 [GeV]
     ROOT::Math::PxPyPzMVector p4;                   ///< 四动量 (px, py, pz, mass)
 
     // ============================================================
@@ -166,8 +125,8 @@ struct JpsiCandidate {
     // ============================================================
     //                    其他关联信息
     // ============================================================
-    bool filterMatchPlus;                            ///< 正 μ 子触发过滤器匹配标志
-    bool filterMatchMinus;                           ///< 负 μ 子触发过滤器匹配标志
+    bool filterMatchPlus{};                            ///< 正 μ 子触发过滤器匹配标志
+    bool filterMatchMinus{};                           ///< 负 μ 子触发过滤器匹配标志
 };
 
 ////////////////////////////////////////////////////////////////
@@ -355,7 +314,10 @@ private:
     float X_PJ_pt;                          ///< 横动量 [GeV]
     float X_PJ_pz;                          ///< Z 方向动量分量 [GeV]
     float X_PJ_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
+    float X_PJ_eta;                         ///< 赝快度
     float X_PJ_absEta;                      ///< 赝快度绝对值
+    float X_PJ_rapidity;                    ///< 快度
+    float X_PJ_absRapidity;                 ///< 快度绝对值
     float X_PJ_px;                          ///< X 方向动量分量 [GeV]
     float X_PJ_py;                          ///< Y 方向动量分量 [GeV]
 
@@ -370,7 +332,10 @@ private:
     float X_XJ_pt;                          ///< 横动量 [GeV]
     float X_XJ_pz;                          ///< Z 方向动量分量 [GeV]
     float X_XJ_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
+    float X_XJ_eta;                         ///< 赝快度
     float X_XJ_absEta;                      ///< 赝快度绝对值
+    float X_XJ_rapidity;                    ///< 快度
+    float X_XJ_absRapidity;                 ///< 快度绝对值
     float X_XJ_px;                          ///< X 方向动量分量 [GeV]
     float X_XJ_py;                          ///< Y 方向动量分量 [GeV]
 
@@ -385,7 +350,10 @@ private:
     float X_PP_pt;                          ///< 横动量 [GeV]
     float X_PP_pz;                          ///< Z 方向动量分量 [GeV]
     float X_PP_absPz;                       ///< Z 方向动量分量绝对值 [GeV]
+    float X_PP_eta;                         ///< 赝快度
     float X_PP_absEta;                      ///< 赝快度绝对值
+    float X_PP_rapidity;                    ///< 快度
+    float X_PP_absRapidity;                 ///< 快度绝对值
     float X_PP_px;                          ///< X 方向动量分量 [GeV]
     float X_PP_py;                          ///< Y 方向动量分量 [GeV]
 
@@ -400,7 +368,10 @@ private:
     float Psi2S_pt;                         ///< 横动量 [GeV]
     float Psi2S_pz;                         ///< Z 方向动量分量 [GeV]
     float Psi2S_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
+    float Psi2S_eta;                        ///< 赝快度
     float Psi2S_absEta;                     ///< 赝快度绝对值
+    float Psi2S_rapidity;                   ///< 快度
+    float Psi2S_absRapidity;                ///< 快度绝对值
     float Psi2S_px;                         ///< X 方向动量分量 [GeV]
     float Psi2S_py;                         ///< Y 方向动量分量 [GeV]
 
@@ -414,7 +385,10 @@ private:
     float Jpsi1_pt;                         ///< 横动量 [GeV]
     float Jpsi1_pz;                         ///< Z 方向动量分量 [GeV]
     float Jpsi1_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
+    float Jpsi1_eta;                        ///< 赝快度
     float Jpsi1_absEta;                     ///< 赝快度绝对值
+    float Jpsi1_rapidity;                   ///< 快度
+    float Jpsi1_absRapidity;                ///< 快度绝对值
     float Jpsi1_px;                         ///< X 方向动量分量 [GeV]
     float Jpsi1_py;                         ///< Y 方向动量分量 [GeV]
 
@@ -432,7 +406,10 @@ private:
     float Jpsi2_pt;                         ///< 横动量 [GeV]
     float Jpsi2_pz;                         ///< Z 方向动量分量 [GeV]
     float Jpsi2_absPz;                      ///< Z 方向动量分量绝对值 [GeV]
+    float Jpsi2_eta;                        ///< 赝快度
     float Jpsi2_absEta;                     ///< 赝快度绝对值
+    float Jpsi2_rapidity;                   ///< 快度
+    float Jpsi2_absRapidity;                ///< 快度绝对值
     float Jpsi2_px;                         ///< X 方向动量分量 [GeV]
     float Jpsi2_py;                         ///< Y 方向动量分量 [GeV]
 
@@ -441,103 +418,135 @@ private:
     // ============================================================
 
     /// μ₁ - 第一个正 μ子 (参与 J/ψ₁)
+    int mu1_index;                           ///< 在 PATMuonHandle 中的索引
     float mu1_pt;                           ///< 横动量 [GeV]
     float mu1_pz;                           ///< Z 方向动量分量 [GeV]
     float mu1_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float mu1_eta;                          ///< 赝快度
     float mu1_absEta;                       ///< 赝快度绝对值
+    float mu1_rapidity;                     ///< 快度
+    float mu1_absRapidity;                  ///< 快度绝对值
     float mu1_px;                           ///< X 方向动量分量 [GeV]
     float mu1_py;                           ///< Y 方向动量分量 [GeV]
     float mu1_trackIso;                     ///< 径迹隔离度
     float mu1_d0BS;                          ///< 相对于束斑的横向碰撞参数 [cm]
     float mu1_absd0BS;                       ///< 相对于束斑的横向碰撞参数绝对值 [cm]
     float mu1_d0BSNorm;                      ///< d0_BS 除以误差归一化 [cm/cm]
+    float mu1_absd0BSNorm;                  ///< d0_BS 归一化值的绝对值 [cm/cm]
     float mu1_d0BSErr;                       ///< d0_BS 的非归一化误差 [cm]
     float mu1_d3dBS;                         ///< 相对于束斑的三维碰撞参数 [cm]
     float mu1_absd3dBS;                      ///< 相对于束斑的三维碰撞参数绝对值 [cm]
     float mu1_d3dBSNorm;                     ///< d3d_BS 除以误差归一化 [cm/cm]
+    float mu1_absd3dBSNorm;                  ///< d3d_BS 归一化值的绝对值 [cm/cm]
     float mu1_d3dBSErr;                      ///< d3d_BS 的非归一化误差 [cm]
     float mu1_d0PV;                          ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu1_absd0PV;                       ///< 相对于主顶点的横向碰撞参数绝对值 [cm]
     float mu1_d0PVNorm;                      ///< d0_PV 除以误差归一化 [cm/cm]
+    float mu1_absd0PVNorm;                  ///< d0_PV 归一化值的绝对值 [cm/cm]
     float mu1_d0PVErr;                       ///< d0_PV 的非归一化误差 [cm]
     float mu1_dzPV;                          ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu1_absdzPV;                       ///< 相对于主顶点的纵向碰撞参数绝对值 [cm]
     float mu1_dzPVNorm;                      ///< dz_PV 除以误差归一化 [cm/cm]
+    float mu1_absdzPVNorm;                  ///< dz_PV 归一化值的绝对值 [cm/cm]
     float mu1_dzPVErr;                       ///< dz_PV 的非归一化误差 [cm]
 
     /// μ₂ - 第一个负 μ子 (参与 J/ψ₁)
+    int mu2_index;                           ///< 在 PATMuonHandle 中的索引
     float mu2_pt;                           ///< 横动量 [GeV]
     float mu2_pz;                           ///< Z 方向动量分量 [GeV]
     float mu2_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float mu2_eta;                          ///< 赝快度
     float mu2_absEta;                       ///< 赝快度绝对值
+    float mu2_rapidity;                     ///< 快度
+    float mu2_absRapidity;                  ///< 快度绝对值
     float mu2_px;                           ///< X 方向动量分量 [GeV]
     float mu2_py;                           ///< Y 方向动量分量 [GeV]
     float mu2_trackIso;                     ///< 径迹隔离度
     float mu2_d0BS;                          ///< 相对于束斑的横向碰撞参数 [cm]
     float mu2_absd0BS;                       ///< 相对于束斑的横向碰撞参数绝对值 [cm]
     float mu2_d0BSNorm;                      ///< d0_BS 除以误差归一化 [cm/cm]
+    float mu2_absd0BSNorm;                  ///< d0_BS 归一化值的绝对值 [cm/cm]
     float mu2_d0BSErr;                       ///< d0_BS 的非归一化误差 [cm]
     float mu2_d3dBS;                         ///< 相对于束斑的三维碰撞参数 [cm]
     float mu2_absd3dBS;                      ///< 相对于束斑的三维碰撞参数绝对值 [cm]
     float mu2_d3dBSNorm;                     ///< d3d_BS 除以误差归一化 [cm/cm]
+    float mu2_absd3dBSNorm;                  ///< d3d_BS 归一化值的绝对值 [cm/cm]
     float mu2_d3dBSErr;                      ///< d3d_BS 的非归一化误差 [cm]
     float mu2_d0PV;                          ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu2_absd0PV;                       ///< 相对于主顶点的横向碰撞参数绝对值 [cm]
     float mu2_d0PVNorm;                      ///< d0_PV 除以误差归一化 [cm/cm]
+    float mu2_absd0PVNorm;                  ///< d0_PV 归一化值的绝对值 [cm/cm]
     float mu2_d0PVErr;                       ///< d0_PV 的非归一化误差 [cm]
     float mu2_dzPV;                          ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu2_absdzPV;                       ///< 相对于主顶点的纵向碰撞参数绝对值 [cm]
     float mu2_dzPVNorm;                      ///< dz_PV 除以误差归一化 [cm/cm]
+    float mu2_absdzPVNorm;                  ///< dz_PV 归一化值的绝对值 [cm/cm]
     float mu2_dzPVErr;                       ///< dz_PV 的非归一化误差 [cm]
 
     /// μ₃ - 第二个正 μ子 (参与 J/ψ₂)
+    int mu3_index;                           ///< 在 PATMuonHandle 中的索引
     float mu3_pt;                           ///< 横动量 [GeV]
     float mu3_pz;                           ///< Z 方向动量分量 [GeV]
     float mu3_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float mu3_eta;                          ///< 赝快度
     float mu3_absEta;                       ///< 赝快度绝对值
+    float mu3_rapidity;                     ///< 快度
+    float mu3_absRapidity;                  ///< 快度绝对值
     float mu3_px;                           ///< X 方向动量分量 [GeV]
     float mu3_py;                           ///< Y 方向动量分量 [GeV]
     float mu3_trackIso;                     ///< 径迹隔离度
     float mu3_d0BS;                          ///< 相对于束斑的横向碰撞参数 [cm]
     float mu3_absd0BS;                       ///< 相对于束斑的横向碰撞参数绝对值 [cm]
     float mu3_d0BSNorm;                      ///< d0_BS 除以误差归一化 [cm/cm]
+    float mu3_absd0BSNorm;                  ///< d0_BS 归一化值的绝对值 [cm/cm]
     float mu3_d0BSErr;                       ///< d0_BS 的非归一化误差 [cm]
     float mu3_d3dBS;                         ///< 相对于束斑的三维碰撞参数 [cm]
     float mu3_absd3dBS;                      ///< 相对于束斑的三维碰撞参数绝对值 [cm]
     float mu3_d3dBSNorm;                     ///< d3d_BS 除以误差归一化 [cm/cm]
+    float mu3_absd3dBSNorm;                  ///< d3d_BS 归一化值的绝对值 [cm/cm]
     float mu3_d3dBSErr;                      ///< d3d_BS 的非归一化误差 [cm]
     float mu3_d0PV;                          ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu3_absd0PV;                       ///< 相对于主顶点的横向碰撞参数绝对值 [cm]
     float mu3_d0PVNorm;                      ///< d0_PV 除以误差归一化 [cm/cm]
+    float mu3_absd0PVNorm;                  ///< d0_PV 归一化值的绝对值 [cm/cm]
     float mu3_d0PVErr;                       ///< d0_PV 的非归一化误差 [cm]
     float mu3_dzPV;                          ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu3_absdzPV;                       ///< 相对于主顶点的纵向碰撞参数绝对值 [cm]
     float mu3_dzPVNorm;                      ///< dz_PV 除以误差归一化 [cm/cm]
+    float mu3_absdzPVNorm;                  ///< dz_PV 归一化值的绝对值 [cm/cm]
     float mu3_dzPVErr;                       ///< dz_PV 的非归一化误差 [cm]
 
     /// μ₄ - 第二个负 μ子 (参与 J/ψ₂)
+    int mu4_index;                           ///< 在 PATMuonHandle 中的索引
     float mu4_pt;                           ///< 横动量 [GeV]
     float mu4_pz;                           ///< Z 方向动量分量 [GeV]
     float mu4_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float mu4_eta;                          ///< 赝快度
     float mu4_absEta;                       ///< 赝快度绝对值
+    float mu4_rapidity;                     ///< 快度
+    float mu4_absRapidity;                  ///< 快度绝对值
     float mu4_px;                           ///< X 方向动量分量 [GeV]
     float mu4_py;                           ///< Y 方向动量分量 [GeV]
     float mu4_trackIso;                     ///< 径迹隔离度
     float mu4_d0BS;                          ///< 相对于束斑的横向碰撞参数 [cm]
     float mu4_absd0BS;                       ///< 相对于束斑的横向碰撞参数绝对值 [cm]
     float mu4_d0BSNorm;                      ///< d0_BS 除以误差归一化 [cm/cm]
+    float mu4_absd0BSNorm;                  ///< d0_BS 归一化值的绝对值 [cm/cm]
     float mu4_d0BSErr;                       ///< d0_BS 的非归一化误差 [cm]
     float mu4_d3dBS;                         ///< 相对于束斑的三维碰撞参数 [cm]
     float mu4_absd3dBS;                      ///< 相对于束斑的三维碰撞参数绝对值 [cm]
     float mu4_d3dBSNorm;                     ///< d3d_BS 除以误差归一化 [cm/cm]
+    float mu4_absd3dBSNorm;                  ///< d3d_BS 归一化值的绝对值 [cm/cm]
     float mu4_d3dBSErr;                      ///< d3d_BS 的非归一化误差 [cm]
     float mu4_d0PV;                          ///< 相对于主顶点的横向碰撞参数 [cm]
     float mu4_absd0PV;                       ///< 相对于主顶点的横向碰撞参数绝对值 [cm]
     float mu4_d0PVNorm;                      ///< d0_PV 除以误差归一化 [cm/cm]
+    float mu4_absd0PVNorm;                  ///< d0_PV 归一化值的绝对值 [cm/cm]
     float mu4_d0PVErr;                       ///< d0_PV 的非归一化误差 [cm]
     float mu4_dzPV;                          ///< 相对于主顶点的纵向碰撞参数 [cm]
     float mu4_absdzPV;                       ///< 相对于主顶点的纵向碰撞参数绝对值 [cm]
     float mu4_dzPVNorm;                      ///< dz_PV 除以误差归一化 [cm/cm]
+    float mu4_absdzPVNorm;                  ///< dz_PV 归一化值的绝对值 [cm/cm]
     float mu4_dzPVErr;                       ///< dz_PV 的非归一化误差 [cm]
 
     /// μ子 ID 计数变量
@@ -546,32 +555,39 @@ private:
     int nSoftMuons;                          ///< 满足 Soft Muon ID 的数量
     int nMediumMuons;                        ///< 满足 Medium Muon ID 的数量
 
-    /// μ子触发匹配标志
-    bool mu1_hasFilterMatch;                 ///< μ₁ 是否通过触发过滤器匹配
-    bool mu2_hasFilterMatch;                 ///< μ₂ 是否通过触发过滤器匹配
-    bool mu3_hasFilterMatch;                 ///< μ₃ 是否通过触发过滤器匹配
-    bool mu4_hasFilterMatch;                 ///< μ₄ 是否通过触发过滤器匹配
-
     // ============================================================
     //                    π子变量 (2 个 π 子)
     // ============================================================
     float pipi_mass;                        ///< ππ 不变质量 [GeV]
 
     /// π₁ - 正 π 子 (参与 ψ(2S))
+    int pi1_index;                          ///< 在 PATTrackHandle 中的索引
     float pi1_pt;                           ///< 横动量 [GeV]
     float pi1_pz;                           ///< Z 方向动量分量 [GeV]
     float pi1_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float pi1_eta;                          ///< 赝快度
     float pi1_absEta;                       ///< 赝快度绝对值
+    float pi1_rapidity;                     ///< 快度
+    float pi1_absRapidity;                  ///< 快度绝对值
     float pi1_px;                           ///< X 方向动量分量 [GeV]
     float pi1_py;                           ///< Y 方向动量分量 [GeV]
 
     /// π₂ - 负 π 子 (参与 ψ(2S))
+    int pi2_index;                          ///< 在 PATTrackHandle 中的索引
     float pi2_pt;                           ///< 横动量 [GeV]
     float pi2_pz;                           ///< Z 方向动量分量 [GeV]
     float pi2_absPz;                        ///< Z 方向动量分量绝对值 [GeV]
+    float pi2_eta;                          ///< 赝快度
     float pi2_absEta;                       ///< 赝快度绝对值
+    float pi2_rapidity;                     ///< 快度
+    float pi2_absRapidity;                  ///< 快度绝对值
     float pi2_px;                           ///< X 方向动量分量 [GeV]
     float pi2_py;                           ///< Y 方向动量分量 [GeV]
+
+    // ============================================================
+    //                    派生量 Q
+    // ============================================================
+    float Q;                                ///< Q = Psi2S_mass - JPSI_MASS_NOMINAL - pipi_mass
 
     // ============================================================
     //                    δR 关联变量
