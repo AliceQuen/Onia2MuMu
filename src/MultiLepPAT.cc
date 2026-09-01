@@ -199,15 +199,15 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
 
       runNum(0), evtNum(0), lumiNum(0), nGoodPrimVtx(0),
 
-      X_PJ_mass(0), X_PJ_VtxProb(0), X_PJ_massErr(0), X_PJ_massErrNorm(0),
+      X_PJ_mass(0), X_PJ_VtxProb(0), X_PJ_csVtxProb(0), X_PJ_massErr(0), X_PJ_massErrNorm(0),
       X_PJ_pt(0), X_PJ_pz(0), X_PJ_absPz(0), X_PJ_eta(0), X_PJ_absEta(0),
       X_PJ_rapidity(0), X_PJ_absRapidity(0), X_PJ_px(0), X_PJ_py(0),
 
-      X_XJ_mass(0), X_XJ_VtxProb(0), X_XJ_massErr(0), X_XJ_massErrNorm(0),
+      X_XJ_mass(0), X_XJ_VtxProb(0), X_XJ_csVtxProb(0), X_XJ_massErr(0), X_XJ_massErrNorm(0),
       X_XJ_pt(0), X_XJ_pz(0), X_XJ_absPz(0), X_XJ_eta(0), X_XJ_absEta(0),
       X_XJ_rapidity(0), X_XJ_absRapidity(0), X_XJ_px(0), X_XJ_py(0),
 
-      X_PP_mass(0), X_PP_VtxProb(0), X_PP_massErr(0), X_PP_massErrNorm(0),
+      X_PP_mass(0), X_PP_VtxProb(0), X_PP_csVtxProb(0), X_PP_massErr(0), X_PP_massErrNorm(0),
       X_PP_pt(0), X_PP_pz(0), X_PP_absPz(0), X_PP_eta(0), X_PP_absEta(0),
       X_PP_rapidity(0), X_PP_absRapidity(0), X_PP_px(0), X_PP_py(0),
 
@@ -215,12 +215,12 @@ MultiLepPAT::MultiLepPAT(const edm::ParameterSet &iConfig)
       Psi2S_pt(0), Psi2S_pz(0), Psi2S_absPz(0), Psi2S_eta(0), Psi2S_absEta(0),
       Psi2S_rapidity(0), Psi2S_absRapidity(0), Psi2S_px(0), Psi2S_py(0),
 
-      Jpsi1_mass(0), Jpsi1_VtxProb(0), Jpsi1_massErr(0), Jpsi1_massErrNorm(0),
+      Jpsi1_mass(0), Jpsi1_VtxProb(0), Jpsi1_csVtxProb(0), Jpsi1_massErr(0), Jpsi1_massErrNorm(0),
       Jpsi1_pt(0), Jpsi1_pz(0), Jpsi1_absPz(0), Jpsi1_eta(0), Jpsi1_absEta(0),
       Jpsi1_rapidity(0), Jpsi1_absRapidity(0), Jpsi1_px(0), Jpsi1_py(0),
 
       Jpsi2_mass(0), Jpsi2_hasJConstraintFit(false), Jpsi2_hasPConstraintFit(false),
-      Jpsi2_VtxProb(0), Jpsi2_massErr(0), Jpsi2_massErrNorm(0),
+      Jpsi2_VtxProb(0), Jpsi2_csVtxProb(0), Jpsi2_massErr(0), Jpsi2_massErrNorm(0),
       Jpsi2_pt(0), Jpsi2_pz(0), Jpsi2_absPz(0), Jpsi2_eta(0), Jpsi2_absEta(0),
       Jpsi2_rapidity(0), Jpsi2_absRapidity(0), Jpsi2_px(0), Jpsi2_py(0),
 
@@ -375,7 +375,12 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
   // ============================================================
   //               步骤 2: 重置所有输出变量
   // ============================================================
-  resetVariables();
+  // 重置事件级变量: 这些变量同一事件内所有候选共享,
+  // 仅在事件边界处重置一次
+  resetEventVariables();
+  // 重置候选级变量: 防止上一事件残留泄漏到首个候选
+  // (trackMinus 循环内还会对每个候选再重置一次)
+  resetCandidateVariables();
 
   // ============================================================
   //               步骤 3: 获取磁场信息
@@ -754,40 +759,38 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           // 应用Jpsi质量约束（使用预创建的约束对象）
           KinematicParticleFitter cs_mumuFitter;
           RefCountedKinematicTree cs_mumuFitTree = cs_mumuFitter.fit(JpsiMassConstraint_.get(), mumuFitTree);
-          
+
           if (cs_mumuFitTree->isValid()) {
             cs_mumuFitTree->movePointerToTheTop();
             double cs_Jpsi_VtxProb = ChiSquaredProbability(
                 (double)(cs_mumuFitTree->currentDecayVertex()->chiSquared()),
                 (double)(cs_mumuFitTree->currentDecayVertex()->degreesOfFreedom()));
-            if (cs_Jpsi_VtxProb > JPSI_VTXPROB_CONSTRAINT_CUT){
-              candidate.hasConstraintFit = true;
-              RefCountedKinematicParticle cs_mumuFittedParticle = cs_mumuFitTree->currentParticle();
-              candidate.constraintParticle = cs_mumuFittedParticle;
-            }
+            candidate.hasConstraintFit = true;
+            candidate.csVtxProb = cs_Jpsi_VtxProb;
+            RefCountedKinematicParticle cs_mumuFittedParticle = cs_mumuFitTree->currentParticle();
+            candidate.constraintParticle = cs_mumuFittedParticle;
           }
         } catch (...) {
           // 拟合异常，保持默认值
         }
       }
-      
+
       // Psi2S质量约束拟合
       if (isPsi2SCandidate) {
         try {
           // 应用Psi2S质量约束（使用预创建的约束对象）
           KinematicParticleFitter cs_mumuFitter;
           RefCountedKinematicTree cs_mumuFitTree = cs_mumuFitter.fit(psi2sMassConstraint_.get(), mumuFitTree);
-          
+
           if (cs_mumuFitTree->isValid()) {
             cs_mumuFitTree->movePointerToTheTop();
             double cs_Jpsi_VtxProb = ChiSquaredProbability(
                 (double)(cs_mumuFitTree->currentDecayVertex()->chiSquared()),
                 (double)(cs_mumuFitTree->currentDecayVertex()->degreesOfFreedom()));
-            if (cs_Jpsi_VtxProb > JPSI_VTXPROB_CONSTRAINT_CUT){
-              candidate.hasConstraintFit = true;
-              RefCountedKinematicParticle cs_mumuFittedParticle = cs_mumuFitTree->currentParticle();
-              candidate.constraintParticle = cs_mumuFittedParticle;
-            }
+            candidate.hasConstraintFit = true;
+            candidate.csVtxProb = cs_Jpsi_VtxProb;
+            RefCountedKinematicParticle cs_mumuFittedParticle = cs_mumuFitTree->currentParticle();
+            candidate.constraintParticle = cs_mumuFittedParticle;
           }
         } catch (...) {
           // 拟合异常，保持默认值
@@ -821,6 +824,10 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
       if (!Jpsi1.isJpsiCandidate || !Jpsi1.hasConstraintFit) {
         continue;
       }
+      // Jpsi1质量约束拟合顶点概率截断
+      if (Jpsi1.csVtxProb <= JPSI_VTXPROB_CONSTRAINT_CUT) {
+        continue;
+      }
       // 检查是否使用了相同的muon
       if (Jpsi1.muPlus == Jpsi2.muPlus || Jpsi1.muMinus == Jpsi2.muMinus 
         || Jpsi1.muPlus == Jpsi2.muMinus || Jpsi1.muMinus == Jpsi2.muPlus) {
@@ -843,6 +850,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
         ROOT::Math::PxPyPzMVector track1_vec(trackPlusIter->px(), trackPlusIter->py(), 
                                                trackPlusIter->pz(), PI_MASS);
         for (const auto& trackMinusIter : trackMinus) {
+          // 关键: 每个候选开头重置候选级变量,
+          // 防止上一候选的条件性赋值变量(如 X_PJ_*/X_XJ_*/X_PP_*)
+          // 在本轮未赋值时残留旧值
+          resetCandidateVariables();
+
           const reco::Track* track2 = trackMinusIter->bestTrack();
           if (!track2) {
             continue;
@@ -951,6 +963,62 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           Psi2S_rapidity = Psi2S_vec.Rapidity();
           Psi2S_absRapidity = fabs(Psi2S_rapidity);
 
+          // ========== 六粒子无约束顶点拟合 (2π + 4μ) ==========
+          // 使用所有6个末态粒子的径迹直接做 KinematicParticleVertexFitter
+          {
+            TrackRef muTrack1 = Jpsi1.muPlus->track();
+            TrackRef muTrack2 = Jpsi1.muMinus->track();
+            TrackRef muTrack3 = Jpsi2.muPlus->track();
+            TrackRef muTrack4 = Jpsi2.muMinus->track();
+            if (muTrack1.isNull() || muTrack2.isNull() ||
+                muTrack3.isNull() || muTrack4.isNull()) {
+              // 径迹无效，保持默认值
+            } else {
+              TransientTrack muonTT1(muTrack1, &(bFieldHandle));
+              TransientTrack muonTT2(muTrack2, &(bFieldHandle));
+              TransientTrack muonTT3(muTrack3, &(bFieldHandle));
+              TransientTrack muonTT4(muTrack4, &(bFieldHandle));
+
+              ParticleMass muon_mass = MU_MASS;
+              float muon_sigma = MU_MASSERR;
+
+              KinematicParticleFactoryFromTransientTrack sixPFactory;
+
+              vector<RefCountedKinematicParticle> sixPParticles;
+              sixPParticles.push_back(sixPFactory.particle(
+                  trackTT1, pion_mass, chi, ndf, pion_sigma));
+              sixPParticles.push_back(sixPFactory.particle(
+                  trackTT2, pion_mass, chi, ndf, pion_sigma));
+              sixPParticles.push_back(sixPFactory.particle(
+                  muonTT1, muon_mass, chi, ndf, muon_sigma));
+              sixPParticles.push_back(sixPFactory.particle(
+                  muonTT2, muon_mass, chi, ndf, muon_sigma));
+              sixPParticles.push_back(sixPFactory.particle(
+                  muonTT3, muon_mass, chi, ndf, muon_sigma));
+              sixPParticles.push_back(sixPFactory.particle(
+                  muonTT4, muon_mass, chi, ndf, muon_sigma));
+
+              KinematicParticleVertexFitter raw6pFitter;
+              RefCountedKinematicTree raw6pFitTree;
+              bool raw6p_error = false;
+              try {
+                raw6pFitTree = raw6pFitter.fit(sixPParticles);
+              } catch (...) {
+                raw6p_error = true;
+              }
+
+              if (!raw6p_error && raw6pFitTree->isValid()) {
+                raw6pFitTree->movePointerToTheTop();
+                RefCountedKinematicVertex raw6pVertex =
+                    raw6pFitTree->currentDecayVertex();
+                X_raw6p_isValid = true;
+                X_raw6p_VtxProb = ChiSquaredProbability(
+                    (double)(raw6pVertex->chiSquared()),
+                    (double)(raw6pVertex->degreesOfFreedom()));
+              }
+            }
+          }
+
           // ========== 六粒子三种假设拟合 ==========
           // ========== 假设PJ: Jpipi(Psi2S约束后) + Jpsi2(Jpsi约束后) ==========
           // 检查Jpsi2是否拥有Jpsi约束拟合
@@ -973,6 +1041,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               cs_JpipiFitTree->movePointerToTheTop();
               RefCountedKinematicParticle cs_Psi2S_JpipiFittedParticle = 
                   cs_JpipiFitTree->currentParticle();
+              RefCountedKinematicVertex cs_Psi2S_JpipiFittedVertex = 
+                  cs_JpipiFitTree->currentDecayVertex();
+              X_PJ_csVtxProb = ChiSquaredProbability(
+                  (double)(cs_Psi2S_JpipiFittedVertex->chiSquared()),
+                  (double)(cs_Psi2S_JpipiFittedVertex->degreesOfFreedom()));
               
               // 第二步：六粒子顶点拟合（Jpipi + Jpsi2）
               vector<RefCountedKinematicParticle> PJParticles;
@@ -1041,6 +1114,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               cs_2mu2piFitTree->movePointerToTheTop();
               RefCountedKinematicParticle cs_X3872_JpipiFittedParticle = 
                   cs_2mu2piFitTree->currentParticle();
+              RefCountedKinematicVertex cs_X3872_JpipiFittedVertex = 
+                  cs_2mu2piFitTree->currentDecayVertex();
+              X_XJ_csVtxProb = ChiSquaredProbability(
+                  (double)(cs_X3872_JpipiFittedVertex->chiSquared()),
+                  (double)(cs_X3872_JpipiFittedVertex->degreesOfFreedom()));
               
               // 第二步：六粒子顶点拟合（Jpipi + Jpsi2）
               vector<RefCountedKinematicParticle> XJParticles;
@@ -1109,6 +1187,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
               cs_JpipiFitTree->movePointerToTheTop();
               RefCountedKinematicParticle cs_Psi2S_JpipiFittedParticle = 
                   cs_JpipiFitTree->currentParticle();
+              RefCountedKinematicVertex cs_Psi2S_JpipiFittedVertex = 
+                  cs_JpipiFitTree->currentDecayVertex();
+              X_PP_csVtxProb = ChiSquaredProbability(
+                  (double)(cs_Psi2S_JpipiFittedVertex->chiSquared()),
+                  (double)(cs_Psi2S_JpipiFittedVertex->degreesOfFreedom()));
               
               // 第二步：六粒子顶点拟合（Jpipi + Jpsi2）
               vector<RefCountedKinematicParticle> PPParticles;
@@ -1156,14 +1239,11 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
             }
           }
 
-          // 检查三个X候选是否都拟合失败（全<=0时才跳过）
-          if (X_PJ_mass <= 0 && X_XJ_mass <= 0 && X_PP_mass <= 0) {
-            continue;
-          }
 
           // ========== 保存Jpsi变量 ==========
           Jpsi1_mass = Jpsi1.mass;
           Jpsi1_VtxProb = Jpsi1.vtxProb;
+          Jpsi1_csVtxProb = Jpsi1.csVtxProb;
           Jpsi1_massErr = Jpsi1.massErr;
           Jpsi1_massErrNorm = (Jpsi1.mass > 0 && Jpsi1.massErr > 0) ? Jpsi1.massErr / Jpsi1.mass : -9;
           Jpsi1_pz = Jpsi1.p4.Pz();
@@ -1180,6 +1260,7 @@ void MultiLepPAT::analyze(const edm::Event &iEvent,
           Jpsi2_hasJConstraintFit = Jpsi2.hasConstraintFit && Jpsi2.isJpsiCandidate;
           Jpsi2_hasPConstraintFit = Jpsi2.hasConstraintFit && Jpsi2.isPsi2SCandidate;
           Jpsi2_VtxProb = Jpsi2.vtxProb;
+          Jpsi2_csVtxProb = Jpsi2.csVtxProb;
           Jpsi2_massErr = Jpsi2.massErr;
           Jpsi2_massErrNorm = (Jpsi2.mass > 0 && Jpsi2.massErr > 0) ? Jpsi2.massErr / Jpsi2.mass : -9;
           Jpsi2_pz = Jpsi2.p4.Pz();
@@ -1453,6 +1534,7 @@ void MultiLepPAT::beginJob() {
   // 质量拟合假设 PJ: mumupipi (psi2S 约束) + mumu (J/psi 约束)
   X_One_Tree_->Branch("X_PJ_mass", &X_PJ_mass, "X_PJ_mass/F");
   X_One_Tree_->Branch("X_PJ_VtxProb", &X_PJ_VtxProb, "X_PJ_VtxProb/F");
+  X_One_Tree_->Branch("X_PJ_csVtxProb", &X_PJ_csVtxProb, "X_PJ_csVtxProb/F");
   X_One_Tree_->Branch("X_PJ_massErr", &X_PJ_massErr, "X_PJ_massErr/F");
   X_One_Tree_->Branch("X_PJ_massErrNorm", &X_PJ_massErrNorm, "X_PJ_massErrNorm/F");
   X_One_Tree_->Branch("X_PJ_pt", &X_PJ_pt, "X_PJ_pt/F");
@@ -1468,6 +1550,7 @@ void MultiLepPAT::beginJob() {
   // 假设 XJ: mumupipi (X(3872) 约束) + mumu (J/psi 约束)
   X_One_Tree_->Branch("X_XJ_mass", &X_XJ_mass, "X_XJ_mass/F");
   X_One_Tree_->Branch("X_XJ_VtxProb", &X_XJ_VtxProb, "X_XJ_VtxProb/F");
+  X_One_Tree_->Branch("X_XJ_csVtxProb", &X_XJ_csVtxProb, "X_XJ_csVtxProb/F");
   X_One_Tree_->Branch("X_XJ_massErr", &X_XJ_massErr, "X_XJ_massErr/F");
   X_One_Tree_->Branch("X_XJ_massErrNorm", &X_XJ_massErrNorm, "X_XJ_massErrNorm/F");
   X_One_Tree_->Branch("X_XJ_pt", &X_XJ_pt, "X_XJ_pt/F");
@@ -1483,6 +1566,7 @@ void MultiLepPAT::beginJob() {
   // 假设 PP: mumupipi (psi(2S) 约束) + mumu (psi(2S) 约束)
   X_One_Tree_->Branch("X_PP_mass", &X_PP_mass, "X_PP_mass/F");
   X_One_Tree_->Branch("X_PP_VtxProb", &X_PP_VtxProb, "X_PP_VtxProb/F");
+  X_One_Tree_->Branch("X_PP_csVtxProb", &X_PP_csVtxProb, "X_PP_csVtxProb/F");
   X_One_Tree_->Branch("X_PP_massErr", &X_PP_massErr, "X_PP_massErr/F");
   X_One_Tree_->Branch("X_PP_massErrNorm", &X_PP_massErrNorm, "X_PP_massErrNorm/F");
   X_One_Tree_->Branch("X_PP_pt", &X_PP_pt, "X_PP_pt/F");
@@ -1494,6 +1578,10 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("X_PP_absEta", &X_PP_absEta, "X_PP_absEta/F");
   X_One_Tree_->Branch("X_PP_rapidity", &X_PP_rapidity, "X_PP_rapidity/F");
   X_One_Tree_->Branch("X_PP_absRapidity", &X_PP_absRapidity, "X_PP_absRapidity/F");
+
+  // 六粒子无约束顶点拟合
+  X_One_Tree_->Branch("X_raw6p_isValid", &X_raw6p_isValid, "X_raw6p_isValid/O");
+  X_One_Tree_->Branch("X_raw6p_VtxProb", &X_raw6p_VtxProb, "X_raw6p_VtxProb/F");
 
   // Psi(2S) 带 J/psi 约束: mumupipi system
   X_One_Tree_->Branch("Psi2S_mass", &Psi2S_mass, "Psi2S_mass/F");
@@ -1513,6 +1601,7 @@ void MultiLepPAT::beginJob() {
 
   X_One_Tree_->Branch("Jpsi1_mass", &Jpsi1_mass, "Jpsi1_mass/F");
   X_One_Tree_->Branch("Jpsi1_VtxProb", &Jpsi1_VtxProb, "Jpsi1_VtxProb/F");
+  X_One_Tree_->Branch("Jpsi1_csVtxProb", &Jpsi1_csVtxProb, "Jpsi1_csVtxProb/F");
   X_One_Tree_->Branch("Jpsi1_massErr", &Jpsi1_massErr, "Jpsi1_massErr/F");
   X_One_Tree_->Branch("Jpsi1_massErrNorm", &Jpsi1_massErrNorm, "Jpsi1_massErrNorm/F");
   X_One_Tree_->Branch("Jpsi1_absPz", &Jpsi1_absPz, "Jpsi1_absPz/F");
@@ -1529,6 +1618,7 @@ void MultiLepPAT::beginJob() {
   X_One_Tree_->Branch("Jpsi2_hasJConstraintFit", &Jpsi2_hasJConstraintFit, "Jpsi2_hasJConstraintFit/O");
   X_One_Tree_->Branch("Jpsi2_hasPConstraintFit", &Jpsi2_hasPConstraintFit, "Jpsi2_hasPConstraintFit/O");
   X_One_Tree_->Branch("Jpsi2_VtxProb", &Jpsi2_VtxProb, "Jpsi2_VtxProb/F");
+  X_One_Tree_->Branch("Jpsi2_csVtxProb", &Jpsi2_csVtxProb, "Jpsi2_csVtxProb/F");
   X_One_Tree_->Branch("Jpsi2_massErr", &Jpsi2_massErr, "Jpsi2_massErr/F");
   X_One_Tree_->Branch("Jpsi2_massErrNorm", &Jpsi2_massErrNorm, "Jpsi2_massErrNorm/F");
   X_One_Tree_->Branch("Jpsi2_absPz", &Jpsi2_absPz, "Jpsi2_absPz/F");
@@ -1735,9 +1825,9 @@ void MultiLepPAT::beginJob() {
 
 } // begin Job
 
-// ------------ method called to reset all variables for each event ------------
-void MultiLepPAT::resetVariables() {
-  
+// ------------ method called to reset event-level variables ------------
+void MultiLepPAT::resetEventVariables() {
+
   // ============================================================
   //                    重置事件标识变量
   // ============================================================
@@ -1745,13 +1835,18 @@ void MultiLepPAT::resetVariables() {
   evtNum = 0;
   lumiNum = 0;
   nGoodPrimVtx = 0;
-  
+}
+
+// ------------ method called to reset candidate-level variables ------------
+void MultiLepPAT::resetCandidateVariables() {
+
   // ============================================================
   //                    重置 X 候选变量
   // ============================================================
   // 假设 PJ: mumupipi (ψ(2S) 质量约束) + mumu (J/ψ 质量约束)
   X_PJ_mass = -999.0;
   X_PJ_VtxProb = -999.0;
+  X_PJ_csVtxProb = -999.0;
   X_PJ_massErr = -999.0;
   X_PJ_massErrNorm = -999.0;
   X_PJ_pt = -999.0;
@@ -1767,6 +1862,7 @@ void MultiLepPAT::resetVariables() {
   // 假设 XJ: mumupipi (X(3872) 质量约束) + mumu (J/ψ 质量约束)
   X_XJ_mass = -999.0;
   X_XJ_VtxProb = -999.0;
+  X_XJ_csVtxProb = -999.0;
   X_XJ_massErr = -999.0;
   X_XJ_massErrNorm = -999.0;
   X_XJ_pt = -999.0;
@@ -1782,6 +1878,7 @@ void MultiLepPAT::resetVariables() {
   // 假设 PP: mumupipi (ψ(2S) 质量约束) + mumu (ψ(2S) 质量约束)
   X_PP_mass = -999.0;
   X_PP_VtxProb = -999.0;
+  X_PP_csVtxProb = -999.0;
   X_PP_massErr = -999.0;
   X_PP_massErrNorm = -999.0;
   X_PP_pt = -999.0;
@@ -1793,7 +1890,11 @@ void MultiLepPAT::resetVariables() {
   X_PP_absRapidity = -999.0;
   X_PP_px = -999.0;
   X_PP_py = -999.0;
-  
+
+  // 六粒子无约束顶点拟合
+  X_raw6p_isValid = false;
+  X_raw6p_VtxProb = -999.0;
+
   // ============================================================
   //                    重置 ψ(2S) 候选变量
   // ============================================================
@@ -1818,6 +1919,7 @@ void MultiLepPAT::resetVariables() {
   // J/ψ1 (参与 ψ(2S) 组合)
   Jpsi1_mass = -999.0;
   Jpsi1_VtxProb = -999.0;
+  Jpsi1_csVtxProb = -999.0;
   Jpsi1_massErr = -999.0;
   Jpsi1_massErrNorm = -999.0;
   Jpsi1_pt = -999.0;
@@ -1833,6 +1935,7 @@ void MultiLepPAT::resetVariables() {
   // J/ψ2 (第二个 J/ψ)
   Jpsi2_mass = -999.0;
   Jpsi2_VtxProb = -999.0;
+  Jpsi2_csVtxProb = -999.0;
   Jpsi2_hasJConstraintFit = false;
   Jpsi2_hasPConstraintFit = false;
   Jpsi2_massErr = -999.0;
@@ -2073,6 +2176,7 @@ void MultiLepPAT::resetVariables() {
 bool MultiLepPAT::isAllVariablesFinite() {
   // 检查 X_PJ 变量
   if (!std::isfinite(X_PJ_mass) || !std::isfinite(X_PJ_VtxProb) ||
+      !std::isfinite(X_PJ_csVtxProb) ||
       !std::isfinite(X_PJ_massErr) || !std::isfinite(X_PJ_pt) ||
       !std::isfinite(X_PJ_pz) || !std::isfinite(X_PJ_absPz) ||
       !std::isfinite(X_PJ_eta) || !std::isfinite(X_PJ_absEta) ||
@@ -2083,6 +2187,7 @@ bool MultiLepPAT::isAllVariablesFinite() {
 
   // 检查 X_XJ 变量
   if (!std::isfinite(X_XJ_mass) || !std::isfinite(X_XJ_VtxProb) ||
+      !std::isfinite(X_XJ_csVtxProb) ||
       !std::isfinite(X_XJ_massErr) || !std::isfinite(X_XJ_pt) ||
       !std::isfinite(X_XJ_pz) || !std::isfinite(X_XJ_absPz) ||
       !std::isfinite(X_XJ_eta) || !std::isfinite(X_XJ_absEta) ||
@@ -2101,6 +2206,11 @@ bool MultiLepPAT::isAllVariablesFinite() {
     return false;
   }
 
+  // 检查六粒子无约束拟合变量
+  if (!std::isfinite(X_raw6p_VtxProb)) {
+    return false;
+  }
+
   // 检查 Psi2S 变量
   if (!std::isfinite(Psi2S_mass) || !std::isfinite(Psi2S_VtxProb) ||
       !std::isfinite(Psi2S_massErr) || !std::isfinite(Psi2S_pt) ||
@@ -2112,7 +2222,7 @@ bool MultiLepPAT::isAllVariablesFinite() {
 
   // 检查 Jpsi1 变量
   if (!std::isfinite(Jpsi1_mass) || !std::isfinite(Jpsi1_VtxProb) ||
-      !std::isfinite(Jpsi1_massErr) || !std::isfinite(Jpsi1_pt) ||
+      !std::isfinite(Jpsi1_csVtxProb) || !std::isfinite(Jpsi1_massErr) || !std::isfinite(Jpsi1_pt) ||
       !std::isfinite(Jpsi1_pz) || !std::isfinite(Jpsi1_eta) || !std::isfinite(Jpsi1_absEta) ||
       !std::isfinite(Jpsi1_rapidity) || !std::isfinite(Jpsi1_absRapidity) ||
       !std::isfinite(Jpsi1_px) || !std::isfinite(Jpsi1_py)) {
@@ -2121,7 +2231,7 @@ bool MultiLepPAT::isAllVariablesFinite() {
 
   // 检查 Jpsi2 变量
   if (!std::isfinite(Jpsi2_mass) || !std::isfinite(Jpsi2_VtxProb) ||
-      !std::isfinite(Jpsi2_massErr) || !std::isfinite(Jpsi2_pt) ||
+      !std::isfinite(Jpsi2_csVtxProb) || !std::isfinite(Jpsi2_massErr) || !std::isfinite(Jpsi2_pt) ||
       !std::isfinite(Jpsi2_pz) || !std::isfinite(Jpsi2_eta) || !std::isfinite(Jpsi2_absEta) ||
       !std::isfinite(Jpsi2_rapidity) || !std::isfinite(Jpsi2_absRapidity) ||
       !std::isfinite(Jpsi2_px) || !std::isfinite(Jpsi2_py)) {

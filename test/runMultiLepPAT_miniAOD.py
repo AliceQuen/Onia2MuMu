@@ -21,9 +21,6 @@ process.load("TrackingTools/TransientTrack/TransientTrackBuilder_cfi")
 process.load('Configuration.StandardSequences.GeometryRecoDB_cff')
 process.load("Configuration.StandardSequences.Reconstruction_cff")
 process.load("Configuration.StandardSequences.MagneticField_AutoFromDBCurrent_cff")
-process.options = cms.untracked.PSet(
-        numberOfThreads = cms.untracked.uint32(8)
-)
 
 ### output module
 process.out = cms.OutputModule("PoolOutputModule",

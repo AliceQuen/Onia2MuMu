@@ -114,6 +114,7 @@ struct JpsiCandidate {
     //             质量约束拟合结果 (共用一套)
     // ============================================================
     bool hasConstraintFit = false;                   ///< 是否有有效的约束拟合结果
+    double csVtxProb{-999.0};                         ///< 质量约束拟合的顶点概率
     RefCountedKinematicParticle constraintParticle;  ///< 约束拟合后的运动学粒子
 
     // ============================================================
@@ -224,19 +225,33 @@ private:
 
     ////////////////////////////////////////////////////////////////
     ///
-    /// \brief 重置所有输出变量为默认无效值
+    /// \brief 重置事件级输出变量为默认无效值
     ///
-    /// \details 在每个事件开始时调用，将所有 ~130 个物理量
-    ///          重置为哨兵值：
-    ///          - 浮点型: -999.0
-    ///          - 整型: 0
-    ///          - 布尔型: false
-    ///
-    /// 重要: 此函数必须在每个 analyze() 开始时调用，
-    ///       确保前一个候选的结果不影响当前候选
+    /// \details 在每个事件开始时调用一次，重置事件标识变量
+    ///          (runNum/evtNum/lumiNum/nGoodPrimVtx)。
+    ///          这些变量在同一事件的所有候选中保持一致，
+    ///          因此仅在事件边界处重置。
     ///
     ////////////////////////////////////////////////////////////////
-    void resetVariables();
+    void resetEventVariables();
+
+    ////////////////////////////////////////////////////////////////
+    ///
+    /// \brief 重置候选级输出变量为默认无效值
+    ///
+    /// \details 重置除事件标识外的所有物理量（~126 个），
+    ///          哨兵值：
+    ///          - 浮点型: -999.0
+    ///          - 整型: -1
+    ///          - 布尔型: false
+    ///
+    /// 重要: 必须在每个候选（trackMinus 循环体开头）调用，
+    ///       确保前一候选的赋值不残留。条件性赋值的变量
+    ///       (如 X_PJ_*/X_XJ_*/X_PP_*) 在拟合失败时保持
+    ///       默认值，必须靠此重置来避免跨候选污染。
+    ///
+    ////////////////////////////////////////////////////////////////
+    void resetCandidateVariables();
 
     ////////////////////////////////////////////////////////////////
     ///
@@ -309,6 +324,7 @@ private:
     // ============================================================
     float X_PJ_mass;                        ///< 不变质量 [GeV]
     float X_PJ_VtxProb;                     ///< 顶点概率 (χ² 概率)
+    float X_PJ_csVtxProb;                   ///< Psi2S质量约束拟合顶点概率
     float X_PJ_massErr;                     ///< 质量误差 [GeV]
     float X_PJ_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_PJ_pt;                          ///< 横动量 [GeV]
@@ -327,6 +343,7 @@ private:
     // ============================================================
     float X_XJ_mass;                        ///< 不变质量 [GeV]
     float X_XJ_VtxProb;                     ///< 顶点概率
+    float X_XJ_csVtxProb;                   ///< X3872质量约束拟合顶点概率
     float X_XJ_massErr;                     ///< 质量误差 [GeV]
     float X_XJ_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_XJ_pt;                          ///< 横动量 [GeV]
@@ -345,6 +362,7 @@ private:
     // ============================================================
     float X_PP_mass;                        ///< 不变质量 [GeV]
     float X_PP_VtxProb;                     ///< 顶点概率
+    float X_PP_csVtxProb;                   ///< Psi2S质量约束拟合顶点概率
     float X_PP_massErr;                     ///< 质量误差 [GeV]
     float X_PP_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float X_PP_pt;                          ///< 横动量 [GeV]
@@ -356,6 +374,13 @@ private:
     float X_PP_absRapidity;                 ///< 快度绝对值
     float X_PP_px;                          ///< X 方向动量分量 [GeV]
     float X_PP_py;                          ///< Y 方向动量分量 [GeV]
+
+    // ============================================================
+    //              六粒子无约束顶点拟合变量 (2π + 4μ)
+    //  使用所有6个末态粒子的径迹直接做 KinematicParticleVertexFitter
+    // ============================================================
+    bool X_raw6p_isValid;                  ///< 六粒子无约束拟合是否有效
+    float X_raw6p_VtxProb;                 ///< 六粒子无约束拟合顶点概率 (χ² 概率)
 
     // ============================================================
     //              ψ(2S) 候选变量 (4 径迹拟合)
@@ -380,6 +405,7 @@ private:
     // ============================================================
     float Jpsi1_mass;                       ///< 不变质量 [GeV]
     float Jpsi1_VtxProb;                    ///< 顶点概率
+    float Jpsi1_csVtxProb;                  ///< 质量约束拟合顶点概率
     float Jpsi1_massErr;                    ///< 质量误差 [GeV]
     float Jpsi1_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float Jpsi1_pt;                         ///< 横动量 [GeV]
@@ -401,6 +427,7 @@ private:
 
     ///< 是否有 ψ(2S) 约束拟合结果
     float Jpsi2_VtxProb;                    ///< 顶点概率
+    float Jpsi2_csVtxProb;                  ///< 质量约束拟合顶点概率
     float Jpsi2_massErr;                    ///< 质量误差 [GeV]
     float Jpsi2_massErrNorm;                ///< 归一化质量误差 (massErr/mass)
     float Jpsi2_pt;                         ///< 横动量 [GeV]
